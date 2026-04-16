@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  dependency-submission: write
 
 jobs:
   sbom:
@@ -14,7 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Submit npm dependencies
-        uses: advanced-security/npm-dependency-submission@v1
+      - uses: actions/setup-node@v6
         with:
-          directory: harness
+          node-version: "20"
+
+      - name: Generate SBOM
+        working-directory: harness
+        run: npm sbom --sbom-format spdx > ../sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom.spdx.json
