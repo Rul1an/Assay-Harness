@@ -61,6 +61,20 @@ as **changes** but do not fail the gate.
 
 ## Quick Start
 
+### 0. Manage baselines
+
+```bash
+# Store current evidence as baseline
+npx tsx src/cli.ts baseline update --from ../fixtures/valid.assay.ndjson
+
+# Inspect baseline
+npx tsx src/cli.ts baseline show
+# → [baseline] events: 4
+# →   - example.placeholder.harness.approval-interruption
+# →   - example.placeholder.harness.policy-decision
+# →   - ...
+```
+
 ### 1. Policy evaluation
 
 The policy engine is deterministic: same tool name, same decision, every time.
@@ -151,6 +165,27 @@ The GitHub Actions workflow runs 8 jobs on every push and PR:
 
 Evidence artifacts and SARIF reports are uploaded on every run, including
 failures. The SARIF report appears in the GitHub Security tab.
+
+---
+
+## Demo Scenarios
+
+Four concrete scenarios in `fixtures/scenarios/` show the key product flows:
+
+| Scenario | What it demonstrates |
+|---|---|
+| `clean-baseline` | No regressions — compare exits 0 |
+| `new-approval` | PR introduces new `require_approval` tool |
+| `deny-regression` | Policy change causes new denial |
+| `policy-drift-resume` | Resume with different policy snapshot hash |
+
+Run all scenarios locally:
+
+```bash
+bash demo/run-scenarios.sh
+```
+
+See [docs/SCENARIOS.md](docs/SCENARIOS.md) for details on each scenario.
 
 ---
 
@@ -279,12 +314,20 @@ Assay-Harness/
     valid.assay.ndjson        # Golden mapper output
     failure.assay.ndjson      # Golden mapper output
     valid.mcp.harness.json    # MCP interaction fixture
+    scenarios/                # Demo scenario fixtures
+      clean-baseline.*        # No-regression baseline
+      new-approval.*          # New require_approval tool
+      deny-regression.*       # Policy tightening
+      policy-drift-resume.*   # Policy snapshot mismatch
+  demo/
+    run-scenarios.sh          # Run all demo scenarios locally
   tests/                      # Python test suites
     test_contracts.py         # 24 golden contract tests
     test_hardening.py         # 22 hardening tests
   ci/                         # CI output generators
     emit_junit.py             # Evidence → JUnit XML
     emit_sarif.py             # Evidence → SARIF 2.1.0
+    emit_compare_junit.py     # Compare results → JUnit XML
     emit_compare_sarif.py     # Compare results → SARIF 2.1.0
     emit_otel.py              # Evidence → OTLP JSON (experimental)
   docs/
@@ -297,6 +340,8 @@ Assay-Harness/
       ADR-001-*.md            # Deterministic policy
       ADR-002-*.md            # No transcript truth
       ADR-003-*.md            # MCP bounded evidence
+    SCENARIOS.md              # Demo scenario documentation
+    ROADMAP.md                # Now / next / later roadmap
   .github/workflows/
     harness-ci.yml            # 8-job CI pipeline (incl. regression gate)
     release.yml               # Tag-triggered release with attestations

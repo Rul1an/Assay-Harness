@@ -1,0 +1,44 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [
+    {
+      "tool_name": "write_file",
+      "tool_call_id": "call_abc123",
+      "arguments_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "resume_state_ref": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "resume_nonce": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+  "timestamp": "2026-04-16T10:00:00Z",
+  "active_agent_ref": "harness-mvp-agent",
+  "policy_decisions": [
+    {
+      "decision": "require_approval",
+      "policy_id": "harness-mvp-policy@1.0",
+      "action_kind": "tool_call",
+      "target_ref": "write_file",
+      "rule_ref": "require_approval:write_file",
+      "timestamp": "2026-04-16T09:59:59Z"
+    }
+  ],
+  "resumed": {
+    "resume_state_ref": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "resumed_at": "2026-04-16T10:01:00Z",
+    "resume_decision": "approved",
+    "resume_decision_ref": "harness-run-1:approved",
+    "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+    "resume_nonce": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+  },
+  "process_summary": {
+    "approval_count": 1,
+    "denied_action_count": 0,
+    "resume_count": 1,
+    "allowed_action_count": 2,
+    "total_tool_calls": 3,
+    "timestamp": "2026-04-16T10:01:01Z"
+  }
+}

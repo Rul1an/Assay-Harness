@@ -233,12 +233,21 @@ jobs:
             echo "**Status:** ERROR - compare report not found" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Generate JUnit XML from compare
+        if: always() && steps.compare.outcome != 'skipped'
+        run: |
+          python3 ci/emit_compare_junit.py \
+            results/compare-report.json \
+            --output results/junit-compare.xml
+
       - name: Upload compare results
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: compare-report
-          path: results/compare-report.json
+          path: |
+            results/compare-report.json
+            results/junit-compare.xml
 
       - name: Fail on regressions
         if: steps.compare.outcome == 'failure'
