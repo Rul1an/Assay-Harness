@@ -11,6 +11,8 @@
     }
   ],
   "resume_state_ref": "sha256:a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "resume_nonce": "f1e2d3c4b5a6f7e8d9c0b1a2f3e4d5c6",
   "timestamp": "2026-04-16T10:05:00Z",
   "active_agent_ref": "harness-mvp-agent",
   "policy_decisions": [

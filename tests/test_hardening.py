@@ -146,6 +146,73 @@ class TestResumeHardening(unittest.TestCase):
             # This should succeed — the mapper doesn't enforce policy_id consistency
             self.assertEqual(result.returncode, 0)
 
+    def test_policy_snapshot_hash_in_output(self):
+        """policy_snapshot_hash appears in mapped evidence when present in input."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.ndjson"
+            result = _run_mapper(VALID_FIXTURE, out)
+            self.assertEqual(result.returncode, 0)
+
+            lines = out.read_text("utf-8").strip().split("\n")
+            # Check first event (approval interruption) has policy_snapshot_hash
+            first_event = json.loads(lines[0])
+            observed = first_event["data"]["observed"]
+            self.assertIn("policy_snapshot_hash", observed)
+            self.assertTrue(observed["policy_snapshot_hash"].startswith("sha256:"))
+
+    def test_resume_nonce_in_output(self):
+        """resume_nonce appears in mapped evidence when present in input."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.ndjson"
+            result = _run_mapper(VALID_FIXTURE, out)
+            self.assertEqual(result.returncode, 0)
+
+            lines = out.read_text("utf-8").strip().split("\n")
+            first_event = json.loads(lines[0])
+            observed = first_event["data"]["observed"]
+            self.assertIn("resume_nonce", observed)
+            self.assertIsInstance(observed["resume_nonce"], str)
+            self.assertTrue(len(observed["resume_nonce"]) > 0)
+
+    def test_policy_snapshot_hash_in_resumed(self):
+        """policy_snapshot_hash in resumed section is preserved in evidence."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.ndjson"
+            result = _run_mapper(VALID_FIXTURE, out)
+            self.assertEqual(result.returncode, 0)
+
+            lines = out.read_text("utf-8").strip().split("\n")
+            # Third event is resumed-run
+            resumed_event = json.loads(lines[2])
+            observed = resumed_event["data"]["observed"]
+            self.assertIn("policy_snapshot_hash", observed)
+            self.assertTrue(observed["policy_snapshot_hash"].startswith("sha256:"))
+
+    def test_bad_policy_snapshot_hash_rejected(self):
+        """Non-sha256 policy_snapshot_hash is rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture = _load_valid()
+            fixture["policy_snapshot_hash"] = "md5:invalid"
+            input_path = _make_fixture(fixture, tmpdir)
+            output_path = Path(tmpdir) / "out.ndjson"
+
+            result = _run_mapper(input_path, output_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("REJECT_BAD_STATE_REF", result.stderr)
+
+    def test_double_resume_same_state_ref_deterministic(self):
+        """Mapping same fixture twice yields identical output (idempotent)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out1 = Path(tmpdir) / "out1.ndjson"
+            out2 = Path(tmpdir) / "out2.ndjson"
+
+            r1 = _run_mapper(VALID_FIXTURE, out1)
+            r2 = _run_mapper(VALID_FIXTURE, out2)
+
+            self.assertEqual(r1.returncode, 0)
+            self.assertEqual(r2.returncode, 0)
+            self.assertEqual(out1.read_text("utf-8"), out2.read_text("utf-8"))
+
 
 # ============================================================================
 # Policy determinism guard tests

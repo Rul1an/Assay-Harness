@@ -4,6 +4,11 @@ updates:
     directory: "harness/"
     schedule:
       interval: "weekly"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "pip"
     directory: "/"
@@ -14,3 +19,7 @@ updates:
     directory: ".github/workflows/"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"

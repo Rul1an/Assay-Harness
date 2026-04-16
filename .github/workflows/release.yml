@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+
+      - name: Install dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: harness
+        run: npx tsc --noEmit
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run contract tests
+        run: python3 -m unittest tests.test_contracts -v
+
+      - name: Run hardening tests
+        run: python3 -m unittest tests.test_hardening -v
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+
+      - name: Install dependencies
+        working-directory: harness
+        run: npm ci
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Generate evidence artifacts
+        run: |
+          mkdir -p artifacts
+
+          python3 ci/emit_junit.py \
+            fixtures/valid.assay.ndjson \
+            --output artifacts/junit-valid.xml
+
+          python3 ci/emit_junit.py \
+            fixtures/failure.assay.ndjson \
+            --output artifacts/junit-failure.xml
+
+          python3 ci/emit_sarif.py \
+            fixtures/valid.assay.ndjson \
+            --output artifacts/sarif-valid.json
+
+          python3 ci/emit_sarif.py \
+            fixtures/failure.assay.ndjson \
+            --output artifacts/sarif-failure.json
+
+          cp fixtures/valid.assay.ndjson artifacts/
+          cp fixtures/failure.assay.ndjson artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/*

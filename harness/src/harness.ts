@@ -9,6 +9,7 @@
 
 import { run, RunState } from "@openai/agents";
 import type { Agent } from "@openai/agents";
+import { randomBytes } from "node:crypto";
 import {
   EvidenceCompiler,
   hashArguments,
@@ -19,6 +20,9 @@ import {
   type ResumedRunArtifact,
 } from "./evidence.js";
 import { PolicyEngine, type PolicyDecisionResult } from "./policy.js";
+
+/** Tracks which resume_state_refs have been consumed (exact-once guard). */
+const consumedResumeRefs = new Set<string>();
 
 export interface HarnessConfig {
   agent: Agent;
@@ -126,7 +130,10 @@ export async function runHarness(
     evidence.emitPolicyDecision(policyResult);
   }
 
-  // Emit approval interruption artifact
+  // Generate resume nonce for binding approval decision to this specific pause
+  const resumeNonce = randomBytes(16).toString("hex");
+
+  // Emit approval interruption artifact with policy snapshot hash
   const approvalArtifact: ApprovalInterruptionArtifact = {
     schema: "assay.harness.approval-interruption.v1",
     framework: "openai_agents_sdk",
@@ -134,10 +141,21 @@ export async function runHarness(
     pause_reason: "tool_approval",
     interruptions: boundedInterruptions,
     resume_state_ref: resumeStateRef,
+    policy_snapshot_hash: policy.snapshotHash,
+    resume_nonce: resumeNonce,
     timestamp: new Date().toISOString().replace("+00:00", "Z"),
     active_agent_ref: agent.name,
   };
-  evidence.emitApprovalInterruption(approvalArtifact);
+  const approvalEvent = evidence.emitApprovalInterruption(approvalArtifact);
+  const approvalArtifactHash = approvalEvent.assaycontenthash;
+
+  // Exact-once resume guard: prevent double resume
+  if (consumedResumeRefs.has(resumeStateRef)) {
+    throw new Error(
+      `Resume rejected: resume_state_ref ${resumeStateRef} has already been consumed (exact-once guard)`
+    );
+  }
+  consumedResumeRefs.add(resumeStateRef);
 
   // Decide: approve or reject
   if (autoDeny) {
@@ -152,6 +170,9 @@ export async function runHarness(
       resumed_at: new Date().toISOString().replace("+00:00", "Z"),
       resume_decision: "rejected",
       resume_decision_ref: `${runId}:rejected`,
+      policy_snapshot_hash: policy.snapshotHash,
+      resume_nonce: resumeNonce,
+      resumed_from_artifact_hash: approvalArtifactHash,
       active_agent_ref: agent.name,
     });
   } else if (autoApprove || autoApprove === undefined) {
@@ -169,6 +190,9 @@ export async function runHarness(
       resumed_at: new Date().toISOString().replace("+00:00", "Z"),
       resume_decision: "approved",
       resume_decision_ref: `${runId}:approved`,
+      policy_snapshot_hash: policy.snapshotHash,
+      resume_nonce: resumeNonce,
+      resumed_from_artifact_hash: approvalArtifactHash,
       active_agent_ref: agent.name,
     });
 

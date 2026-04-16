@@ -7,6 +7,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import yaml from "js-yaml";
 
 export type PolicyDecision = "allow" | "deny" | "require_approval";
@@ -67,10 +68,14 @@ function matchPattern(toolName: string, pattern: string): boolean {
 export class PolicyEngine {
   readonly config: PolicyConfig;
   readonly policyId: string;
+  readonly snapshotHash: string;
 
-  constructor(config: PolicyConfig) {
+  constructor(config: PolicyConfig, rawYaml?: string) {
     this.config = config;
     this.policyId = `${config.name}@${config.version}`;
+    // Compute deterministic snapshot hash from canonical config representation
+    const hashInput = rawYaml ?? JSON.stringify(config, Object.keys(config).sort());
+    this.snapshotHash = "sha256:" + createHash("sha256").update(hashInput, "utf-8").digest("hex");
   }
 
   static fromFile(path: string): PolicyEngine {
@@ -79,7 +84,7 @@ export class PolicyEngine {
     if (!config.version || !config.name || !config.tools) {
       throw new Error(`Invalid policy file: missing required fields in ${path}`);
     }
-    return new PolicyEngine(config);
+    return new PolicyEngine(config, raw);
   }
 
   /**

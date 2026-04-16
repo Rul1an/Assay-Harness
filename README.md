@@ -1,39 +1,72 @@
 # Assay Harness
 
-**Approval-aware, resumable harness for long-running tool agents, with Assay
-as policy and evidence governance layer.**
+**Catch agent regressions before they merge.**
 
-> **Status:** main-only in-progress (P23 MVP)
-> **Version:** 0.1.0
+Compare baseline evidence against candidate evidence in every PR.
+New denials, hash mismatches, or policy changes surface as structured
+regression output — reviewable by humans and consumable by CI.
+
+> **Version:** 0.2.0 | **Status:** active development
 
 ---
 
-## What This Is
+## The PR Gate Flow
 
-A harness layer that sits above existing agent runtimes and lets Assay govern:
+```
+baseline evidence (main)     candidate evidence (PR branch)
+        │                              │
+        └──────────┬───────────────────┘
+                   │
+          assay-harness compare
+                   │
+         ┌─────────┴──────────┐
+         │  Regression Report  │
+         │  ─ new denials?     │
+         │  ─ hash mismatches? │
+         │  ─ counter deltas?  │
+         └─────────────────────┘
+                   │
+           exit 0 (ok) or exit 6 (regression)
+```
 
-- **deterministic policy decisions** (allow / deny / require_approval)
-- **approval-aware pauses** with resumable continuation evidence
-- **bounded protocol evidence** (tool calls, MCP interactions)
-- **CI-consumable review artifacts** (JUnit XML, SARIF, evidence bundles)
+### Try it now (no API key needed)
 
-## What This Is Not
+```bash
+cd harness && npm install
 
-- a new agent framework
-- a transcript store
-- an observability dashboard
-- a full RunState importer
+# Compare two evidence files
+npx tsx src/cli.ts compare \
+  --baseline ../fixtures/valid.assay.ndjson \
+  --candidate ../fixtures/failure.assay.ndjson
+
+# Output:
+# # Evidence Comparison Report
+# **Status:** REGRESSION DETECTED
+# **Summary:** REGRESSION: 1 new denial(s), ...
+```
+
+### What triggers a regression?
+
+| Signal | Meaning | Exit code |
+|---|---|---|
+| New denial | A tool that was allowed is now denied | 6 |
+| New event type | Unknown evidence category appeared | 6 |
+| Hash mismatch | Same event at same seq has different content | 6 |
+| Increased denied count | More actions blocked than baseline | 6 |
+
+Removed denials, approval changes, and counter decreases are reported
+as **changes** but do not fail the gate.
 
 ---
 
 ## Quick Start
 
-### Policy evaluation (no API key needed)
+### 1. Policy evaluation
+
+The policy engine is deterministic: same tool name, same decision, every time.
+No transcript, no model reasoning, no volatile state.
 
 ```bash
-cd harness && npm install
-
-# Check what the policy says about a tool
 npx tsx src/cli.ts policy --tool read_file
 # → { "decision": "allow", ... }
 
@@ -41,39 +74,55 @@ npx tsx src/cli.ts policy --tool write_file
 # → { "decision": "require_approval", ... }
 
 npx tsx src/cli.ts policy --tool network_egress
-# → { "decision": "deny", ... }
+# → { "decision": "deny", ... }   (exit 1)
 ```
 
-### Map fixtures to Assay evidence
+### 2. Map fixtures to Assay evidence
 
 ```bash
-# Map valid harness artifact to Assay NDJSON
 python3 mapper/map_to_assay.py \
   fixtures/valid.harness.json \
   --output /tmp/valid.assay.ndjson \
   --import-time 2026-04-16T12:00:00Z \
   --overwrite
 
-# Malformed fixture is correctly rejected
+# Malformed fixtures are rejected with canonical codes
 python3 mapper/map_to_assay.py \
   fixtures/malformed.harness.json \
   --output /tmp/malformed.ndjson \
   --import-time 2026-04-16T12:10:00Z \
   --overwrite
-# → exits with error: rejected key 'raw_run_state'
+# → [REJECT_RAW_STATE] rejected key 'raw_run_state'
 ```
 
-### Generate CI outputs
+### 3. Verify evidence contracts
 
 ```bash
-# JUnit XML
+npx tsx src/cli.ts verify ../fixtures/valid.assay.ndjson --category all
+# Checks: envelope fields, SHA-256 hashes, type prefixes, rejected keys
+```
+
+### 4. Generate CI outputs
+
+```bash
+# JUnit XML (denied actions become <failure> elements)
 python3 ci/emit_junit.py fixtures/valid.assay.ndjson --output results/junit.xml
 
-# SARIF
+# SARIF 2.1.0 (uploads to GitHub Security tab)
 python3 ci/emit_sarif.py fixtures/valid.assay.ndjson --output results/sarif.json
 ```
 
-### Run the harness (requires OPENAI_API_KEY)
+### 5. Export to OTel (experimental)
+
+```bash
+python3 ci/emit_otel.py fixtures/valid.assay.ndjson --output results/otel-export.json
+# Produces OTLP-shaped JSON for integration with Jaeger, Grafana Tempo, etc.
+```
+
+See [docs/contracts/OTEL_EXPORT.md](docs/contracts/OTEL_EXPORT.md) for mapping rules
+and stability caveats.
+
+### 6. Run the harness (requires OPENAI_API_KEY)
 
 ```bash
 cd harness
@@ -85,42 +134,90 @@ npx tsx src/cli.ts run \
 
 ---
 
-## Project Structure
+## CI Integration
+
+The GitHub Actions workflow runs 8 jobs on every push and PR:
+
+| Job | What it checks |
+|---|---|
+| TypeScript Check | `tsc --noEmit` passes |
+| Contract Validation | Mapper produces golden NDJSON, malformed input rejected |
+| Golden Contract Tests | 24 tests: envelope, hashing, NDJSON format, rejection |
+| Hardening Tests | 27 tests: resume safety, policy determinism, MCP boundaries |
+| Policy Validation | allow/deny/require_approval decisions are correct |
+| Verify Evidence | Evidence files pass all contract categories |
+| **Regression Gate** | **Baseline vs candidate compare — blocks on regressions** |
+| Evidence Export | JUnit + SARIF generated, artifacts uploaded |
+
+Evidence artifacts and SARIF reports are uploaded on every run, including
+failures. The SARIF report appears in the GitHub Security tab.
+
+---
+
+## Regression Classes
+
+The `compare` command detects these regression dimensions:
 
 ```
-Assay-Harness/
-  docs/
-    PLAN-P23-...md          # Design document and artifact contracts
-  harness/                  # TypeScript — the runtime
-    src/
-      agent.ts              # Agent definition + tools
-      policy.ts             # Deterministic policy engine
-      harness.ts            # Pause/resume orchestrator
-      evidence.ts           # Evidence capture + CloudEvents envelopes
-      mcp.ts                # MCP tool lane
-      cli.ts                # CLI entry point
-    policy.yaml             # Default policy (allow/deny/require_approval)
-  mapper/                   # Python — Assay evidence reduction
-    map_to_assay.py         # Follows Assay example conventions
-  fixtures/                 # Corpus
-    valid.harness.json      # Paused approval artifact
-    failure.harness.json    # Partial failure artifact
-    malformed.harness.json  # Rejected (raw state, bad pause_reason)
-    valid.assay.ndjson      # Mapped Assay evidence
-    failure.assay.ndjson    # Mapped Assay evidence
-    valid.mcp.harness.json  # MCP interaction fixture
-  ci/                       # CI output generators
-    emit_junit.py           # JUnit XML from evidence NDJSON
-    emit_sarif.py           # SARIF 2.1.0 from evidence NDJSON
-  .github/workflows/
-    harness-ci.yml          # Contract validation + evidence export
+New denials          — tool went from allowed → denied
+Removed denials      — tool went from denied → allowed (change, not regression)
+New approvals        — tool now requires approval
+Removed approvals    — tool no longer requires approval
+Event count delta    — more or fewer evidence events
+New event types      — unknown event type appeared
+Removed event types  — event type disappeared
+Hash mismatches      — same event position, different content hash
+Process counter delta — approval/denial/resume counts changed
+```
+
+Example compare output (markdown format):
+
+```markdown
+# Evidence Comparison Report
+
+**Status:** REGRESSION DETECTED
+**Summary:** REGRESSION: 1 new denial(s), event count delta: +0, 1 hash mismatch(es), 2 process counter change(s)
+
+## New Denials
+
+- `network_egress` (policy: harness-default-policy@1.0)
+
+## Hash Mismatches
+
+- seq 0 (`example.placeholder.harness.approval-interruption`)
+  - baseline: `sha256:a1b2c3...`
+  - candidate: `sha256:d4e5f6...`
+
+## Process Summary Delta
+
+| Counter | Baseline | Candidate | Delta |
+|---------|----------|-----------|-------|
+| denied_action_count | 0 | 1 | +1 |
+| total_tool_calls | 3 | 3 | +0 |
 ```
 
 ---
 
-## Policy Model
+## Stable Exit Codes
 
-The policy engine evaluates tool calls deterministically:
+Every CLI command uses stable exit codes — safe for CI scripting:
+
+| Code | Name | Meaning |
+|---|---|---|
+| 0 | success | No failures or regressions |
+| 1 | policy_violation | Tool call denied by policy |
+| 2 | config_error | Missing file or bad configuration |
+| 3 | artifact_contract | Evidence fails contract validation |
+| 4 | mapper_failure | Mapper rejected input |
+| 5 | resume_error | Resume flow failed |
+| 6 | regression | Baseline comparison found regressions |
+| 7 | ci_formatter | JUnit/SARIF generation failed |
+
+See [docs/contracts/EXIT_CODES.md](docs/contracts/EXIT_CODES.md) for per-command behavior.
+
+---
+
+## Policy Model
 
 ```yaml
 tools:
@@ -135,32 +232,17 @@ tools:
     - shell_exec
 ```
 
-Evaluation order: **deny > require_approval > allow > default deny**.
+Evaluation order: **deny > require_approval > allow > default deny** (closed-by-default).
 
-Policy uses only: tool name, tool category, target kind. No transcript,
-model reasoning, or volatile state.
-
----
-
-## Canonical Artifact Types
-
-| Artifact | Purpose |
-|---|---|
-| Approval Interruption | Run paused for tool approval |
-| Policy Decision | Deterministic allow/deny/require_approval |
-| Denied Action | Runtime intent blocked by policy |
-| Resumed Run | Same paused state was resumed |
-| MCP Interaction | Bounded MCP tool call evidence |
-| Process Summary | Trajectory-level governance counters |
-
-All artifacts follow Assay conventions: CloudEvents envelope,
-content-addressed hashing (SHA-256), NDJSON output.
+Policy uses only: tool name, tool category, target kind.
+No transcript, model reasoning, or volatile state influences the decision.
+See [ADR-001](docs/adr/ADR-001-DETERMINISTIC-POLICY.md).
 
 ---
 
 ## Evidence Boundaries
 
-This harness explicitly does NOT claim:
+This harness explicitly does **not** claim:
 
 - transcript truth
 - session truth
@@ -169,16 +251,66 @@ This harness explicitly does NOT claim:
 - full MCP protocol truth
 
 **Observed is not verified.** Runtime signals are evidence input, not
-verification output.
+verification output. See [ADR-002](docs/adr/ADR-002-NO-TRANSCRIPT-TRUTH.md)
+and [ADR-003](docs/adr/ADR-003-MCP-BOUNDED-EVIDENCE.md).
+
+---
+
+## Project Structure
+
+```
+Assay-Harness/
+  harness/                    # TypeScript runtime
+    src/
+      cli.ts                  # CLI: run, verify, compare, policy
+      policy.ts               # Deterministic policy engine
+      harness.ts              # Pause/resume orchestrator
+      evidence.ts             # CloudEvents envelopes + SHA-256 hashing
+      compare.ts              # Baseline vs candidate regression detection
+      agent.ts                # Agent definition + tools
+      mcp.ts                  # MCP tool lane (bounded evidence)
+    policy.yaml               # Default policy
+  mapper/                     # Python evidence mapper
+    map_to_assay.py           # Harness JSON → Assay NDJSON
+  fixtures/                   # Test corpus
+    valid.harness.json        # Approval interruption artifact
+    failure.harness.json      # Partial failure artifact
+    malformed.harness.json    # Rejected (raw state, bad pause_reason)
+    valid.assay.ndjson        # Golden mapper output
+    failure.assay.ndjson      # Golden mapper output
+    valid.mcp.harness.json    # MCP interaction fixture
+  tests/                      # Python test suites
+    test_contracts.py         # 24 golden contract tests
+    test_hardening.py         # 22 hardening tests
+  ci/                         # CI output generators
+    emit_junit.py             # Evidence → JUnit XML
+    emit_sarif.py             # Evidence → SARIF 2.1.0
+    emit_compare_sarif.py     # Compare results → SARIF 2.1.0
+    emit_otel.py              # Evidence → OTLP JSON (experimental)
+  docs/
+    contracts/                # Stable contracts
+      EVIDENCE_ENVELOPE.md    # CloudEvents envelope spec
+      EXIT_CODES.md           # CLI exit code contract
+      REJECT_CODES.md         # Mapper rejection codes
+      OTEL_EXPORT.md          # OTel export mapping (experimental)
+    adr/                      # Architecture decisions
+      ADR-001-*.md            # Deterministic policy
+      ADR-002-*.md            # No transcript truth
+      ADR-003-*.md            # MCP bounded evidence
+  .github/workflows/
+    harness-ci.yml            # 8-job CI pipeline (incl. regression gate)
+    release.yml               # Tag-triggered release with attestations
+    sbom.yml                  # Dependency submission on push to main
+```
 
 ---
 
 ## Relationship to Assay
 
-This is a companion project to [Assay](https://github.com/Rul1an/assay).
-It follows Assay's evidence conventions, policy model, and artifact
-contract patterns. The mapper produces Assay-shaped NDJSON that can be
-consumed by Assay's evidence tooling.
+Companion project to [Assay](https://github.com/Rul1an/assay).
+Follows Assay's evidence conventions, policy model, and artifact contract
+patterns. The mapper produces Assay-shaped NDJSON consumable by Assay's
+evidence tooling.
 
 ---
 

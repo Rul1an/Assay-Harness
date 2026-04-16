@@ -27,6 +27,8 @@ export interface ApprovalInterruptionArtifact {
   pause_reason: "tool_approval";
   interruptions: ApprovalInterruption[];
   resume_state_ref: string;
+  policy_snapshot_hash: string;
+  resume_nonce: string;
   timestamp: string;
   active_agent_ref?: string;
   metadata_ref?: string;
@@ -57,6 +59,9 @@ export interface ResumedRunArtifact {
   resumed_at: string;
   resume_decision: "approved" | "rejected";
   resume_decision_ref: string;
+  policy_snapshot_hash: string;
+  resume_nonce: string;
+  resumed_from_artifact_hash?: string;
   active_agent_ref?: string;
 }
 

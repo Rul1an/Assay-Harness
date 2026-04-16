@@ -35,6 +35,8 @@ OPTIONAL_TOP_LEVEL_KEYS = {
     "policy_decisions",
     "resumed",
     "process_summary",
+    "policy_snapshot_hash",
+    "resume_nonce",
 }
 TOP_LEVEL_KEYS = set(REQUIRED_KEYS) | OPTIONAL_TOP_LEVEL_KEYS
 ALLOWED_PAUSE_REASONS = {"tool_approval"}
@@ -180,6 +182,7 @@ def _validate_policy_decision(item: Any, label: str) -> dict[str, Any]:
 # --- Resume validation ---
 
 RESUMED_REQUIRED_KEYS = {"resume_state_ref", "resumed_at", "resume_decision", "resume_decision_ref"}
+RESUMED_OPTIONAL_KEYS = {"policy_snapshot_hash", "resume_nonce", "resumed_from_artifact_hash"}
 
 
 def _validate_resumed(item: Any, label: str) -> dict[str, Any]:
@@ -196,12 +199,25 @@ def _validate_resumed(item: Any, label: str) -> dict[str, Any]:
             f"{', '.join(sorted(ALLOWED_RESUME_DECISIONS))}"
         )
 
-    return {
+    result = {
         "resume_state_ref": _validate_sha256_ref(item["resume_state_ref"], label, "resume_state_ref"),
         "resumed_at": _parse_rfc3339_utc(str(item["resumed_at"])),
         "resume_decision": decision,
         "resume_decision_ref": _validate_non_empty_string(item["resume_decision_ref"], label, "resume_decision_ref"),
     }
+    if "policy_snapshot_hash" in item:
+        result["policy_snapshot_hash"] = _validate_sha256_ref(
+            item["policy_snapshot_hash"], label, "policy_snapshot_hash"
+        )
+    if "resume_nonce" in item:
+        result["resume_nonce"] = _validate_non_empty_string(
+            item["resume_nonce"], label, "resume_nonce"
+        )
+    if "resumed_from_artifact_hash" in item:
+        result["resumed_from_artifact_hash"] = _validate_sha256_ref(
+            item["resumed_from_artifact_hash"], label, "resumed_from_artifact_hash"
+        )
+    return result
 
 
 # --- Process summary validation ---
@@ -290,6 +306,16 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
             record["active_agent_ref"], "artifact", "active_agent_ref"
         )
 
+    if "policy_snapshot_hash" in record:
+        normalized["policy_snapshot_hash"] = _validate_sha256_ref(
+            record["policy_snapshot_hash"], "artifact", "policy_snapshot_hash"
+        )
+
+    if "resume_nonce" in record:
+        normalized["resume_nonce"] = _validate_non_empty_string(
+            record["resume_nonce"], "artifact", "resume_nonce"
+        )
+
     if "policy_decisions" in record:
         decisions = record["policy_decisions"]
         if not isinstance(decisions, list):
@@ -335,6 +361,10 @@ def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -
     }
     if "active_agent_ref" in normalized:
         interruption_data["observed"]["active_agent_ref"] = normalized["active_agent_ref"]
+    if "policy_snapshot_hash" in normalized:
+        interruption_data["observed"]["policy_snapshot_hash"] = normalized["policy_snapshot_hash"]
+    if "resume_nonce" in normalized:
+        interruption_data["observed"]["resume_nonce"] = normalized["resume_nonce"]
 
     event_type = f"{PLACEHOLDER_EVENT_TYPE_PREFIX}.approval-interruption"
     events.append({
