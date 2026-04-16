@@ -1,0 +1,13 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "tool_approval",
+  "pause_reason": "rate_limit",
+  "interruptions": [],
+  "resume_state_ref": "https://example.com/state/raw-dump",
+  "timestamp": "not-a-timestamp",
+  "raw_run_state": {
+    "history": ["full", "transcript", "dump"],
+    "newItems": ["should", "not", "be", "here"]
+  }
+}

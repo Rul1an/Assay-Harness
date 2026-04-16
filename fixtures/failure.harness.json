@@ -1,0 +1,42 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [
+    {
+      "tool_name": "shell_exec",
+      "tool_call_id": "call_def456",
+      "arguments_hash": "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+    }
+  ],
+  "resume_state_ref": "sha256:a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+  "timestamp": "2026-04-16T10:05:00Z",
+  "active_agent_ref": "harness-mvp-agent",
+  "policy_decisions": [
+    {
+      "decision": "require_approval",
+      "policy_id": "harness-mvp-policy@1.0",
+      "action_kind": "tool_call",
+      "target_ref": "shell_exec",
+      "rule_ref": "require_approval:shell_exec",
+      "timestamp": "2026-04-16T10:04:59Z"
+    },
+    {
+      "decision": "deny",
+      "policy_id": "harness-mvp-policy@1.0",
+      "action_kind": "tool_call",
+      "target_ref": "network_egress",
+      "rule_ref": "deny:network_egress",
+      "timestamp": "2026-04-16T10:04:58Z"
+    }
+  ],
+  "process_summary": {
+    "approval_count": 1,
+    "denied_action_count": 1,
+    "resume_count": 0,
+    "allowed_action_count": 1,
+    "total_tool_calls": 3,
+    "timestamp": "2026-04-16T10:05:01Z"
+  }
+}

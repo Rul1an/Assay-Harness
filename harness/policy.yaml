@@ -1,0 +1,21 @@
+version: "1.0"
+name: "harness-mvp-policy"
+description: "P23 MVP policy — deterministic tool-level allow/deny/require_approval"
+
+tools:
+  allow:
+    - read_file
+    - list_directory
+  deny:
+    - network_egress
+    - delete_file
+  require_approval:
+    - write_file
+    - shell_exec
+
+mcp:
+  allow:
+    - "*.readonly"
+  require_approval:
+    - "*.mutating"
+  deny: []

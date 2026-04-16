@@ -1,0 +1,152 @@
+name: Harness CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract-validation:
+    name: Contract Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Map valid fixture
+        run: |
+          python3 mapper/map_to_assay.py \
+            fixtures/valid.harness.json \
+            --output /tmp/valid.assay.ndjson \
+            --import-time 2026-04-16T12:00:00Z \
+            --overwrite
+
+      - name: Map failure fixture
+        run: |
+          python3 mapper/map_to_assay.py \
+            fixtures/failure.harness.json \
+            --output /tmp/failure.assay.ndjson \
+            --import-time 2026-04-16T12:05:00Z \
+            --overwrite
+
+      - name: Malformed fixture must fail
+        run: |
+          if python3 mapper/map_to_assay.py \
+            fixtures/malformed.harness.json \
+            --output /tmp/malformed.assay.ndjson \
+            --import-time 2026-04-16T12:10:00Z \
+            --overwrite 2>&1; then
+            echo "ERROR: malformed fixture should have been rejected"
+            exit 1
+          else
+            echo "OK: malformed fixture correctly rejected"
+          fi
+
+      - name: Verify valid NDJSON matches checked-in fixture
+        run: |
+          diff <(sort /tmp/valid.assay.ndjson) <(sort fixtures/valid.assay.ndjson)
+
+  evidence-export:
+    name: Evidence Export
+    runs-on: ubuntu-latest
+    needs: contract-validation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate JUnit XML
+        run: |
+          python3 ci/emit_junit.py \
+            fixtures/valid.assay.ndjson \
+            --output results/junit.xml
+
+      - name: Generate SARIF
+        run: |
+          python3 ci/emit_sarif.py \
+            fixtures/valid.assay.ndjson \
+            --output results/sarif.json
+
+      - name: Upload evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-evidence
+          path: |
+            results/junit.xml
+            results/sarif.json
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: results/sarif.json
+          category: assay-harness
+
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Type check
+        working-directory: harness
+        run: npx tsc --noEmit
+
+  policy-validation:
+    name: Policy Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Validate policy - allowed tool
+        working-directory: harness
+        run: |
+          npx tsx src/cli.ts policy --tool read_file
+          echo "OK: read_file correctly allowed"
+
+      - name: Validate policy - denied tool
+        working-directory: harness
+        run: |
+          if npx tsx src/cli.ts policy --tool network_egress 2>&1; then
+            echo "ERROR: network_egress should have been denied"
+            exit 1
+          else
+            echo "OK: network_egress correctly denied"
+          fi
+
+      - name: Validate policy - approval-required tool
+        working-directory: harness
+        run: |
+          npx tsx src/cli.ts policy --tool write_file | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          assert d['decision'] == 'require_approval', f'Expected require_approval, got {d[\"decision\"]}'
+          print('OK: write_file correctly requires approval')
+          "

@@ -1,0 +1,24 @@
+{
+  "schema": "assay.harness.mcp-interaction.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "mcp_tool_call",
+  "server_ref": "filesystem-server",
+  "interactions": [
+    {
+      "server_ref": "filesystem-server",
+      "tool_name": "read_file.readonly",
+      "decision": "allow",
+      "timestamp": "2026-04-16T10:10:00Z",
+      "argument_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "server_ref": "filesystem-server",
+      "tool_name": "write_file.mutating",
+      "decision": "require_approval",
+      "timestamp": "2026-04-16T10:10:01Z",
+      "approval_ref": "approval-001",
+      "argument_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    }
+  ],
+  "timestamp": "2026-04-16T10:10:02Z"
+}
