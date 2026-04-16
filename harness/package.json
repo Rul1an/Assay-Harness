@@ -17,7 +17,7 @@
   "dependencies": {
     "@openai/agents": "^0.1.0",
     "js-yaml": "^4.1.0",
-    "openai": "^4.90.0",
+    "openai": "^6.34.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
