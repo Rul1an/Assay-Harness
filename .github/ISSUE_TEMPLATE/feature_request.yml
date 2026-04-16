@@ -1,0 +1,46 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for Assay-Harness
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Describe the problem this feature would solve or the workflow it would enable.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Which component would this feature affect?
+      options:
+        - harness-runtime
+        - policy-engine
+        - evidence-compiler
+        - mapper
+        - ci-outputs
+        - mcp-lane
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contract-change
+    attributes:
+      label: Does this change the artifact contract?
+      description: Would this feature require changes to the evidence schema, policy schema, exit codes, or NDJSON format?
+      options:
+        - "yes"
+        - "no"
+    validations:
+      required: true

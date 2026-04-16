@@ -1,0 +1,9 @@
+# Default owner for everything
+*                             @Rul1an
+
+# Contract and governance-critical paths
+docs/contracts/               @Rul1an
+fixtures/                     @Rul1an
+harness/src/evidence.ts       @Rul1an
+harness/src/policy.ts         @Rul1an
+mapper/                       @Rul1an

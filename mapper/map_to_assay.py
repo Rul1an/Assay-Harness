@@ -48,7 +48,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"artifact: duplicate JSON key: {key}")
+            raise ValueError(f"[REJECT_DUPLICATE_KEY] artifact: duplicate JSON key: {key}")
         result[key] = value
     return result
 
@@ -118,7 +118,9 @@ def _validate_non_empty_string(value: Any, label: str, field: str) -> str:
 def _validate_sha256_ref(value: Any, label: str, field: str) -> str:
     s = _validate_non_empty_string(value, label, field)
     if not s.startswith("sha256:"):
-        raise ValueError(f"{label}: {field} must be a sha256: hash reference, got: {s[:40]}")
+        raise ValueError(
+            f"[REJECT_BAD_STATE_REF] {label}: {field} must be a sha256: hash reference, got: {s[:40]}"
+        )
     return s
 
 
@@ -158,7 +160,10 @@ def _validate_policy_decision(item: Any, label: str) -> dict[str, Any]:
 
     decision = _validate_non_empty_string(item["decision"], label, "decision")
     if decision not in ALLOWED_DECISIONS:
-        raise ValueError(f"{label}: decision must be one of: {', '.join(sorted(ALLOWED_DECISIONS))}")
+        raise ValueError(
+            f"[REJECT_BAD_DECISION] {label}: decision must be one of: "
+            f"{', '.join(sorted(ALLOWED_DECISIONS))}"
+        )
 
     result = {
         "decision": decision,
@@ -186,7 +191,10 @@ def _validate_resumed(item: Any, label: str) -> dict[str, Any]:
 
     decision = _validate_non_empty_string(item["resume_decision"], label, "resume_decision")
     if decision not in ALLOWED_RESUME_DECISIONS:
-        raise ValueError(f"{label}: resume_decision must be one of: {', '.join(sorted(ALLOWED_RESUME_DECISIONS))}")
+        raise ValueError(
+            f"[REJECT_BAD_RESUME_DECISION] {label}: resume_decision must be one of: "
+            f"{', '.join(sorted(ALLOWED_RESUME_DECISIONS))}"
+        )
 
     return {
         "resume_state_ref": _validate_sha256_ref(item["resume_state_ref"], label, "resume_state_ref"),
@@ -232,30 +240,37 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
     for bad_key in REJECTED_KEYS:
         if bad_key in record:
             raise ValueError(
-                f"artifact: contains rejected key '{bad_key}' — raw runtime state "
-                f"must not appear in canonical harness evidence"
+                f"[REJECT_RAW_STATE] artifact: contains rejected key '{bad_key}' — "
+                f"raw runtime state must not appear in canonical harness evidence"
             )
 
     if record.get("schema") != EXTERNAL_SCHEMA:
-        raise ValueError(f"artifact: expected schema {EXTERNAL_SCHEMA}, got {record.get('schema')}")
+        raise ValueError(
+            f"[REJECT_SCHEMA] artifact: expected schema {EXTERNAL_SCHEMA}, got {record.get('schema')}"
+        )
     if record.get("framework") != "openai_agents_sdk":
-        raise ValueError("artifact: framework must be openai_agents_sdk")
+        raise ValueError("[REJECT_FRAMEWORK] artifact: framework must be openai_agents_sdk")
     if record.get("surface") != "tool_approval":
-        raise ValueError("artifact: surface must be tool_approval")
+        raise ValueError("[REJECT_SURFACE] artifact: surface must be tool_approval")
 
     missing = [key for key in REQUIRED_KEYS if key not in record]
     if missing:
-        raise ValueError(f"artifact: missing required keys: {', '.join(missing)}")
+        raise ValueError(
+            f"[REJECT_MISSING_KEY] artifact: missing required keys: {', '.join(missing)}"
+        )
 
     pause_reason = _validate_non_empty_string(record["pause_reason"], "artifact", "pause_reason")
     if pause_reason not in ALLOWED_PAUSE_REASONS:
-        raise ValueError(f"artifact: pause_reason must be one of: {', '.join(sorted(ALLOWED_PAUSE_REASONS))}")
+        raise ValueError(
+            f"[REJECT_PAUSE_REASON] artifact: pause_reason must be one of: "
+            f"{', '.join(sorted(ALLOWED_PAUSE_REASONS))}"
+        )
 
     interruptions = record["interruptions"]
     if not isinstance(interruptions, list):
-        raise ValueError("artifact: interruptions must be a list")
+        raise ValueError("[REJECT_MISSING_INTERRUPTIONS] artifact: interruptions must be a list")
     if not interruptions:
-        raise ValueError("artifact: interruptions must be a non-empty list")
+        raise ValueError("[REJECT_EMPTY_INTERRUPTIONS] artifact: interruptions must be a non-empty list")
 
     normalized = {
         "schema": EXTERNAL_SCHEMA,
