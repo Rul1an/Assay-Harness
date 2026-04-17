@@ -107,17 +107,24 @@ export async function runHarness(
 
   // --- Approval flow ---
 
-  // Build bounded interruption artifacts
+  // Build bounded interruption artifacts.
+  //
+  // Per SDK guidance (openai/openai-agents-js#1177): prefer the stable public
+  // accessors `item.name` and `item.arguments` over reaching into `rawItem`.
+  // There is no normalized public call-id accessor across all approval item
+  // variants yet, so we fall back to `rawItem.call_id ?? rawItem.id`.
   const boundedInterruptions: ApprovalInterruption[] = interruptions.map(
-    (item: any) => ({
-      tool_name: item.rawItem?.name ?? "unknown",
-      tool_call_id: item.rawItem?.call_id ?? item.rawItem?.id ?? "unknown",
-      arguments_hash: hashArguments(
-        typeof item.rawItem?.arguments === "string"
-          ? JSON.parse(item.rawItem.arguments)
-          : item.rawItem?.arguments ?? {}
-      ),
-    })
+    (item: any) => {
+      const rawArgs = item.arguments ?? item.rawItem?.arguments;
+      const parsedArgs =
+        typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs ?? {};
+      return {
+        tool_name: item.name ?? item.rawItem?.name ?? "unknown",
+        tool_call_id:
+          item.rawItem?.call_id ?? item.rawItem?.id ?? "unknown",
+        arguments_hash: hashArguments(parsedArgs),
+      };
+    }
   );
 
   // Serialize state for resume anchor (Assay-derived, not raw)

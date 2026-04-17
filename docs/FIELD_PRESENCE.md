@@ -79,5 +79,13 @@ In summary, the harness treats two SDK surfaces as its external-consumer seam:
 2. **`RunState`** serialization + `approve()`/`reject()`: gives us a content-addressable state ref and the resume mechanism.
 
 Everything else we need (policy decisions, nonces, hashes) is harness-side.
-The question for the SDK team: is this the right minimal seam, or is there
-a thinner official surface they would rather point external consumers at?
+
+## SDK team confirmation (openai/openai-agents-js#1177)
+
+The SDK team confirmed this is the intended minimal seam for external consumers today.
+Key points from that confirmation that shape our design:
+
+- **Prefer `RunToolApprovalItem.name` and `.arguments`** over reaching into `rawItem` for those fields. The harness now uses these stable accessors.
+- **No normalized public `call_id` accessor yet** across all approval item variants. We fall back to `rawItem.call_id ?? rawItem.id` and will adopt a public accessor if/when the SDK exposes one.
+- **Stability contract for `RunState.toString()`**: guaranteed to resume via `fromString()`, NOT byte-stable across SDK versions. Our `resume_state_ref` (SHA-256 of the serialized string) is therefore an **app-level fingerprint**, not a portable cross-version wire hash. External consumers that need byte-stable identity across SDK upgrades should derive their own anchor from pre-resume state.
+- **Resume preconditions**: the original top-level agent graph must be reconstructable at resume time, and agent names must be unique across handoffs and `agent.asTool()` graphs (the SDK uses agent names to rehydrate the graph). If resuming alongside a session, keep the same session.

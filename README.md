@@ -289,6 +289,13 @@ This harness explicitly does **not** claim:
 verification output. See [ADR-002](docs/adr/ADR-002-NO-TRANSCRIPT-TRUTH.md)
 and [ADR-003](docs/adr/ADR-003-MCP-BOUNDED-EVIDENCE.md).
 
+**`resume_state_ref` is an app-level fingerprint, not a portable wire hash.**
+Per SDK guidance ([openai/openai-agents-js#1177](https://github.com/openai/openai-agents-js/issues/1177)),
+`RunState.toString()` guarantees resumability via `fromString()` but does not
+guarantee byte-stability across SDK versions. Consumers that need byte-stable
+identity across SDK upgrades should derive their own anchor. See
+[docs/FIELD_PRESENCE.md](docs/FIELD_PRESENCE.md) for the full seam documentation.
+
 ---
 
 ## Project Structure
