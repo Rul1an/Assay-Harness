@@ -1,0 +1,17 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "langgraph_deepagents",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [
+    {
+      "tool_name": "network_egress_unrestricted",
+      "tool_call_id": "lg_call_fail_001",
+      "arguments_hash": "sha256:4f0e0f8bfa1f3c8b9e66e4c1a3c8f1b2d5e7a9c0b4d6f8e2a1c3b5d7f9e1a3c5"
+    }
+  ],
+  "continuation_anchor_ref": "sha256:7b6e5d4c3a2b1908f7e6d5c4b3a2918f7e6d5c4b3a2918f7e6d5c4b3a291807f",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "timestamp": "2026-04-17T10:05:00Z",
+  "active_agent_ref": "assay-deepagents-pause-adapter"
+}

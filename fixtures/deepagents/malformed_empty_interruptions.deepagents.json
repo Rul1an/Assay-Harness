@@ -1,0 +1,10 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "langgraph_deepagents",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [],
+  "continuation_anchor_ref": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "timestamp": "2026-04-17T10:00:00Z"
+}
