@@ -20,15 +20,19 @@ PLACEHOLDER_PRODUCER_VERSION = "0.1.0"
 PLACEHOLDER_GIT = "sample"
 EXTERNAL_SCHEMA = "assay.harness.approval-interruption.v1"
 
-REQUIRED_KEYS = (
+REQUIRED_KEYS_BASE = (
     "schema",
     "framework",
     "surface",
     "pause_reason",
     "interruptions",
-    "resume_state_ref",
     "timestamp",
 )
+# The anchor field accepts two input names:
+#   - "resume_state_ref" (JS/OpenAI Agents SDK adapter, internal Assay term)
+#   - "continuation_anchor_ref" (Deep Agents / LangGraph adapter, neutral outward term)
+# Exactly one must be present. See docs/outreach/DEEPAGENTS_MAPPER_SMOKECHECK.md.
+ANCHOR_ALIASES = ("resume_state_ref", "continuation_anchor_ref")
 OPTIONAL_TOP_LEVEL_KEYS = {
     "active_agent_ref",
     "metadata_ref",
@@ -38,7 +42,8 @@ OPTIONAL_TOP_LEVEL_KEYS = {
     "policy_snapshot_hash",
     "resume_nonce",
 }
-TOP_LEVEL_KEYS = set(REQUIRED_KEYS) | OPTIONAL_TOP_LEVEL_KEYS
+TOP_LEVEL_KEYS = set(REQUIRED_KEYS_BASE) | set(ANCHOR_ALIASES) | OPTIONAL_TOP_LEVEL_KEYS
+ALLOWED_FRAMEWORKS = {"openai_agents_sdk", "langgraph_deepagents"}
 ALLOWED_PAUSE_REASONS = {"tool_approval"}
 ALLOWED_DECISIONS = {"allow", "deny", "require_approval"}
 ALLOWED_RESUME_DECISIONS = {"approved", "rejected"}
@@ -264,16 +269,36 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"[REJECT_SCHEMA] artifact: expected schema {EXTERNAL_SCHEMA}, got {record.get('schema')}"
         )
-    if record.get("framework") != "openai_agents_sdk":
-        raise ValueError("[REJECT_FRAMEWORK] artifact: framework must be openai_agents_sdk")
+    framework = record.get("framework")
+    if framework not in ALLOWED_FRAMEWORKS:
+        raise ValueError(
+            f"[REJECT_FRAMEWORK] artifact: framework must be one of: "
+            f"{', '.join(sorted(ALLOWED_FRAMEWORKS))}; got {framework}"
+        )
     if record.get("surface") != "tool_approval":
         raise ValueError("[REJECT_SURFACE] artifact: surface must be tool_approval")
 
-    missing = [key for key in REQUIRED_KEYS if key not in record]
+    missing = [key for key in REQUIRED_KEYS_BASE if key not in record]
     if missing:
         raise ValueError(
             f"[REJECT_MISSING_KEY] artifact: missing required keys: {', '.join(missing)}"
         )
+
+    # Anchor field aliasing: exactly one of resume_state_ref / continuation_anchor_ref.
+    present_anchors = [k for k in ANCHOR_ALIASES if k in record]
+    if not present_anchors:
+        raise ValueError(
+            f"[REJECT_MISSING_KEY] artifact: missing anchor field; expected one of: "
+            f"{', '.join(ANCHOR_ALIASES)}"
+        )
+    if len(present_anchors) > 1:
+        raise ValueError(
+            f"[REJECT_AMBIGUOUS_ANCHOR] artifact: multiple anchor aliases present "
+            f"({', '.join(present_anchors)}); exactly one of "
+            f"{', '.join(ANCHOR_ALIASES)} must be used"
+        )
+    anchor_input_key = present_anchors[0]
+    anchor_value = record[anchor_input_key]
 
     pause_reason = _validate_non_empty_string(record["pause_reason"], "artifact", "pause_reason")
     if pause_reason not in ALLOWED_PAUSE_REASONS:
@@ -290,14 +315,16 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
 
     normalized = {
         "schema": EXTERNAL_SCHEMA,
-        "framework": "openai_agents_sdk",
+        "framework": framework,
         "surface": "tool_approval",
         "pause_reason": pause_reason,
         "interruptions": [
             _validate_interruption(item, f"artifact: interruptions[{i}]")
             for i, item in enumerate(interruptions)
         ],
-        "resume_state_ref": _validate_sha256_ref(record["resume_state_ref"], "artifact", "resume_state_ref"),
+        # Normalize anchor to internal Assay-side name regardless of input alias.
+        # Outward contract names live on the adapter artifact, not on the evidence envelope.
+        "resume_state_ref": _validate_sha256_ref(anchor_value, "artifact", anchor_input_key),
         "timestamp": _parse_rfc3339_utc(str(record["timestamp"])),
     }
 
@@ -340,12 +367,13 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
 
 def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -> list[dict[str, Any]]:
     normalized = _normalized_record(record)
+    external_system = normalized["framework"]
     events: list[dict[str, Any]] = []
     seq = 0
 
     # Event 1: approval interruption
     interruption_data = {
-        "external_system": "openai_agents_sdk",
+        "external_system": external_system,
         "external_surface": "tool-approval-interruption",
         "external_schema": EXTERNAL_SCHEMA,
         "observed_upstream_time": normalized["timestamp"],
@@ -390,7 +418,7 @@ def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -
     if "policy_decisions" in normalized:
         for pd in normalized["policy_decisions"]:
             pd_data = {
-                "external_system": "openai_agents_sdk",
+                "external_system": external_system,
                 "external_surface": "policy-decision",
                 "external_schema": EXTERNAL_SCHEMA,
                 "observed_upstream_time": pd["timestamp"],
@@ -419,7 +447,7 @@ def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -
     # Event: resumed run
     if "resumed" in normalized:
         resumed_data = {
-            "external_system": "openai_agents_sdk",
+            "external_system": external_system,
             "external_surface": "resumed-run",
             "external_schema": EXTERNAL_SCHEMA,
             "observed_upstream_time": normalized["resumed"]["resumed_at"],
@@ -448,7 +476,7 @@ def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -
     # Event: process summary
     if "process_summary" in normalized:
         summary_data = {
-            "external_system": "openai_agents_sdk",
+            "external_system": external_system,
             "external_surface": "process-summary",
             "external_schema": EXTERNAL_SCHEMA,
             "observed_upstream_time": normalized["process_summary"]["timestamp"],
