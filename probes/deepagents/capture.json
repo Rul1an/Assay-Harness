@@ -1,0 +1,87 @@
+{
+  "probe_version": 1,
+  "versions": {
+    "deepagents": "0.5.3"
+  },
+  "result_top_level_keys": [
+    "messages",
+    "__interrupt__"
+  ],
+  "interrupts_raw": [
+    "Interrupt(value={'action_requests': [{'name': 'execute', 'args': {'command': 'ls -la'}, 'description': \"Tool execution requires approval\\n\\nTool: execute\\nArgs: {'command': 'ls -la'}\"}], 'review_configs': [{'action_name': 'execute', 'allowed_decisions': ['approve', 'edit', 'reject']}]}, id='25b3f7309309583fe23539d9d8b06338')"
+  ],
+  "state_snapshot": {
+    "values_keys": [
+      "messages"
+    ],
+    "messages": [
+      {
+        "type": "human",
+        "name": null,
+        "id": "df02fbe4-ff64-49cb-9b54-e55fe4bc39dc",
+        "content_len": 17
+      },
+      {
+        "type": "ai",
+        "tool_calls": [
+          {
+            "name": "execute",
+            "args": {
+              "command": "ls -la"
+            },
+            "id": "call_probe_001",
+            "type": "tool_call"
+          }
+        ],
+        "name": null,
+        "id": "lc_run--019d9b73-d0c9-78f0-ab9e-63df9bf6f696-0",
+        "content_len": 0
+      }
+    ],
+    "next": [
+      "HumanInTheLoopMiddleware.after_model"
+    ],
+    "tasks": [
+      {
+        "name": "HumanInTheLoopMiddleware.after_model",
+        "id": "c2261fcd-c893-82ae-8964-b24fb1fd5e45",
+        "interrupts_count": 1,
+        "interrupts": [
+          "Interrupt(value={'action_requests': [{'name': 'execute', 'args': {'command': 'ls -la'}, 'description': \"Tool execution requires approval\\n\\nTool: execute\\nArgs: {'command': 'ls -la'}\"}], 'review_configs': [{'action_name': 'execute', 'allowed_decisions': ['approve', 'edit', 'reject']}]}, id='25b3f7309309583fe23539d9d8b06338')"
+        ]
+      }
+    ],
+    "config_keys": [
+      "configurable"
+    ],
+    "metadata_keys": [
+      "source",
+      "step",
+      "parents",
+      "ls_integration"
+    ]
+  },
+  "questions": {
+    "Q1_tool_call_id_in_interrupt_payload": {
+      "scripted_tool_call_id": "call_probe_001",
+      "found_in_interrupt": "(see interrupts_raw)",
+      "found_in_state_messages": "(see state_snapshot.messages)"
+    },
+    "Q2_continuation_anchor": {
+      "public_surface_used": "agent.get_state(config) -> StateSnapshot",
+      "snapshot_is_serializable": true,
+      "snapshot_json_len": 1746
+    },
+    "Q3_pre_resume_emission": {
+      "artifact_built_before_resume": true,
+      "any_post_resume_field_required": "(see analysis in FINDINGS.md)"
+    }
+  },
+  "post_resume": {
+    "resume_succeeded": true,
+    "resumed_result_keys": [
+      "messages",
+      "__interrupt__"
+    ]
+  }
+}
