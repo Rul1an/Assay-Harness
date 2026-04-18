@@ -1,0 +1,19 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [
+    {
+      "tool_name": "shell_exec",
+      "call_id_ref": "call_pattern_fail_001"
+    },
+    {
+      "tool_name": "network_egress_unrestricted",
+      "call_id_ref": "call_pattern_fail_002"
+    }
+  ],
+  "resume_state_ref": "sha256:7b6e5d4c3a2b1908f7e6d5c4b3a2918f7e6d5c4b3a2918f7e6d5c4b3a291807f",
+  "timestamp": "2026-04-18T10:05:00Z",
+  "active_agent_ref": "harness-mvp-agent"
+}

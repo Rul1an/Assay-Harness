@@ -1,0 +1,14 @@
+{
+  "schema": "assay.harness.approval-interruption.v1",
+  "framework": "openai_agents_sdk",
+  "surface": "tool_approval",
+  "pause_reason": "tool_approval",
+  "interruptions": [
+    {
+      "tool_name": "write_file",
+      "call_id_ref": "call_bad_002"
+    }
+  ],
+  "resume_state_ref": "https://example.com/state/raw-dump",
+  "timestamp": "2026-04-18T10:00:00Z"
+}
