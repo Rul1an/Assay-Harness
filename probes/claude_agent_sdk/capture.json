@@ -1,0 +1,72 @@
+{
+  "probe_version": 1,
+  "sdk": {
+    "name": "claude-agent-sdk",
+    "version": "0.1.63"
+  },
+  "static_surface": {
+    "CanUseTool": "collections.abc.Callable[[str, dict[str, typing.Any], claude_agent_sdk.types.ToolPermissionContext], collections.abc.Awaitable[claude_agent_sdk.types.PermissionResultAllow | claude_agent_sdk.types.PermissionResultDeny]]",
+    "PermissionResultAllow": {
+      "annotations": {
+        "behavior": "typing.Literal['allow']",
+        "updated_input": "dict[str, typing.Any] | None",
+        "updated_permissions": "list[claude_agent_sdk.types.PermissionUpdate] | None"
+      },
+      "signature": "(self, behavior: Literal['allow'] = 'allow', updated_input: dict[str, Any] | None = None, updated_permissions: list[claude_agent_sdk.types.PermissionUpdate] | None = None) -> None"
+    },
+    "PermissionResultDeny": {
+      "annotations": {
+        "behavior": "typing.Literal['deny']",
+        "message": "<class 'str'>",
+        "interrupt": "<class 'bool'>"
+      },
+      "signature": "(self, behavior: Literal['deny'] = 'deny', message: str = '', interrupt: bool = False) -> None"
+    },
+    "ToolPermissionContext": {
+      "annotations": {
+        "signal": "typing.Any | None",
+        "suggestions": "list[claude_agent_sdk.types.PermissionUpdate]",
+        "tool_use_id": "str | None",
+        "agent_id": "str | None"
+      },
+      "signature": "(self, signal: Any | None = None, suggestions: list[claude_agent_sdk.types.PermissionUpdate] = <factory>, tool_use_id: str | None = None, agent_id: str | None = None) -> None"
+    }
+  },
+  "options_accepts_can_use_tool": {
+    "has_can_use_tool_param": true,
+    "param_annotation": "collections.abc.Callable[[str, dict[str, typing.Any], claude_agent_sdk.types.ToolPermissionContext], collections.abc.Awaitable[claude_agent_sdk.types.PermissionResultAllow | claude_agent_sdk.types.PermissionResultDeny]] | None"
+  },
+  "simulated_invocation": {
+    "callback_was_invoked": true,
+    "tool_name_type": "str",
+    "tool_input_type": "dict",
+    "tool_input_keys": [
+      "command"
+    ],
+    "context_type": "ToolPermissionContext",
+    "context_tool_use_id": "toolu_probe_sim_001",
+    "context_agent_id": null,
+    "context_suggestions_count": 0,
+    "context_signal_is_none": true,
+    "can_emit_before_return_sync": true,
+    "result_type": "PermissionResultAllow",
+    "result_behavior": "allow"
+  },
+  "questions": {
+    "Q1_callback_carries_enough": {
+      "static_answer": {
+        "tool_name_present": true,
+        "tool_input_present": true,
+        "tool_use_id_available": true,
+        "tool_use_id_can_be_none": true
+      },
+      "caveat": "tool_use_id is Optional[str] on ToolPermissionContext. Adapter must handle None defensively."
+    },
+    "Q2_sync_emission_possible": {
+      "answer": "yes \u2014 the callback is async and the adapter can emit evidence inside the callback before returning the result"
+    },
+    "Q3_policy_snapshot_correlation": {
+      "answer": "purely harness-side. The SDK provides no 'which policy was in effect' context. Same pattern as other lanes; not a blocker."
+    }
+  }
+}
