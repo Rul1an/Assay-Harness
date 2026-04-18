@@ -1,0 +1,11 @@
+{
+  "schema": "assay.harness.policy-decision.v1",
+  "framework": "evil_framework",
+  "surface": "per_call_permission",
+  "decision": "allow",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_05BAD",
+  "arguments_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "timestamp": "2026-04-18T10:00:00Z"
+}

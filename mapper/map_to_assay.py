@@ -18,7 +18,15 @@ PLACEHOLDER_SOURCE = "urn:example:assay:external:harness:approval-interruption"
 PLACEHOLDER_PRODUCER = "assay-example"
 PLACEHOLDER_PRODUCER_VERSION = "0.1.0"
 PLACEHOLDER_GIT = "sample"
-EXTERNAL_SCHEMA = "assay.harness.approval-interruption.v1"
+
+# --- Schemas ---
+# Pause family: one paused run, possibly with policy decisions, resume, summary.
+PAUSE_SCHEMA = "assay.harness.approval-interruption.v1"
+# Decision family: one per-call policy gate decision, no pause, no resume.
+DECISION_SCHEMA = "assay.harness.policy-decision.v1"
+ALLOWED_SCHEMAS = {PAUSE_SCHEMA, DECISION_SCHEMA}
+# Kept for backward compat with code that imports EXTERNAL_SCHEMA.
+EXTERNAL_SCHEMA = PAUSE_SCHEMA
 
 REQUIRED_KEYS_BASE = (
     "schema",
@@ -43,7 +51,9 @@ OPTIONAL_TOP_LEVEL_KEYS = {
     "resume_nonce",
 }
 TOP_LEVEL_KEYS = set(REQUIRED_KEYS_BASE) | set(ANCHOR_ALIASES) | OPTIONAL_TOP_LEVEL_KEYS
-ALLOWED_FRAMEWORKS = {"openai_agents_sdk", "langgraph_deepagents"}
+ALLOWED_FRAMEWORKS = {"openai_agents_sdk", "langgraph_deepagents", "claude_agent_sdk"}
+ALLOWED_DECISION_SURFACES = {"per_call_permission"}
+ALLOWED_POLICY_DECISION_OUTCOMES = {"allow", "deny"}
 ALLOWED_PAUSE_REASONS = {"tool_approval"}
 ALLOWED_DECISIONS = {"allow", "deny", "require_approval"}
 ALLOWED_RESUME_DECISIONS = {"approved", "rejected"}
@@ -265,9 +275,9 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
                 f"raw runtime state must not appear in canonical harness evidence"
             )
 
-    if record.get("schema") != EXTERNAL_SCHEMA:
+    if record.get("schema") != PAUSE_SCHEMA:
         raise ValueError(
-            f"[REJECT_SCHEMA] artifact: expected schema {EXTERNAL_SCHEMA}, got {record.get('schema')}"
+            f"[REJECT_SCHEMA] artifact: expected schema {PAUSE_SCHEMA}, got {record.get('schema')}"
         )
     framework = record.get("framework")
     if framework not in ALLOWED_FRAMEWORKS:
@@ -363,9 +373,114 @@ def _normalized_record(record: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+# --- Decision-v1 (per-call policy gate) ---
+# Top-level schema assay.harness.policy-decision.v1. One artifact per
+# can_use_tool-style invocation. No interruptions array, no continuation
+# anchor, no resume lifecycle. See docs/outreach/CLAUDE_AGENT_SDK_PREP.md.
+
+DECISION_REQUIRED_KEYS = (
+    "schema",
+    "framework",
+    "surface",
+    "decision",
+    "tool_name",
+    "tool_use_id",
+    "arguments_hash",
+    "policy_snapshot_hash",
+    "timestamp",
+)
+DECISION_OPTIONAL_KEYS = {"decision_reason", "active_agent_ref"}
+DECISION_TOP_LEVEL_KEYS = set(DECISION_REQUIRED_KEYS) | DECISION_OPTIONAL_KEYS
+
+
+def _normalized_decision_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Validate + normalize a policy-decision-v1 artifact."""
+    for bad_key in REJECTED_KEYS:
+        if bad_key in record:
+            raise ValueError(
+                f"[REJECT_RAW_STATE] artifact: contains rejected key '{bad_key}' — "
+                f"raw runtime state must not appear in canonical harness evidence"
+            )
+
+    if record.get("schema") != DECISION_SCHEMA:
+        raise ValueError(
+            f"[REJECT_SCHEMA] artifact: expected schema {DECISION_SCHEMA}, got {record.get('schema')}"
+        )
+    framework = record.get("framework")
+    if framework not in ALLOWED_FRAMEWORKS:
+        raise ValueError(
+            f"[REJECT_FRAMEWORK] artifact: framework must be one of: "
+            f"{', '.join(sorted(ALLOWED_FRAMEWORKS))}; got {framework}"
+        )
+
+    surface = record.get("surface")
+    if surface not in ALLOWED_DECISION_SURFACES:
+        raise ValueError(
+            f"[REJECT_SURFACE] artifact: surface must be one of: "
+            f"{', '.join(sorted(ALLOWED_DECISION_SURFACES))}; got {surface}"
+        )
+
+    missing = [key for key in DECISION_REQUIRED_KEYS if key not in record]
+    if missing:
+        raise ValueError(
+            f"[REJECT_MISSING_KEY] artifact: missing required keys: {', '.join(missing)}"
+        )
+
+    unknown = set(record) - DECISION_TOP_LEVEL_KEYS
+    if unknown:
+        raise ValueError(
+            f"[REJECT_UNKNOWN_KEY] artifact: unsupported keys: {', '.join(sorted(unknown))}"
+        )
+
+    decision = _validate_non_empty_string(record["decision"], "artifact", "decision")
+    if decision not in ALLOWED_POLICY_DECISION_OUTCOMES:
+        raise ValueError(
+            f"[REJECT_BAD_DECISION] artifact: decision must be one of: "
+            f"{', '.join(sorted(ALLOWED_POLICY_DECISION_OUTCOMES))}; got {decision}"
+        )
+
+    normalized: dict[str, Any] = {
+        "schema": DECISION_SCHEMA,
+        "framework": framework,
+        "surface": surface,
+        "decision": decision,
+        "tool_name": _validate_non_empty_string(record["tool_name"], "artifact", "tool_name"),
+        "tool_use_id": _validate_non_empty_string(record["tool_use_id"], "artifact", "tool_use_id"),
+        "arguments_hash": _validate_sha256_ref(record["arguments_hash"], "artifact", "arguments_hash"),
+        "policy_snapshot_hash": _validate_sha256_ref(
+            record["policy_snapshot_hash"], "artifact", "policy_snapshot_hash"
+        ),
+        "timestamp": _parse_rfc3339_utc(str(record["timestamp"])),
+    }
+    if "decision_reason" in record:
+        normalized["decision_reason"] = _validate_non_empty_string(
+            record["decision_reason"], "artifact", "decision_reason"
+        )
+    if "active_agent_ref" in record:
+        normalized["active_agent_ref"] = _validate_non_empty_string(
+            record["active_agent_ref"], "artifact", "active_agent_ref"
+        )
+    return normalized
+
+
 # --- Assay envelope builder ---
 
 def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -> list[dict[str, Any]]:
+    """Dispatch on top-level schema, then build events for that family."""
+    schema = record.get("schema")
+    if schema == DECISION_SCHEMA:
+        return _build_decision_events(record, assay_run_id, import_time)
+    if schema == PAUSE_SCHEMA or schema is None:
+        # Fall through to the pause normalizer, which will produce a
+        # REJECT_SCHEMA if schema is missing or wrong.
+        return _build_pause_events(record, assay_run_id, import_time)
+    raise ValueError(
+        f"[REJECT_SCHEMA] artifact: unknown top-level schema {schema!r}; "
+        f"expected one of: {', '.join(sorted(ALLOWED_SCHEMAS))}"
+    )
+
+
+def _build_pause_events(record: dict[str, Any], assay_run_id: str, import_time: str) -> list[dict[str, Any]]:
     normalized = _normalized_record(record)
     external_system = normalized["framework"]
     events: list[dict[str, Any]] = []
@@ -505,6 +620,57 @@ def _build_events(record: dict[str, Any], assay_run_id: str, import_time: str) -
 
 
 # --- CLI ---
+
+def _build_decision_events(
+    record: dict[str, Any], assay_run_id: str, import_time: str
+) -> list[dict[str, Any]]:
+    """Build one policy-decision event from a decision-v1 artifact."""
+    normalized = _normalized_decision_record(record)
+    external_system = normalized["framework"]
+
+    # observed block carries the full normalized decision (never raw args).
+    observed: dict[str, Any] = {
+        "schema": normalized["schema"],
+        "framework": normalized["framework"],
+        "surface": normalized["surface"],
+        "decision": normalized["decision"],
+        "tool_name": normalized["tool_name"],
+        "tool_use_id": normalized["tool_use_id"],
+        "arguments_hash": normalized["arguments_hash"],
+        "policy_snapshot_hash": normalized["policy_snapshot_hash"],
+        "timestamp": normalized["timestamp"],
+    }
+    if "decision_reason" in normalized:
+        observed["decision_reason"] = normalized["decision_reason"]
+    if "active_agent_ref" in normalized:
+        observed["active_agent_ref"] = normalized["active_agent_ref"]
+
+    decision_data = {
+        "external_system": external_system,
+        "external_surface": "policy-decision",
+        "external_schema": DECISION_SCHEMA,
+        "observed_upstream_time": normalized["timestamp"],
+        "observed": observed,
+    }
+    event_type = f"{PLACEHOLDER_EVENT_TYPE_PREFIX}.policy-decision"
+    return [{
+        "specversion": "1.0",
+        "type": event_type,
+        "source": PLACEHOLDER_SOURCE,
+        "id": f"{assay_run_id}:0",
+        "time": import_time,
+        "datacontenttype": "application/json",
+        "assayrunid": assay_run_id,
+        "assayseq": 0,
+        "assayproducer": PLACEHOLDER_PRODUCER,
+        "assayproducerversion": PLACEHOLDER_PRODUCER_VERSION,
+        "assaygit": PLACEHOLDER_GIT,
+        "assaypii": False,
+        "assaysecrets": False,
+        "assaycontenthash": _compute_assay_content_hash(decision_data, event_type),
+        "data": decision_data,
+    }]
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(

@@ -1,0 +1,13 @@
+{
+  "schema": "assay.harness.policy-decision.v1",
+  "framework": "claude_agent_sdk",
+  "surface": "per_call_permission",
+  "decision": "deny",
+  "decision_reason": "destructive shell command blocked by policy rule shell.destructive",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_02DENY456",
+  "arguments_hash": "sha256:5f1e2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7",
+  "policy_snapshot_hash": "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+  "timestamp": "2026-04-18T10:05:00Z",
+  "active_agent_ref": "assay-cas-adapter"
+}
