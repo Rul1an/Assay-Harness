@@ -1,6 +1,6 @@
 # Roadmap
 
-> Last updated: 2026-04-16
+> Last updated: 2026-04-27
 
 ## Now (v0.2.0) — shipped
 
@@ -30,6 +30,12 @@ What's already built and working.
 - Compare SARIF with 4 rule IDs
 - Job summaries in PRs
 
+### Trust Basis gate bridge
+- `assay-harness trust-basis gate` delegates to `assay trust-basis diff`
+- `assay-harness trust-basis report` projects `assay.trust-basis.diff.v1`
+- Contract fixtures prove Harness consumes real Assay diff artifacts
+- Raw Assay diff JSON remains canonical; Markdown/JUnit are projections
+
 ### GitHub provenance
 - Release workflow with artifact attestations
 - SBOM generation
@@ -56,6 +62,12 @@ What's already built and working.
 - OTel OTLP JSON exporter (experimental, no stability guarantee)
 
 ## Next — adoption polish
+
+### Promptfoo receipt pipeline recipe
+- Planned as [P38](PLAN-P38-PROMPTFOO-RECEIPT-PIPELINE-RECIPE-2026Q2.md)
+- Show Promptfoo JSONL -> Assay receipt bundle -> Trust Basis -> Harness gate
+- Keep Harness as orchestration/reporting only, not a Promptfoo parser
+- Preserve raw Assay artifacts and project thin CI summaries
 
 ### CLI clarity
 - Better error messages for new users
