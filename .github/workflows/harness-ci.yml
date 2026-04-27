@@ -209,6 +209,15 @@ jobs:
             --format json \
             | tee ../results/compare-report.json
 
+      - name: Generate Trust Basis diff projections
+        if: always() && hashFiles('results/trust-basis.diff.json') != ''
+        working-directory: harness
+        run: |
+          npx tsx src/cli.ts trust-basis report \
+            --diff ../results/trust-basis.diff.json \
+            --summary-out ../results/trust-basis-summary.md \
+            --junit-out ../results/junit-trust-basis.xml
+
       - name: Job Summary
         if: always()
         run: |
@@ -237,6 +246,11 @@ jobs:
             echo "**Status:** ERROR - compare report not found" >> $GITHUB_STEP_SUMMARY
           fi
 
+          if [ -f results/trust-basis-summary.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat results/trust-basis-summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Generate JUnit XML from compare
         if: always() && steps.compare.outcome != 'skipped'
         run: |
@@ -252,6 +266,9 @@ jobs:
           path: |
             results/compare-report.json
             results/junit-compare.xml
+            results/trust-basis.diff.json
+            results/trust-basis-summary.md
+            results/junit-trust-basis.xml
 
       - name: Fail on regressions
         if: steps.compare.outcome == 'failure'
