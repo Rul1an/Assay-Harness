@@ -1,0 +1,53 @@
+{
+  "claims": [
+    {
+      "id": "bundle_verified",
+      "level": "verified",
+      "source": "bundle_verification",
+      "boundary": "bundle-wide"
+    },
+    {
+      "id": "signing_evidence_present",
+      "level": "absent",
+      "source": "bundle_proof_surface",
+      "boundary": "proof-surfaces-only"
+    },
+    {
+      "id": "provenance_backed_claims_present",
+      "level": "absent",
+      "source": "bundle_proof_surface",
+      "boundary": "proof-surfaces-only"
+    },
+    {
+      "id": "delegation_context_visible",
+      "level": "verified",
+      "source": "canonical_decision_evidence",
+      "boundary": "supported-delegated-flows-only"
+    },
+    {
+      "id": "authorization_context_visible",
+      "level": "absent",
+      "source": "canonical_decision_evidence",
+      "boundary": "supported-auth-projected-flows-only"
+    },
+    {
+      "id": "containment_degradation_observed",
+      "level": "verified",
+      "source": "canonical_event_presence",
+      "boundary": "supported-containment-fallback-paths-only"
+    },
+    {
+      "id": "external_eval_receipt_boundary_visible",
+      "level": "verified",
+      "source": "external_evidence_receipt",
+      "boundary": "supported-external-eval-receipt-events-only",
+      "note": "Promptfoo receipt boundary visible in the candidate run."
+    },
+    {
+      "id": "applied_pack_findings_present",
+      "level": "absent",
+      "source": "pack_execution_results",
+      "boundary": "pack-execution-only"
+    }
+  ]
+}

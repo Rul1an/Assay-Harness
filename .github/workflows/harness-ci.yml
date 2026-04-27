@@ -218,6 +218,24 @@ jobs:
             --summary-out ../results/trust-basis-summary.md \
             --junit-out ../results/junit-trust-basis.xml
 
+      - name: Generate Trust Basis contract fixture projections
+        if: always()
+        working-directory: harness
+        run: |
+          mkdir -p ../results/trust-basis-contract
+          cp fixtures/trust-basis/nonregression.trust-basis.diff.json \
+            ../results/trust-basis-contract/nonregression.trust-basis.diff.json
+          cp fixtures/trust-basis/regression.trust-basis.diff.json \
+            ../results/trust-basis-contract/regression.trust-basis.diff.json
+          npx tsx src/cli.ts trust-basis report \
+            --diff fixtures/trust-basis/nonregression.trust-basis.diff.json \
+            --summary-out ../results/trust-basis-contract/nonregression-summary.md \
+            --junit-out ../results/trust-basis-contract/junit-nonregression.xml
+          npx tsx src/cli.ts trust-basis report \
+            --diff fixtures/trust-basis/regression.trust-basis.diff.json \
+            --summary-out ../results/trust-basis-contract/regression-summary.md \
+            --junit-out ../results/trust-basis-contract/junit-regression.xml
+
       - name: Job Summary
         if: always()
         run: |
@@ -251,6 +269,18 @@ jobs:
             cat results/trust-basis-summary.md >> $GITHUB_STEP_SUMMARY
           fi
 
+          if [ -f results/trust-basis-contract/nonregression-summary.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Trust Basis Contract Fixture" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat results/trust-basis-contract/nonregression-summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f results/trust-basis-contract/regression-summary.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat results/trust-basis-contract/regression-summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Generate JUnit XML from compare
         if: always() && steps.compare.outcome != 'skipped'
         run: |
@@ -269,6 +299,12 @@ jobs:
             results/trust-basis.diff.json
             results/trust-basis-summary.md
             results/junit-trust-basis.xml
+            results/trust-basis-contract/nonregression.trust-basis.diff.json
+            results/trust-basis-contract/regression.trust-basis.diff.json
+            results/trust-basis-contract/nonregression-summary.md
+            results/trust-basis-contract/regression-summary.md
+            results/trust-basis-contract/junit-nonregression.xml
+            results/trust-basis-contract/junit-regression.xml
 
       - name: Fail on regressions
         if: steps.compare.outcome == 'failure'
