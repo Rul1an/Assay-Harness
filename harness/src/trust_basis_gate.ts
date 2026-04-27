@@ -76,12 +76,13 @@ export function runTrustBasisGate(args: TrustBasisGateArgs): TrustBasisGateResul
     );
   }
 
-  const rawJson = result.stdout.trim();
-  if (!rawJson) {
+  const rawJson = result.stdout;
+  const trimmedJson = rawJson.trim();
+  if (!trimmedJson) {
     throw new TrustBasisGateError("assay trust-basis diff produced no JSON output");
   }
 
-  const report = parseTrustBasisDiffReport(rawJson);
+  const report = parseTrustBasisDiffReport(trimmedJson);
   writeDiffArtifact(args.out, rawJson);
 
   return {
@@ -119,7 +120,7 @@ function writeDiffArtifact(outPath: string, rawJson: string): void {
   if (outDir && outDir !== ".") {
     mkdirSync(outDir, { recursive: true });
   }
-  writeFileSync(outPath, rawJson + "\n", "utf8");
+  writeFileSync(outPath, rawJson, "utf8");
 }
 
 function parseTrustBasisDiffReport(rawJson: string): TrustBasisDiffReport {

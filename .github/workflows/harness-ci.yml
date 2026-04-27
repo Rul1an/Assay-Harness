@@ -31,6 +31,10 @@ jobs:
         working-directory: harness
         run: npx tsc --noEmit
 
+      - name: Run Node tests
+        working-directory: harness
+        run: npm test
+
   contract-validation:
     name: Contract Validation
     runs-on: ubuntu-latest
