@@ -1,12 +1,10 @@
 # Release Plan — Assay Harness 0.2.0
 
-**Purpose:** Prepare **v0.2.0** as the companion Harness release for the Assay
-v3.6.0 evidence-portability line. Assay defines and produces the artifact
-contracts; Assay Harness consumes those contracts operationally in CI.
-
-**Status:** package metadata and docs are prepared for **0.2.0**. Tag
-**`v0.2.0`** only after this release-prep PR is merged and the checks below pass
-on the release commit.
+> **Status:** released as `v0.2.0`
+> **Published:** 2026-04-27
+> **Purpose:** Companion Harness release for the Assay v3.6.0
+> evidence-portability line. Assay defines and produces the artifact contracts;
+> Assay Harness consumes those contracts operationally in CI.
 
 ---
 

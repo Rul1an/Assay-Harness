@@ -141,7 +141,7 @@ test("trust basis reporter rejects unknown diff schemas", () => {
     (error) =>
       error instanceof TrustBasisReportError &&
       error.kind === "config_error" &&
-      error.message.includes("only consumes assay.trust-basis.diff.v1"),
+      error.message.includes("unsupported schema"),
   );
 });
 
@@ -168,7 +168,7 @@ test("trust basis reporter rejects malformed diff item levels", () => {
     (error) =>
       error instanceof TrustBasisReportError &&
       error.kind === "config_error" &&
-      error.message.includes("only consumes assay.trust-basis.diff.v1"),
+      error.message.includes("regressed_claims must contain valid diff items"),
   );
 });
 
@@ -195,7 +195,29 @@ test("trust basis reporter rejects inconsistent summary counts", () => {
     (error) =>
       error instanceof TrustBasisReportError &&
       error.kind === "config_error" &&
-      error.message.includes("only consumes assay.trust-basis.diff.v1"),
+      error.message.includes("summary counts must match diff arrays"),
+  );
+});
+
+test("trust basis reporter distinguishes read and parse failures", () => {
+  const dir = fixtureDir();
+  const missing = join(dir, "missing.json");
+  const invalidJson = join(dir, "invalid.json");
+  writeFileSync(invalidJson, "{not json", "utf8");
+
+  assert.throws(
+    () => runTrustBasisReport({ diff: missing }),
+    (error) =>
+      error instanceof TrustBasisReportError &&
+      error.kind === "config_error" &&
+      error.message.includes("Trust Basis diff file not found"),
+  );
+  assert.throws(
+    () => runTrustBasisReport({ diff: invalidJson }),
+    (error) =>
+      error instanceof TrustBasisReportError &&
+      error.kind === "config_error" &&
+      error.message.includes("failed to parse Trust Basis diff JSON"),
   );
 });
 

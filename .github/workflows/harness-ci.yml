@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck:
-    name: TypeScript Check
+  node-tests:
+    name: Node Tests + Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -239,47 +239,49 @@ jobs:
       - name: Job Summary
         if: always()
         run: |
-          echo "## Regression Gate" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Regression Gate"
+            echo ""
 
-          if [ -f results/compare-report.json ]; then
-            HAS_REG=$(python3 -c "import json; d=json.load(open('results/compare-report.json')); print('yes' if d.get('has_regressions') else 'no')")
-            if [ "$HAS_REG" = "yes" ]; then
-              echo "**Status:** REGRESSION DETECTED" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "**Status:** OK" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "**Baseline:** fixtures/valid.assay.ndjson" >> $GITHUB_STEP_SUMMARY
-            echo "**Candidate:** fixtures/failure.assay.ndjson" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Findings" >> $GITHUB_STEP_SUMMARY
-            python3 -c "
+            if [ -f "results/compare-report.json" ]; then
+              HAS_REG=$(python3 -c "import json; d=json.load(open('results/compare-report.json')); print('yes' if d.get('has_regressions') else 'no')")
+              if [ "$HAS_REG" = "yes" ]; then
+                echo "**Status:** REGRESSION DETECTED"
+              else
+                echo "**Status:** OK"
+              fi
+              echo "**Baseline:** fixtures/valid.assay.ndjson"
+              echo "**Candidate:** fixtures/failure.assay.ndjson"
+              echo ""
+              echo "### Findings"
+              python3 -c "
           import json
           d = json.load(open('results/compare-report.json'))
           print(f\"- New denials: {len(d.get('new_denials', []))}\")
           print(f\"- Hash mismatches: {len(d.get('hash_mismatches', []))}\")
           print(f\"- Process counter changes: {len(d.get('process_summary_delta', []))}\")
-          " >> $GITHUB_STEP_SUMMARY
-          else
-            echo "**Status:** ERROR - compare report not found" >> $GITHUB_STEP_SUMMARY
-          fi
+          "
+            else
+              echo "**Status:** ERROR - compare report not found"
+            fi
 
-          if [ -f results/trust-basis-summary.md ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat results/trust-basis-summary.md >> $GITHUB_STEP_SUMMARY
-          fi
+            if [ -f "results/trust-basis-summary.md" ]; then
+              echo ""
+              cat "results/trust-basis-summary.md"
+            fi
 
-          if [ -f results/trust-basis-contract/nonregression-summary.md ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## Trust Basis Contract Fixture" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat results/trust-basis-contract/nonregression-summary.md >> $GITHUB_STEP_SUMMARY
-          fi
+            if [ -f "results/trust-basis-contract/nonregression-summary.md" ]; then
+              echo ""
+              echo "## Trust Basis Contract Fixture"
+              echo ""
+              cat "results/trust-basis-contract/nonregression-summary.md"
+            fi
 
-          if [ -f results/trust-basis-contract/regression-summary.md ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat results/trust-basis-contract/regression-summary.md >> $GITHUB_STEP_SUMMARY
-          fi
+            if [ -f "results/trust-basis-contract/regression-summary.md" ]; then
+              echo ""
+              cat "results/trust-basis-contract/regression-summary.md"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate JUnit XML from compare
         if: always() && steps.compare.outcome != 'skipped'
@@ -369,13 +371,17 @@ jobs:
       - name: Job Summary
         if: always()
         run: |
-          echo "## Assay Harness Evidence Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Fixture | JUnit | SARIF |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| valid | \`results/junit-valid.xml\` | \`results/sarif-valid.json\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| failure | \`results/junit-failure.xml\` | \`results/sarif-failure.json\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Event Counts" >> $GITHUB_STEP_SUMMARY
-          echo "- valid: $(wc -l < fixtures/valid.assay.ndjson) events" >> $GITHUB_STEP_SUMMARY
-          echo "- failure: $(wc -l < fixtures/failure.assay.ndjson) events" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Assay Harness Evidence Report"
+            echo ""
+            echo "| Fixture | JUnit | SARIF |"
+            echo "|---------|-------|-------|"
+            echo "| valid | \`results/junit-valid.xml\` | \`results/sarif-valid.json\` |"
+            echo "| failure | \`results/junit-failure.xml\` | \`results/sarif-failure.json\` |"
+            echo ""
+            echo "### Event Counts"
+            valid_events=$(wc -l < "fixtures/valid.assay.ndjson")
+            failure_events=$(wc -l < "fixtures/failure.assay.ndjson")
+            echo "- valid: ${valid_events} events"
+            echo "- failure: ${failure_events} events"
+          } >> "$GITHUB_STEP_SUMMARY"
