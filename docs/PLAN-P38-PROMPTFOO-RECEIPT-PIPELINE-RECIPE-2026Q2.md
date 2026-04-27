@@ -1,8 +1,11 @@
 # P38 — Promptfoo Receipt Pipeline Recipe
 
-Status: implemented in the P38 recipe slice
-Target repo: `Rul1an/Assay-Harness`
-Depends on: Assay P31-P34, Assay Harness P35-P37
+> **Status:** implemented in the P38 recipe slice
+> **Target repo:** `Rul1an/Assay-Harness`
+> **Depends on:** Assay P31-P34, Assay Harness P35-P37
+> **Last Updated:** 2026-04-27
+
+---
 
 ## One-Line Goal
 
@@ -70,25 +73,23 @@ is supplied.
 Suggested command flow:
 
 ```bash
-ASSAY_BIN=${ASSAY_BIN:-assay}
-
-$ASSAY_BIN evidence import promptfoo-jsonl \
+"${ASSAY_BIN:-assay}" evidence import promptfoo-jsonl \
   --input baseline.results.jsonl \
   --bundle-out baseline.evidence.tar.gz \
   --source-artifact-ref baseline.results.jsonl \
   --run-id promptfoo_baseline
 
-$ASSAY_BIN trust-basis generate \
+"${ASSAY_BIN:-assay}" trust-basis generate \
   baseline.evidence.tar.gz \
   --out baseline.trust-basis.json
 
-$ASSAY_BIN evidence import promptfoo-jsonl \
+"${ASSAY_BIN:-assay}" evidence import promptfoo-jsonl \
   --input candidate.results.jsonl \
   --bundle-out candidate.evidence.tar.gz \
   --source-artifact-ref candidate.results.jsonl \
   --run-id promptfoo_candidate
 
-$ASSAY_BIN trust-basis generate \
+"${ASSAY_BIN:-assay}" trust-basis generate \
   candidate.evidence.tar.gz \
   --out candidate.trust-basis.json
 
@@ -96,7 +97,7 @@ assay-harness trust-basis gate \
   --baseline baseline.trust-basis.json \
   --candidate candidate.trust-basis.json \
   --out trust-basis.diff.json \
-  --assay-bin "$ASSAY_BIN"
+  --assay-bin "${ASSAY_BIN:-assay}"
 
 assay-harness trust-basis report \
   --diff trust-basis.diff.json \
