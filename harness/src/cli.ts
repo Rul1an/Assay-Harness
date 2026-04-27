@@ -7,6 +7,7 @@
  *   verify   — verify evidence file against the artifact contract
  *   compare  — compare baseline vs candidate evidence for regressions
  *   trust-basis gate — gate on Assay Trust Basis diff regressions
+ *   trust-basis report — project Assay Trust Basis diff JSON into review reports
  *   policy   — evaluate a tool name against a policy file
  *
  * Exit codes (stable contract, see docs/contracts/EXIT_CODES.md):
@@ -31,6 +32,9 @@ import {
   formatTrustBasisGateSummary,
   runTrustBasisGate,
 } from "./trust_basis_gate.js";
+import {
+  runTrustBasisReport,
+} from "./trust_basis_report.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -52,6 +56,7 @@ function usage(): never {
 Commands:
   compare  --baseline <path> --candidate <path> [--format markdown|json]
   trust-basis gate --baseline <path> --candidate <path> --out <path> [--assay-bin <path>]
+  trust-basis report --diff <path> [--summary-out <path>] [--junit-out <path>]
   verify   <evidence-file> [--category <all|envelope|hash|type>]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
@@ -79,6 +84,9 @@ Options:
   --candidate    Candidate evidence file for compare
   --out          Output path for Trust Basis diff artifacts
   --assay-bin    Assay CLI binary for trust-basis-gate (default: assay)
+  --diff         Trust Basis diff JSON for trust-basis report
+  --summary-out  Markdown summary output path for trust-basis report
+  --junit-out    JUnit XML output path for trust-basis report
   --category     Verify category: all | envelope | hash | type (default: all)
 `);
   process.exit(EXIT.CONFIG_ERROR);
@@ -459,16 +467,45 @@ function cmdTrustBasisGate(args: Record<string, string | boolean>): void {
   }
 }
 
+function cmdTrustBasisReport(args: Record<string, string | boolean>): void {
+  const diffPath = args.diff as string;
+  const summaryOut = args["summary-out"] as string | undefined;
+  const junitOut = args["junit-out"] as string | undefined;
+
+  try {
+    const result = runTrustBasisReport({
+      diff: diffPath,
+      summaryOut,
+      junitOut,
+    });
+    if (result.summaryMarkdown && !summaryOut) {
+      console.log(result.summaryMarkdown.trimEnd());
+    }
+    console.log("[trust-basis-report] schema: assay.trust-basis.diff.v1");
+    if (summaryOut) console.log(`[trust-basis-report] summary: ${summaryOut}`);
+    if (junitOut) console.log(`[trust-basis-report] junit: ${junitOut}`);
+    process.exit(EXIT.SUCCESS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[config_error] ${message}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+}
+
 function cmdTrustBasis(args: Record<string, string | boolean>): void {
   const subcommand = args._file as string;
   if (subcommand === "gate") {
     cmdTrustBasisGate(args);
     return;
   }
+  if (subcommand === "report") {
+    cmdTrustBasisReport(args);
+    return;
+  }
 
   console.error(`[config_error] Unknown trust-basis subcommand: ${subcommand ?? "(none)"}`);
   console.error(
-    "Usage: trust-basis gate --baseline <path> --candidate <path> --out <path> [--assay-bin <path>]",
+    "Usage: trust-basis <gate|report> [options]",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
