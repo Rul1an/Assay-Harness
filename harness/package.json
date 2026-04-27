@@ -12,6 +12,7 @@
     "start": "tsx src/cli.ts",
     "run:harness": "tsx src/cli.ts run",
     "run:verify": "tsx src/cli.ts verify",
+    "test": "npm run build && node --test test/*.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
