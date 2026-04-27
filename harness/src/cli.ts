@@ -34,6 +34,7 @@ import {
 } from "./trust_basis_gate.js";
 import {
   runTrustBasisReport,
+  TrustBasisReportError,
 } from "./trust_basis_report.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
@@ -487,6 +488,10 @@ function cmdTrustBasisReport(args: Record<string, string | boolean>): void {
     process.exit(EXIT.SUCCESS);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof TrustBasisReportError && err.kind === "ci_formatter") {
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
     console.error(`[config_error] ${message}`);
     process.exit(EXIT.CONFIG_ERROR);
   }

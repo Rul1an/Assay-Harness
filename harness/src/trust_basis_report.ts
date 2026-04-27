@@ -43,11 +43,12 @@ export interface TrustBasisProjectionResult {
 }
 
 export class TrustBasisReportError extends Error {
-  readonly kind = "config_error";
+  readonly kind: "config_error" | "ci_formatter";
 
-  constructor(message: string) {
+  constructor(kind: "config_error" | "ci_formatter", message: string) {
     super(message);
     this.name = "TrustBasisReportError";
+    this.kind = kind;
   }
 }
 
@@ -57,12 +58,12 @@ export function runTrustBasisReport(args: TrustBasisReportArgs): TrustBasisProje
 
   if (args.summaryOut) {
     result.summaryMarkdown = formatTrustBasisSummaryMarkdown(report, args.diff);
-    writeOutput(args.summaryOut, result.summaryMarkdown);
+    writeOutput(args.summaryOut, result.summaryMarkdown, "Markdown summary");
   }
 
   if (args.junitOut) {
     result.junitXml = formatTrustBasisJUnit(report);
-    writeOutput(args.junitOut, result.junitXml);
+    writeOutput(args.junitOut, result.junitXml, "JUnit XML");
   }
 
   if (!args.summaryOut && !args.junitOut) {
@@ -74,18 +75,25 @@ export function runTrustBasisReport(args: TrustBasisReportArgs): TrustBasisProje
 
 export function readTrustBasisDiff(path: string): TrustBasisDiffReport {
   if (!path || !existsSync(path)) {
-    throw new TrustBasisReportError(`Trust Basis diff file not found: ${path || "(none)"}`);
+    throw new TrustBasisReportError(
+      "config_error",
+      `Trust Basis diff file not found: ${path || "(none)"}`,
+    );
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    throw new TrustBasisReportError(`failed to parse Trust Basis diff JSON: ${path}`);
+    throw new TrustBasisReportError(
+      "config_error",
+      `failed to parse Trust Basis diff JSON: ${path}`,
+    );
   }
 
   if (!isTrustBasisDiffReport(parsed)) {
     throw new TrustBasisReportError(
+      "config_error",
       "Trust Basis reporter only consumes assay.trust-basis.diff.v1",
     );
   }
@@ -140,20 +148,30 @@ export function formatTrustBasisJUnit(report: TrustBasisDiffReport): string {
   const body = cases.map(formatTestCase).join("");
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuite name="assay.trust-basis.diff" tests="${cases.length}" failures="${failures}" errors="0" skipped="0">`,
+    "<testsuites>",
+    `  <testsuite name="assay.trust-basis.diff" tests="${cases.length}" failures="${failures}" errors="0" skipped="0" time="0">`,
     body,
-    `<system-out>${xmlEscape(summaryLine(report))}</system-out>`,
-    "</testsuite>",
+    `    <system-out>${xmlEscape(summaryLine(report))}</system-out>`,
+    "  </testsuite>",
+    "</testsuites>",
     "",
   ].join("\n");
 }
 
-function writeOutput(path: string, content: string): void {
+function writeOutput(path: string, content: string, label: string): void {
   const outDir = dirname(path);
-  if (outDir && outDir !== ".") {
-    mkdirSync(outDir, { recursive: true });
+  try {
+    if (outDir && outDir !== ".") {
+      mkdirSync(outDir, { recursive: true });
+    }
+    writeFileSync(path, content, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TrustBasisReportError(
+      "ci_formatter",
+      `failed to write ${label} projection to ${path}: ${message}`,
+    );
   }
-  writeFileSync(path, content, "utf8");
 }
 
 function appendClaimList(lines: string[], title: string, items: TrustBasisDiffItem[]): void {
@@ -187,7 +205,7 @@ function testCasesFor(
 }
 
 function formatTestCase(testCase: JUnitCase): string {
-  const open = `  <testcase classname="${xmlEscape(testCase.classname)}" name="${xmlEscape(testCase.name)}">`;
+  const open = `    <testcase classname="${xmlEscape(testCase.classname)}" name="${xmlEscape(testCase.name)}" time="0">`;
   if (!testCase.failure) {
     return `${open}</testcase>\n`;
   }
@@ -195,8 +213,8 @@ function formatTestCase(testCase: JUnitCase): string {
   const message = `${testCase.item.claim_id}: ${levelLabel(testCase.item.baseline_level)} -> ${levelLabel(testCase.item.candidate_level)}`;
   return [
     open,
-    `    <failure message="${xmlEscape(message)}">${xmlEscape(message)}</failure>`,
-    "  </testcase>",
+    `      <failure message="${xmlEscape(message)}">${xmlEscape(message)}</failure>`,
+    "    </testcase>",
     "",
   ].join("\n");
 }
@@ -243,7 +261,7 @@ function isTrustBasisDiffReport(value: unknown): value is TrustBasisDiffReport {
     return false;
   }
   const report = value as Record<string, unknown>;
-  return (
+  if (
     report.schema === "assay.trust-basis.diff.v1" &&
     report.claim_identity === "claim.id" &&
     isSummary(report.summary) &&
@@ -253,7 +271,11 @@ function isTrustBasisDiffReport(value: unknown): value is TrustBasisDiffReport {
     isDiffArray(report.added_claims) &&
     isDiffArray(report.metadata_changes) &&
     typeof report.unchanged_claim_count === "number"
-  );
+  ) {
+    return summaryCountsMatch(report as unknown as TrustBasisDiffReport);
+  }
+
+  return false;
 }
 
 function isSummary(value: unknown): value is TrustBasisDiffSummary {
@@ -281,7 +303,39 @@ function isDiffItem(value: unknown): value is TrustBasisDiffItem {
     return false;
   }
   const item = value as Record<string, unknown>;
-  return typeof item.diff_class === "string" && typeof item.claim_id === "string";
+  return (
+    isKnownDiffClass(item.diff_class) &&
+    typeof item.claim_id === "string" &&
+    isOptionalNullableString(item.baseline_level) &&
+    isOptionalNullableString(item.candidate_level)
+  );
+}
+
+function isKnownDiffClass(value: unknown): value is string {
+  return (
+    value === "regressed" ||
+    value === "improved" ||
+    value === "removed" ||
+    value === "added" ||
+    value === "metadata_changed"
+  );
+}
+
+function isOptionalNullableString(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function summaryCountsMatch(report: TrustBasisDiffReport): boolean {
+  return (
+    report.summary.regressed_claims === report.regressed_claims.length &&
+    report.summary.improved_claims === report.improved_claims.length &&
+    report.summary.removed_claims === report.removed_claims.length &&
+    report.summary.added_claims === report.added_claims.length &&
+    report.summary.metadata_changes === report.metadata_changes.length &&
+    report.summary.unchanged_claim_count === report.unchanged_claim_count &&
+    report.summary.has_regressions ===
+      (report.regressed_claims.length > 0 || report.removed_claims.length > 0)
+  );
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
