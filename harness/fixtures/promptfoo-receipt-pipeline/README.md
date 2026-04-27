@@ -7,8 +7,9 @@ the canonical Promptfoo shape contract.
 - `candidate-nonregression.results.jsonl` is a failing assertion row that still
   produces an Assay external eval receipt. This must not become a Trust Basis
   regression by itself.
-- `candidate-boundary-regression.trust-basis.json` models the separate case
-  where the candidate Trust Basis has lost the external eval receipt boundary.
+- `candidate-trust-basis-regression-fixture.trust-basis.json` models the
+  separate fixture-only case where the candidate Trust Basis has lost the
+  external eval receipt boundary.
 
 Assay owns Promptfoo JSONL parsing and receipt semantics. Harness uses these
 files only to prove recipe orchestration and gate/report projection.

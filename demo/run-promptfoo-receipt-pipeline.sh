@@ -24,8 +24,10 @@ Usage:
   demo/run-promptfoo-receipt-pipeline.sh --out-dir <dir> [options]
 
 Options:
-  --case <name>       nonregression | boundary-regression (default: nonregression)
-  --assay-bin <path>  Assay CLI binary (default: $ASSAY_BIN or assay)
+  --case <name>       nonregression | trust-basis-regression-fixture
+                      (default: nonregression)
+  --assay-bin <path>  Assay CLI executable path or command name
+                      (default: $ASSAY_BIN or assay; not a shell command string)
   --overwrite         Remove and recreate --out-dir if it already has files
   -h, --help          Show this help
 
@@ -75,8 +77,12 @@ done
 [ -n "$OUT_DIR" ] || die "--out-dir is required"
 case "$CASE" in
   nonregression|boundary-regression) ;;
-  *) die "--case must be nonregression or boundary-regression" ;;
+  trust-basis-regression-fixture) ;;
+  *) die "--case must be nonregression or trust-basis-regression-fixture" ;;
 esac
+if [ "$CASE" = "boundary-regression" ]; then
+  CASE="trust-basis-regression-fixture"
+fi
 
 if [ -e "$OUT_DIR" ] && [ ! -d "$OUT_DIR" ]; then
   die "--out-dir exists and is not a directory: $OUT_DIR"
@@ -91,6 +97,8 @@ fi
 
 mkdir -p "$OUT_DIR/baseline" "$OUT_DIR/candidate" "$OUT_DIR/reports"
 
+command -v node >/dev/null 2>&1 || die "node is required to inspect Trust Basis diff JSON"
+command -v npx >/dev/null 2>&1 || die "npx is required to run Assay Harness"
 "$ASSAY_BIN" evidence import promptfoo-jsonl --help >/dev/null 2>&1 \
   || die "ASSAY_BIN cannot run evidence import promptfoo-jsonl: $ASSAY_BIN"
 "$ASSAY_BIN" evidence verify --help >/dev/null 2>&1 \
@@ -101,6 +109,16 @@ mkdir -p "$OUT_DIR/baseline" "$OUT_DIR/candidate" "$OUT_DIR/reports"
   || die "ASSAY_BIN cannot run trust-basis diff: $ASSAY_BIN"
 
 HARNESS_CLI=(npx --prefix "$HARNESS" tsx "$HARNESS/src/cli.ts")
+"${HARNESS_CLI[@]}" trust-basis report \
+  --diff "$HARNESS/fixtures/trust-basis/nonregression.trust-basis.diff.json" \
+  >/dev/null 2>&1 \
+  || die "assay-harness trust-basis report is not runnable through npx"
+
+require_file() {
+  local path="$1"
+  local label="$2"
+  [ -f "$path" ] || die "expected $label missing: $path"
+}
 
 copy_input() {
   local src="$1"
@@ -128,12 +146,15 @@ import_promptfoo_side() {
     --import-time "$import_time" \
     >"$side_dir/$side.import.stdout.txt" \
     2>"$side_dir/$side.import.stderr.txt"
+  require_file "$bundle" "$side evidence bundle"
   "$ASSAY_BIN" evidence verify "$bundle" \
     >"$verify_log" \
     2>"$side_dir/$side.verify.stderr.txt"
+  require_file "$verify_log" "$side verification log"
   "$ASSAY_BIN" trust-basis generate "$bundle" --out "$trust_basis" \
     >"$side_dir/$side.trust-basis.stdout.txt" \
     2>"$side_dir/$side.trust-basis.stderr.txt"
+  require_file "$trust_basis" "$side Trust Basis artifact"
 }
 
 import_promptfoo_side "baseline" \
@@ -146,8 +167,9 @@ if [ "$CASE" = "nonregression" ]; then
     "$IMPORT_TIME_CANDIDATE"
 else
   copy_input \
-    "$FIXTURES/candidate-boundary-regression.trust-basis.json" \
+    "$FIXTURES/candidate-trust-basis-regression-fixture.trust-basis.json" \
     "$OUT_DIR/candidate/candidate.trust-basis.json"
+  require_file "$OUT_DIR/candidate/candidate.trust-basis.json" "candidate Trust Basis regression fixture"
 fi
 
 set +e
@@ -161,7 +183,23 @@ set +e
 GATE_STATUS=$?
 set -e
 
-if [ "$GATE_STATUS" -ne 0 ] && [ "$GATE_STATUS" -ne 6 ]; then
+require_file "$OUT_DIR/trust-basis.diff.json" "Trust Basis diff artifact"
+
+DIFF_HAS_REGRESSIONS="$(node -e '
+const fs = require("node:fs");
+try {
+  const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  if (report.schema !== "assay.trust-basis.diff.v1" || typeof report.summary?.has_regressions !== "boolean") {
+    process.exit(2);
+  }
+  process.stdout.write(report.summary.has_regressions ? "yes" : "no");
+} catch {
+  process.exit(2);
+}
+' "$OUT_DIR/trust-basis.diff.json")" \
+  || die "Trust Basis diff did not match assay.trust-basis.diff.v1"
+
+if [ "$GATE_STATUS" -ne 0 ] && [ "$DIFF_HAS_REGRESSIONS" != "yes" ]; then
   cat "$OUT_DIR/reports/trust-basis-gate.stderr.txt" >&2
   die "assay-harness trust-basis gate failed with exit code $GATE_STATUS"
 fi
@@ -172,12 +210,24 @@ fi
   --junit-out "$OUT_DIR/junit-trust-basis.xml" \
   >"$OUT_DIR/reports/trust-basis-report.stdout.txt" \
   2>"$OUT_DIR/reports/trust-basis-report.stderr.txt"
+require_file "$OUT_DIR/trust-basis-summary.md" "Trust Basis Markdown summary"
+require_file "$OUT_DIR/junit-trust-basis.xml" "Trust Basis JUnit projection"
 
 printf '[promptfoo-receipt-pipeline] case: %s\n' "$CASE"
 printf '[promptfoo-receipt-pipeline] output: %s\n' "$OUT_DIR"
+printf '[promptfoo-receipt-pipeline] baseline bundle: %s\n' "$OUT_DIR/baseline/baseline.evidence.tar.gz"
+printf '[promptfoo-receipt-pipeline] baseline trust basis: %s\n' "$OUT_DIR/baseline/baseline.trust-basis.json"
+if [ "$CASE" = "nonregression" ]; then
+  printf '[promptfoo-receipt-pipeline] candidate bundle: %s\n' "$OUT_DIR/candidate/candidate.evidence.tar.gz"
+else
+  printf '[promptfoo-receipt-pipeline] candidate bundle: n/a (Trust Basis fixture case)\n'
+fi
+printf '[promptfoo-receipt-pipeline] candidate trust basis: %s\n' "$OUT_DIR/candidate/candidate.trust-basis.json"
 printf '[promptfoo-receipt-pipeline] diff: %s\n' "$OUT_DIR/trust-basis.diff.json"
+printf '[promptfoo-receipt-pipeline] summary: %s\n' "$OUT_DIR/trust-basis-summary.md"
+printf '[promptfoo-receipt-pipeline] junit: %s\n' "$OUT_DIR/junit-trust-basis.xml"
 
-if [ "$GATE_STATUS" -eq 6 ]; then
+if [ "$DIFF_HAS_REGRESSIONS" = "yes" ]; then
   printf '[promptfoo-receipt-pipeline] result: Trust Basis regression\n'
   exit 1
 fi

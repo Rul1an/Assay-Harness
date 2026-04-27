@@ -116,7 +116,7 @@ test("Promptfoo receipt recipe maps Trust Basis regression to recipe exit 1", ()
 
   const result = runRecipe([
     "--case",
-    "boundary-regression",
+    "trust-basis-regression-fixture",
     "--out-dir",
     outDir,
     "--assay-bin",
@@ -130,6 +130,7 @@ test("Promptfoo receipt recipe maps Trust Basis regression to recipe exit 1", ()
   assert.equal(existsSync(join(outDir, "baseline", "baseline.evidence.tar.gz")), true);
   assert.equal(existsSync(join(outDir, "candidate", "candidate.evidence.tar.gz")), false);
   assert.match(readFileSync(join(outDir, "junit-trust-basis.xml"), "utf8"), /failures="1"/);
+  assert.match(result.stdout, /candidate bundle: n\/a \(Trust Basis fixture case\)/);
 });
 
 test("Promptfoo receipt recipe refuses to overwrite an output root by default", () => {

@@ -5,7 +5,7 @@ portable, reviewable evidence receipts. Assay Harness gates and projects the
 resulting Trust Basis diff.
 
 This recipe is not a Promptfoo integration or partnership claim. It is a
-copyable pipeline over existing contracts.
+copyable pipeline over existing Assay and Assay Harness contracts.
 
 ## Artifact Chain
 
@@ -20,7 +20,7 @@ Promptfoo CLI JSONL
   -> assay-harness trust-basis report
 ```
 
-Canonical outputs are the Trust Basis JSON files and raw
+For this recipe, the canonical outputs are the Trust Basis JSON files and raw
 `assay.trust-basis.diff.v1` JSON. Markdown and JUnit are projections only.
 
 ## Run The Recipe
@@ -33,12 +33,12 @@ ASSAY_BIN=/path/to/assay \
     --overwrite
 ```
 
-For the receipt-boundary regression case:
+For the Trust Basis regression fixture case:
 
 ```bash
 ASSAY_BIN=/path/to/assay \
   demo/run-promptfoo-receipt-pipeline.sh \
-    --case boundary-regression \
+    --case trust-basis-regression-fixture \
     --out-dir /tmp/assay-promptfoo-receipt-boundary-regression \
     --overwrite
 ```
@@ -48,6 +48,9 @@ Exit codes:
 - `0`: no Trust Basis regressions
 - `1`: Trust Basis regressions are present
 - `2+`: recipe, configuration, tool, input, or runtime error
+
+The recipe preserves the existing gate-vs-error split from the underlying
+Assay and Assay Harness commands.
 
 ## Output Layout
 
@@ -74,8 +77,13 @@ trust-basis-summary.md
 junit-trust-basis.xml
 ```
 
-In the `boundary-regression` fixture case, the candidate starts from a
-Trust Basis fixture that models loss of the external eval receipt boundary.
+In the `trust-basis-regression-fixture` case, the candidate uses a checked-in
+Trust Basis fixture rather than a freshly imported Promptfoo JSONL path. This
+keeps the regression example focused on Trust Basis boundary loss, not on
+Promptfoo assertion failure semantics. In that case, `candidate.trust-basis.json`
+comes from the fixture and `candidate.results.jsonl`,
+`candidate.evidence.tar.gz`, and `candidate.verify.txt` are not produced.
+
 That distinction is intentional: a failing Promptfoo assertion still produces
 an external eval receipt, while a Trust Basis regression is about losing the
 receipt boundary itself.
@@ -84,4 +92,5 @@ receipt boundary itself.
 
 Assay Harness does not parse Promptfoo JSONL, inspect receipt payloads, or
 decide whether an assertion outcome is true. Harness consumes the Trust Basis
-diff contract that Assay emits and projects it for CI review.
+diff contract that Assay emits and projects it for CI review without
+reinterpreting its semantics.
