@@ -1,6 +1,6 @@
 # P38 — Promptfoo Receipt Pipeline Recipe
 
-Status: proposed
+Status: implemented in the P38 recipe slice
 Target repo: `Rul1an/Assay-Harness`
 Depends on: Assay P31-P34, Assay Harness P35-P37
 
@@ -127,7 +127,7 @@ source of truth for gate semantics.
 
 ## Deliverables
 
-P38 implementation should add:
+P38 implementation adds:
 
 1. A small documented recipe for the Promptfoo receipt pipeline.
 2. A runnable demo script under `demo/` or `harness/scripts/` that uses
@@ -140,8 +140,8 @@ P38 implementation should add:
    - Markdown and JUnit projections are created,
    - regression exit mapping is preserved.
 4. Both a non-regression fixture path and a regression fixture path.
-5. CI artifact upload for the raw diff and projections when the recipe runs in
-   a workflow context.
+5. Upload-ready raw diff and projection files that a workflow can preserve as
+   artifacts when it runs the recipe with an Assay binary.
 
 ## Fixture Strategy
 

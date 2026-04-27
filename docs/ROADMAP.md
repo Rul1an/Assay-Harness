@@ -36,6 +36,12 @@ What's already built and working.
 - Contract fixtures prove Harness consumes real Assay diff artifacts
 - Raw Assay diff JSON remains canonical; Markdown/JUnit are projections
 
+### Promptfoo receipt pipeline recipe
+- `demo/run-promptfoo-receipt-pipeline.sh` shows Promptfoo JSONL -> Assay receipts -> Trust Basis -> Harness gate/report
+- All generated artifacts live under one explicit output root
+- Recipe preserves the P35/P34 split: 0 clean, 1 Trust Basis regression, 2+ recipe/tool/input error
+- Harness still does not parse Promptfoo JSONL or receipt payloads
+
 ### GitHub provenance
 - Release workflow with artifact attestations
 - SBOM generation
@@ -62,12 +68,6 @@ What's already built and working.
 - OTel OTLP JSON exporter (experimental, no stability guarantee)
 
 ## Next — adoption polish
-
-### Promptfoo receipt pipeline recipe
-- Planned as [P38](PLAN-P38-PROMPTFOO-RECEIPT-PIPELINE-RECIPE-2026Q2.md)
-- Show Promptfoo JSONL -> Assay receipt bundle -> Trust Basis -> Harness gate
-- Keep Harness as orchestration/reporting only, not a Promptfoo parser
-- Preserve raw Assay artifacts and project thin CI summaries
 
 ### CLI clarity
 - Better error messages for new users

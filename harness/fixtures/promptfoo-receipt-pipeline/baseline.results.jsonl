@@ -1,0 +1,1 @@
+{"gradingResult":{"componentResults":[{"pass":true,"score":1,"reason":"Assertion passed","assertion":{"type":"equals","value":"Hello world"}}]},"testCase":{"assert":[{"type":"equals","value":"Hello world"}]}}

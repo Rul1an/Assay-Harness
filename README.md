@@ -136,7 +136,24 @@ python3 ci/emit_otel.py fixtures/valid.assay.ndjson --output results/otel-export
 See [docs/contracts/OTEL_EXPORT.md](docs/contracts/OTEL_EXPORT.md) for mapping rules
 and stability caveats.
 
-### 6. Run the harness (requires OPENAI_API_KEY)
+### 6. Run the Promptfoo receipt pipeline recipe
+
+Promptfoo can produce AI eval outputs in CI; Assay compiles selected outcomes
+into evidence receipts and Trust Basis artifacts; Harness gates/reports the
+resulting Trust Basis diff.
+
+```bash
+ASSAY_BIN=/path/to/assay \
+  demo/run-promptfoo-receipt-pipeline.sh \
+    --case nonregression \
+    --out-dir /tmp/assay-promptfoo-receipt-pipeline \
+    --overwrite
+```
+
+See [docs/PROMPTFOO_RECEIPT_PIPELINE.md](docs/PROMPTFOO_RECEIPT_PIPELINE.md)
+for the artifact chain and boundary rules.
+
+### 7. Run the harness (requires OPENAI_API_KEY)
 
 ```bash
 cd harness
