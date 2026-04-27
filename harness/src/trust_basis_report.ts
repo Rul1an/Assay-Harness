@@ -74,30 +74,50 @@ export function runTrustBasisReport(args: TrustBasisReportArgs): TrustBasisProje
 }
 
 export function readTrustBasisDiff(path: string): TrustBasisDiffReport {
-  if (!path || !existsSync(path)) {
+  if (!path) {
     throw new TrustBasisReportError(
       "config_error",
-      `Trust Basis diff file not found: ${path || "(none)"}`,
+      "Trust Basis diff file not found: (none)",
+    );
+  }
+
+  if (!existsSync(path)) {
+    throw new TrustBasisReportError(
+      "config_error",
+      `Trust Basis diff file not found: ${path}`,
+    );
+  }
+
+  let rawJson: string;
+  try {
+    rawJson = readFileSync(path, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TrustBasisReportError(
+      "config_error",
+      `failed to read Trust Basis diff JSON ${path}: ${message}`,
     );
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
+    parsed = JSON.parse(rawJson);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     throw new TrustBasisReportError(
       "config_error",
-      `failed to parse Trust Basis diff JSON: ${path}`,
+      `failed to parse Trust Basis diff JSON ${path}: ${message}`,
     );
   }
 
-  if (!isTrustBasisDiffReport(parsed)) {
+  const validationError = trustBasisDiffValidationError(parsed);
+  if (validationError) {
     throw new TrustBasisReportError(
       "config_error",
-      "Trust Basis reporter only consumes assay.trust-basis.diff.v1",
+      `invalid Trust Basis diff report: ${validationError}`,
     );
   }
-  return normalizeReport(parsed);
+  return normalizeReport(parsed as TrustBasisDiffReport);
 }
 
 export function formatTrustBasisSummaryMarkdown(
@@ -256,26 +276,44 @@ function levelLabel(value: string | null | undefined): string {
   return value ?? "absent";
 }
 
-function isTrustBasisDiffReport(value: unknown): value is TrustBasisDiffReport {
+function trustBasisDiffValidationError(value: unknown): string | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return "expected a JSON object";
   }
   const report = value as Record<string, unknown>;
-  if (
-    report.schema === "assay.trust-basis.diff.v1" &&
-    report.claim_identity === "claim.id" &&
-    isSummary(report.summary) &&
-    isDiffArray(report.regressed_claims) &&
-    isDiffArray(report.improved_claims) &&
-    isDiffArray(report.removed_claims) &&
-    isDiffArray(report.added_claims) &&
-    isDiffArray(report.metadata_changes) &&
-    typeof report.unchanged_claim_count === "number"
-  ) {
-    return summaryCountsMatch(report as unknown as TrustBasisDiffReport);
+
+  if (report.schema !== "assay.trust-basis.diff.v1") {
+    return "unsupported schema; expected assay.trust-basis.diff.v1";
+  }
+  if (report.claim_identity !== "claim.id") {
+    return "claim_identity must be claim.id";
+  }
+  if (!isSummary(report.summary)) {
+    return "summary must contain non-negative integer counts and boolean has_regressions";
+  }
+  if (!isDiffArray(report.regressed_claims)) {
+    return "regressed_claims must contain valid diff items";
+  }
+  if (!isDiffArray(report.improved_claims)) {
+    return "improved_claims must contain valid diff items";
+  }
+  if (!isDiffArray(report.removed_claims)) {
+    return "removed_claims must contain valid diff items";
+  }
+  if (!isDiffArray(report.added_claims)) {
+    return "added_claims must contain valid diff items";
+  }
+  if (!isDiffArray(report.metadata_changes)) {
+    return "metadata_changes must contain valid diff items";
+  }
+  if (!isNonNegativeInteger(report.unchanged_claim_count)) {
+    return "unchanged_claim_count must be a non-negative integer";
+  }
+  if (!summaryCountsMatch(report as unknown as TrustBasisDiffReport)) {
+    return "summary counts must match diff arrays";
   }
 
-  return false;
+  return null;
 }
 
 function isSummary(value: unknown): value is TrustBasisDiffSummary {

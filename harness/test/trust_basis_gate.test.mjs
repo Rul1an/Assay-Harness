@@ -46,7 +46,7 @@ const summary = {
   unchanged_claim_count: isRegression ? 0 : 1,
   has_regressions: isRegression,
 };
-console.log(JSON.stringify({
+process.stdout.write(JSON.stringify({
   schema: "assay.trust-basis.diff.v1",
   claim_identity: "claim.id",
   level_order: ["absent", "inferred", "self_reported", "verified"],
@@ -57,7 +57,7 @@ console.log(JSON.stringify({
   added_claims: [],
   metadata_changes: [],
   unchanged_claim_count: summary.unchanged_claim_count,
-}, null, 2));
+}, null, 2) + "\\n");
 process.exit(isRegression ? 1 : 0);
 `,
     "utf8",
@@ -86,7 +86,31 @@ test("trust basis gate writes the raw diff artifact on success", () => {
   assert.equal(result.assayExitCode, 0);
   assert.equal(result.report.schema, "assay.trust-basis.diff.v1");
   assert.equal(existsSync(out), true);
-  assert.equal(JSON.parse(readFileSync(out, "utf8")).claim_identity, "claim.id");
+  const expectedRawDiff = JSON.stringify(
+    {
+      schema: "assay.trust-basis.diff.v1",
+      claim_identity: "claim.id",
+      level_order: ["absent", "inferred", "self_reported", "verified"],
+      summary: {
+        regressed_claims: 0,
+        improved_claims: 0,
+        removed_claims: 0,
+        added_claims: 0,
+        metadata_changes: 0,
+        unchanged_claim_count: 1,
+        has_regressions: false,
+      },
+      regressed_claims: [],
+      improved_claims: [],
+      removed_claims: [],
+      added_claims: [],
+      metadata_changes: [],
+      unchanged_claim_count: 1,
+    },
+    null,
+    2,
+  ) + "\n";
+  assert.equal(readFileSync(out, "utf8"), expectedRawDiff);
 });
 
 test("trust basis gate preserves diff artifact when Assay reports a regression", () => {
