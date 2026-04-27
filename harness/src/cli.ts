@@ -6,6 +6,7 @@
  *   run      — run the harness agent with policy enforcement
  *   verify   — verify evidence file against the artifact contract
  *   compare  — compare baseline vs candidate evidence for regressions
+ *   trust-basis gate — gate on Assay Trust Basis diff regressions
  *   policy   — evaluate a tool name against a policy file
  *
  * Exit codes (stable contract, see docs/contracts/EXIT_CODES.md):
@@ -26,6 +27,10 @@ import { createHarnessAgent } from "./agent.js";
 import { PolicyEngine } from "./policy.js";
 import { runHarness } from "./harness.js";
 import { compareEvidence, formatCompareResult } from "./compare.js";
+import {
+  formatTrustBasisGateSummary,
+  runTrustBasisGate,
+} from "./trust_basis_gate.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -46,6 +51,7 @@ function usage(): never {
 
 Commands:
   compare  --baseline <path> --candidate <path> [--format markdown|json]
+  trust-basis gate --baseline <path> --candidate <path> --out <path> [--assay-bin <path>]
   verify   <evidence-file> [--category <all|envelope|hash|type>]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
@@ -71,6 +77,8 @@ Options:
   --format       Output format: ndjson | json | markdown (default: ndjson)
   --baseline     Baseline evidence file for compare
   --candidate    Candidate evidence file for compare
+  --out          Output path for Trust Basis diff artifacts
+  --assay-bin    Assay CLI binary for trust-basis-gate (default: assay)
   --category     Verify category: all | envelope | hash | type (default: all)
 `);
   process.exit(EXIT.CONFIG_ERROR);
@@ -429,6 +437,42 @@ function cmdCompare(args: Record<string, string | boolean>): void {
   process.exit(result.has_regressions ? EXIT.REGRESSION : EXIT.SUCCESS);
 }
 
+function cmdTrustBasisGate(args: Record<string, string | boolean>): void {
+  const baselinePath = args.baseline as string;
+  const candidatePath = args.candidate as string;
+  const outPath = args.out as string;
+  const assayBin = args["assay-bin"] as string | undefined;
+
+  try {
+    const result = runTrustBasisGate({
+      baseline: baselinePath,
+      candidate: candidatePath,
+      out: outPath,
+      assayBin,
+    });
+    console.log(formatTrustBasisGateSummary(result, outPath));
+    process.exit(result.hasRegressions ? EXIT.REGRESSION : EXIT.SUCCESS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[config_error] ${message}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+}
+
+function cmdTrustBasis(args: Record<string, string | boolean>): void {
+  const subcommand = args._file as string;
+  if (subcommand === "gate") {
+    cmdTrustBasisGate(args);
+    return;
+  }
+
+  console.error(`[config_error] Unknown trust-basis subcommand: ${subcommand ?? "(none)"}`);
+  console.error(
+    "Usage: trust-basis gate --baseline <path> --candidate <path> --out <path> [--assay-bin <path>]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
 function cmdPolicy(args: Record<string, string | boolean>): void {
   const policyPath = (args.policy as string) ?? resolve(__dirname, "..", "policy.yaml");
   const toolName = args.tool as string;
@@ -562,6 +606,9 @@ const command = args._command as string;
 switch (command) {
   case "compare":
     cmdCompare(args);
+    break;
+  case "trust-basis":
+    cmdTrustBasis(args);
     break;
   case "verify":
     cmdVerify(args);
