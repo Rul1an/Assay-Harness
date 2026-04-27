@@ -1,6 +1,6 @@
 # Roadmap
 
-> Last updated: 2026-04-16
+> Last updated: 2026-04-27
 
 ## Now (v0.2.0) — shipped
 
@@ -29,6 +29,18 @@ What's already built and working.
 - SARIF 2.1.0 with GitHub Security upload
 - Compare SARIF with 4 rule IDs
 - Job summaries in PRs
+
+### Trust Basis gate bridge
+- `assay-harness trust-basis gate` delegates to `assay trust-basis diff`
+- `assay-harness trust-basis report` projects `assay.trust-basis.diff.v1`
+- Contract fixtures prove Harness consumes real Assay diff artifacts
+- Raw Assay diff JSON remains canonical; Markdown/JUnit are projections
+
+### Promptfoo receipt pipeline recipe
+- `demo/run-promptfoo-receipt-pipeline.sh` shows Promptfoo JSONL -> Assay receipts -> Trust Basis -> Harness gate/report
+- All generated artifacts live under one explicit output root
+- Recipe preserves the P35/P34 split: 0 clean, 1 Trust Basis regression, 2+ recipe/tool/input error
+- Harness still does not parse Promptfoo JSONL or receipt payloads
 
 ### GitHub provenance
 - Release workflow with artifact attestations
