@@ -63,7 +63,8 @@ P42 must not blur that line.
 
 P42 follows the P41 importer boundary:
 
-- boolean `EvaluationDetails` only
+- boolean `EvaluationDetails` only; the first recipe uses one bounded
+  `EvaluationDetails<boolean>` input path
 - `target_kind = feature_flag`
 - `reason` is a bounded string, not an Assay-owned enum
 - `error_code` may be present
@@ -71,7 +72,8 @@ P42 follows the P41 importer boundary:
 
 P42 does not import:
 
-- `error_message`
+- `error_message`; for v1 this is discovery-only and never part of the
+  canonical receipt path
 - flag metadata
 - provider metadata
 - evaluation context
@@ -82,6 +84,8 @@ P42 does not import:
 - non-boolean flag value families
 
 This keeps the recipe on the smallest honest runtime decision surface.
+It treats OpenFeature `EvaluationDetails` as bounded decision data, not as
+application, provider, or targeting truth.
 
 ## Recommended Shape
 
@@ -166,6 +170,9 @@ The non-regression case imports both baseline and candidate OpenFeature JSONL
 through Assay. The regression case intentionally uses a checked-in candidate
 Trust Basis fixture so that it remains about Trust Basis boundary loss, not
 about OpenFeature flag value correctness.
+
+This means the non-regression path is end-to-end, while the regression path is
+intentionally a Trust Basis fixture path.
 
 ## Non-Goals
 

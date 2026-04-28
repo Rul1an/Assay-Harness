@@ -15,3 +15,7 @@ the canonical OpenFeature shape contract.
 
 Assay owns OpenFeature JSONL parsing and receipt semantics. Harness uses these
 files only to prove recipe orchestration and gate/report projection.
+
+P42 stays boolean-only. These fixtures do not carry flag metadata, provider
+metadata, evaluation context, targeting keys, rules, user identifiers, or
+`error_message`.

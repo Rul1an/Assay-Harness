@@ -1,9 +1,12 @@
 # OpenFeature Decision Receipt Pipeline Recipe
 
-OpenFeature can produce application-facing flag evaluation details at runtime.
+OpenFeature can surface application-facing flag evaluation details at runtime.
 Assay turns selected boolean `EvaluationDetails` outcomes into portable,
 reviewable decision receipts. Assay Harness gates and projects the resulting
 Trust Basis diff.
+
+This first recipe is boolean-only and uses one bounded
+`EvaluationDetails<boolean>` input path.
 
 This recipe is not an OpenFeature integration or partnership claim. It is a
 copyable pipeline over existing Assay and Assay Harness contracts.
@@ -86,6 +89,9 @@ OpenFeature flag decision semantics. In that case,
 `candidate.openfeature-details.jsonl`, `candidate.evidence.tar.gz`, and
 `candidate.verify.txt` are not produced.
 
+This means the `nonregression` path is end-to-end, while the regression path is
+intentionally a Trust Basis fixture path.
+
 That distinction is intentional: a false flag value, fallback, or bounded
 `error_code` can still produce an OpenFeature decision receipt. A Trust Basis
 regression is about losing the artifact boundary itself.
@@ -95,7 +101,11 @@ regression is about losing the artifact boundary itself.
 P42 is boolean `EvaluationDetails` only. The input rows must already be bounded
 for Assay's `openfeature-details` importer. They do not include provider
 configuration, evaluation context, targeting keys, rules, user identifiers,
-flag metadata, provider metadata, or `error_message`.
+flag metadata, provider metadata, or `error_message`. For v1, `error_message`
+is discovery-only and never part of the canonical receipt path.
+
+The recipe treats OpenFeature `EvaluationDetails` as a bounded decision
+surface, not as application, provider, or targeting truth.
 
 Assay Harness does not parse OpenFeature JSONL, inspect decision receipt
 payloads, or decide whether a flag evaluation was correct. Harness consumes the

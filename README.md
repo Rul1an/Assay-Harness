@@ -155,9 +155,9 @@ for the artifact chain and boundary rules.
 
 ### 7. Run the OpenFeature decision receipt pipeline recipe
 
-OpenFeature can produce runtime flag evaluation details; Assay compiles bounded
-boolean `EvaluationDetails` outcomes into decision receipts and Trust Basis
-artifacts; Harness gates/reports the resulting Trust Basis diff.
+OpenFeature can surface runtime flag evaluation details; Assay compiles one
+bounded boolean `EvaluationDetails` input path into decision receipts and Trust
+Basis artifacts; Harness gates/reports the resulting Trust Basis diff.
 
 ```bash
 ASSAY_BIN=/path/to/assay \
