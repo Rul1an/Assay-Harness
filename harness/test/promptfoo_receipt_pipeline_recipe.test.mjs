@@ -168,3 +168,21 @@ test("Promptfoo receipt recipe refuses to overwrite an output root by default", 
   assert.equal(overwriteResult.status, 0, overwriteResult.stderr);
   assert.equal(existsSync(join(outDir, "trust-basis.diff.json")), true);
 });
+
+test("Promptfoo receipt recipe rejects output roots that look like options", () => {
+  const dir = tempDir();
+  const assayBin = join(dir, "assay");
+  writeFakeAssay(assayBin);
+
+  const result = runRecipe([
+    "--case",
+    "nonregression",
+    "--out-dir",
+    "-dangerous",
+    "--assay-bin",
+    assayBin,
+  ]);
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /must not begin with -/);
+});

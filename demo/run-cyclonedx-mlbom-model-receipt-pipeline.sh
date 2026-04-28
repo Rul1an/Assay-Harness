@@ -114,6 +114,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$OUT_DIR" ] || die "--out-dir is required"
+case "$OUT_DIR" in
+  -*) die "--out-dir must not begin with -: $OUT_DIR" ;;
+esac
 case "$CASE" in
   nonregression|trust-basis-regression-fixture) ;;
   *) die "--case must be nonregression or trust-basis-regression-fixture" ;;
@@ -271,4 +274,3 @@ fi
 
 printf '[cyclonedx-mlbom-pipeline] result: no Trust Basis regressions\n'
 exit 0
-
