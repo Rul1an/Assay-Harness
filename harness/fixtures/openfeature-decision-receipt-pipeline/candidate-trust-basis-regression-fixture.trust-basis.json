@@ -5,7 +5,7 @@
       "level": "absent",
       "source": "bundle_verification",
       "boundary": "bundle-wide",
-      "note": "Boundary regression fixture: the candidate Trust Basis no longer has a verified bundle boundary."
+      "note": null
     },
     {
       "id": "signing_evidence_present",

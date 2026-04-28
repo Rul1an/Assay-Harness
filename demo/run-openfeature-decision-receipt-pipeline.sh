@@ -44,6 +44,44 @@ die() {
   exit 2
 }
 
+canonical_out_dir() {
+  local parent
+  local base
+  if [ -d "$OUT_DIR" ]; then
+    (cd "$OUT_DIR" && pwd -P)
+    return
+  fi
+
+  parent="$(dirname "$OUT_DIR")"
+  base="$(basename "$OUT_DIR")"
+  [ -d "$parent" ] || return 1
+  printf '%s/%s\n' "$(cd "$parent" && pwd -P)" "$base"
+}
+
+guard_safe_out_dir() {
+  local canonical
+  local root_real
+  local harness_real
+  local home_real=""
+  canonical="$(canonical_out_dir)" || die "--out-dir parent does not exist: $OUT_DIR"
+  root_real="$(cd "$ROOT" && pwd -P)"
+  harness_real="$(cd "$HARNESS" && pwd -P)"
+  if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+    home_real="$(cd "$HOME" && pwd -P)"
+  fi
+
+  if [ "$canonical" = "/" ] \
+    || [ "$canonical" = "$root_real" ] \
+    || [ "$canonical" = "$harness_real" ] \
+    || { [ -n "$home_real" ] && [ "$canonical" = "$home_real" ]; }; then
+    die "refusing dangerous --out-dir: $OUT_DIR"
+  fi
+}
+
+out_dir_has_entries() {
+  [ -n "$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --out-dir)
@@ -85,7 +123,9 @@ if [ -e "$OUT_DIR" ] && [ ! -d "$OUT_DIR" ]; then
   die "--out-dir exists and is not a directory: $OUT_DIR"
 fi
 
-if [ -e "$OUT_DIR" ] && [ "$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 | head -n 1)" ]; then
+guard_safe_out_dir
+
+if [ -e "$OUT_DIR" ] && out_dir_has_entries; then
   if [ "$OVERWRITE" -ne 1 ]; then
     die "--out-dir already contains files; pass --overwrite to recreate it"
   fi
