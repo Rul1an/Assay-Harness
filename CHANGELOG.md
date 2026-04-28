@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### OpenFeature Decision Receipt Pipeline Recipe
+
+- **Runnable recipe**: `demo/run-openfeature-decision-receipt-pipeline.sh`
+  shows the downstream path: OpenFeature boolean EvaluationDetails JSONL ->
+  Assay decision receipts -> Trust Basis -> Harness gate/report.
+- **Boundary discipline**: Harness does not parse OpenFeature JSONL, inspect
+  decision receipt payloads, or decide whether flag evaluations are correct.
+  P42 adds no decision-specific Trust Basis claim.
+
 ## [0.2.0] - 2026-04-27
 
 This companion release makes the Trust Basis gate/report bridge and Promptfoo
