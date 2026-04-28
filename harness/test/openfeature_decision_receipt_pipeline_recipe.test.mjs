@@ -201,3 +201,21 @@ test("OpenFeature decision recipe refuses dangerous overwrite paths", () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /refusing dangerous --out-dir/);
 });
+
+test("OpenFeature decision recipe rejects output roots that look like options", () => {
+  const dir = tempDir();
+  const assayBin = join(dir, "assay");
+  writeFakeAssay(assayBin);
+
+  const result = runRecipe([
+    "--case",
+    "nonregression",
+    "--out-dir",
+    "-dangerous",
+    "--assay-bin",
+    assayBin,
+  ]);
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /must not begin with -/);
+});

@@ -75,6 +75,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$OUT_DIR" ] || die "--out-dir is required"
+case "$OUT_DIR" in
+  -*) die "--out-dir must not begin with -: $OUT_DIR" ;;
+esac
 case "$CASE" in
   nonregression|boundary-regression) ;;
   trust-basis-regression-fixture) ;;
