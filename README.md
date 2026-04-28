@@ -153,7 +153,24 @@ ASSAY_BIN=/path/to/assay \
 See [docs/PROMPTFOO_RECEIPT_PIPELINE.md](docs/PROMPTFOO_RECEIPT_PIPELINE.md)
 for the artifact chain and boundary rules.
 
-### 7. Run the harness (requires OPENAI_API_KEY)
+### 7. Run the OpenFeature decision receipt pipeline recipe
+
+OpenFeature can produce runtime flag evaluation details; Assay compiles bounded
+boolean `EvaluationDetails` outcomes into decision receipts and Trust Basis
+artifacts; Harness gates/reports the resulting Trust Basis diff.
+
+```bash
+ASSAY_BIN=/path/to/assay \
+  demo/run-openfeature-decision-receipt-pipeline.sh \
+    --case nonregression \
+    --out-dir /tmp/assay-openfeature-decision-receipt-pipeline \
+    --overwrite
+```
+
+See [docs/OPENFEATURE_DECISION_RECEIPT_PIPELINE.md](docs/OPENFEATURE_DECISION_RECEIPT_PIPELINE.md)
+for the artifact chain and boundary rules.
+
+### 8. Run the harness (requires OPENAI_API_KEY)
 
 ```bash
 cd harness

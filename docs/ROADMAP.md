@@ -1,6 +1,14 @@
 # Roadmap
 
-> Last updated: 2026-04-27
+> Last updated: 2026-04-28
+
+## Unreleased on main
+
+### OpenFeature decision receipt pipeline recipe
+- `demo/run-openfeature-decision-receipt-pipeline.sh` shows OpenFeature EvaluationDetails JSONL -> Assay receipts -> Trust Basis -> Harness gate/report
+- P42 stays boolean EvaluationDetails only and does not add a decision-specific Trust Basis claim
+- Recipe preserves the same 0 clean, 1 Trust Basis regression, 2+ recipe/tool/input error split
+- Harness still does not parse OpenFeature JSONL or decision receipt payloads
 
 ## Now (v0.2.0) — shipped
 
