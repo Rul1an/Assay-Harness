@@ -4,6 +4,12 @@
 
 ## Unreleased on main
 
+### CycloneDX ML-BOM model receipt pipeline recipe
+- `demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh` shows CycloneDX ML-BOM JSON -> Assay model-component receipts -> Trust Basis -> Harness gate/report
+- P44 stays one selected `machine-learning-model` component only and does not add an inventory-specific Trust Basis claim
+- Recipe preserves the same 0 clean, 1 Trust Basis regression, 2+ recipe/tool/input error split
+- Harness still does not parse CycloneDX BOMs or inventory receipt payloads
+
 ### OpenFeature decision receipt pipeline recipe
 - `demo/run-openfeature-decision-receipt-pipeline.sh` shows OpenFeature EvaluationDetails JSONL -> Assay receipts -> Trust Basis -> Harness gate/report
 - P42 stays boolean EvaluationDetails only and does not add a decision-specific Trust Basis claim

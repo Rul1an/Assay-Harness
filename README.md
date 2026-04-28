@@ -170,7 +170,24 @@ ASSAY_BIN=/path/to/assay \
 See [docs/OPENFEATURE_DECISION_RECEIPT_PIPELINE.md](docs/OPENFEATURE_DECISION_RECEIPT_PIPELINE.md)
 for the artifact chain and boundary rules.
 
-### 8. Run the harness (requires OPENAI_API_KEY)
+### 8. Run the CycloneDX ML-BOM model receipt pipeline recipe
+
+CycloneDX ML-BOM can describe AI/ML inventory surfaces; Assay compiles one
+selected `machine-learning-model` component into inventory receipts and Trust
+Basis artifacts; Harness gates/reports the resulting Trust Basis diff.
+
+```bash
+ASSAY_BIN=/path/to/assay \
+  demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh \
+    --case nonregression \
+    --out-dir /tmp/assay-cyclonedx-mlbom-model-receipt-pipeline \
+    --overwrite
+```
+
+See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md)
+for the artifact chain and boundary rules.
+
+### 9. Run the harness (requires OPENAI_API_KEY)
 
 ```bash
 cd harness
