@@ -9,14 +9,14 @@
 ## One-Line Goal
 
 Refresh Harness docs, fixtures, and recipe tests so the existing generic
-Trust Basis gate/report layer carries the post-P45b Assay claim surface across
+Trust Basis gate/report layer carries the prepared Assay v3.7.0 claim surface across
 eval, decision, and inventory receipt families.
 
 ## Scope
 
 P46 is a compatibility refresh, not a feature slice.
 
-It aligns Harness with the post-P45b Assay Trust Basis surface:
+It aligns Harness with the prepared Assay v3.7.0 Trust Basis surface:
 
 - `assay.trust-basis.diff.v1`
 - Trust Card schema v5
@@ -37,14 +37,15 @@ the Assay importer command used by the recipe.
 
 ## Acceptance
 
-- Trust Basis contract fixtures use the post-P45b 10-claim surface.
+- Trust Basis contract fixtures use the prepared Assay v3.7.0 10-claim surface.
 - Promptfoo regression fixtures regress `external_eval_receipt_boundary_visible`.
 - OpenFeature regression fixtures regress `external_decision_receipt_boundary_visible`.
 - CycloneDX regression fixtures regress `external_inventory_receipt_boundary_visible`.
 - The same Harness gate/report behavior handles all three families.
-- Compatibility docs distinguish main-branch truth from future release-tag truth.
+- Compatibility docs distinguish release-prep truth from final release-tag truth.
 
 ## Release Note
 
-This branch targets Assay `main` after P45b. Release prep should replace that
-wording with the exact minimum Assay tag once the next Assay release is cut.
+This branch targets the prepared Assay `v3.7.0` release line. Once Assay
+`v3.7.0` is tagged, final release notes should replace release-prep wording with
+the exact minimum Assay tag.
