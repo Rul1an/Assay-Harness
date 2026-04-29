@@ -2,7 +2,7 @@
   "claims": [
     {
       "id": "bundle_verified",
-      "level": "absent",
+      "level": "verified",
       "source": "bundle_verification",
       "boundary": "bundle-wide",
       "note": null
@@ -50,6 +50,20 @@
       "note": null
     },
     {
+      "id": "external_decision_receipt_boundary_visible",
+      "level": "absent",
+      "source": "external_decision_receipt",
+      "boundary": "supported-external-decision-receipt-events-only",
+      "note": null
+    },
+    {
+      "id": "external_inventory_receipt_boundary_visible",
+      "level": "absent",
+      "source": "external_inventory_receipt",
+      "boundary": "supported-external-inventory-receipt-events-only",
+      "note": "Boundary regression fixture: no external inventory receipt was visible in the candidate Trust Basis."
+    },
+    {
       "id": "applied_pack_findings_present",
       "level": "absent",
       "source": "pack_execution_results",
@@ -58,4 +72,3 @@
     }
   ]
 }
-

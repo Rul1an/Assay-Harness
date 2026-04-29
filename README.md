@@ -187,6 +187,12 @@ ASSAY_BIN=/path/to/assay \
 See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md)
 for the artifact chain and boundary rules.
 
+These receipt recipes target the post-P45b Assay Trust Basis surface:
+`assay.trust-basis.diff.v1`, Trust Card schema v5, and the 10-claim eval /
+decision / inventory family set. See
+[docs/ASSAY_COMPATIBILITY.md](docs/ASSAY_COMPATIBILITY.md) for the exact
+main-vs-release boundary.
+
 ### 9. Run the harness (requires OPENAI_API_KEY)
 
 ```bash

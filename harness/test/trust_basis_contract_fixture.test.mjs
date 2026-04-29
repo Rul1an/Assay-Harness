@@ -49,7 +49,7 @@ test("contract fixture non-regression projects metadata-only drift without block
   assert.equal(result.report.schema, "assay.trust-basis.diff.v1");
   assert.equal(result.report.summary.has_regressions, false);
   assert.equal(result.report.summary.metadata_changes, 1);
-  assert.equal(result.report.summary.unchanged_claim_count, 7);
+  assert.equal(result.report.summary.unchanged_claim_count, 9);
   assert.match(readFileSync(summaryOut, "utf8"), /Metadata changes \| 1 \| no/);
   assert.match(junit, /failures="0"/);
   assert.match(junit, /metadata_changes.external_eval_receipt_boundary_visible/);
