@@ -62,7 +62,9 @@ test("CycloneDX ML-BOM recipe writes non-regression artifact chain under output 
     FAMILY_CLAIM_IDS.decision,
     "absent",
   );
-  assert.equal(JSON.parse(readFileSync(join(outDir, "trust-basis.diff.json"), "utf8")).summary.has_regressions, false);
+  const diff = JSON.parse(readFileSync(join(outDir, "trust-basis.diff.json"), "utf8"));
+  assert.equal(diff.summary.has_regressions, false);
+  assert.equal(diff.summary.unchanged_claim_count, 10);
 });
 
 test("CycloneDX ML-BOM recipe maps Trust Basis regression to recipe exit 1", () => {
@@ -87,6 +89,7 @@ test("CycloneDX ML-BOM recipe maps Trust Basis regression to recipe exit 1", () 
   assert.equal(result.status, 1, result.stderr);
   const diff = JSON.parse(readFileSync(join(outDir, "trust-basis.diff.json"), "utf8"));
   assert.equal(diff.summary.has_regressions, true);
+  assert.equal(diff.summary.unchanged_claim_count, 9);
   assert.equal(diff.regressed_claims[0]?.claim_id, FAMILY_CLAIM_IDS.inventory);
   assert.equal(existsSync(join(outDir, "baseline", "baseline.evidence.tar.gz")), true);
   assert.equal(existsSync(join(outDir, "candidate", "candidate.evidence.tar.gz")), false);
