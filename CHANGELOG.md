@@ -4,6 +4,11 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-29
+
+This patch release records the post-Assay-`v3.9.0` compatibility proof for the
+existing Assay Harness `v0.3.x` line.
+
 ### Compatibility
 
 - Verified the existing `v0.3.1` three-family Trust Basis recipes against the

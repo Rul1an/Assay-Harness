@@ -2,7 +2,7 @@
 
 > Last updated: 2026-04-29
 
-## v0.3.1 — shipped
+## v0.3.2 — shipped
 
 ### Assay v3.8.0 minimum, v3.9.0 compatibility proof
 - Harness docs target Assay `v3.8.0` as the minimum exact tag for the current compatibility line
@@ -11,6 +11,12 @@
 - This is release-truth and CI hardening only: no new Harness report semantics, Trust Basis semantics, or family-specific gate logic
 - The release gate passed in [`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)
 - The post-Assay-`v3.9.0` compatibility proof passed in [`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377)
+
+## v0.3.1 — shipped
+
+### Assay v3.8.0 proof-before-release
+- `v0.3.1` introduced the release-binary compatibility workflow and proved the
+  three-family recipes against Assay `v3.8.0` before tagging
 
 ## v0.3.0 — shipped
 

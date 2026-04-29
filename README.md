@@ -6,7 +6,7 @@ Compare baseline evidence against candidate evidence in every PR.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.3.1 | **Status:** active development
+> **Version:** 0.3.2 | **Status:** active development
 
 ---
 

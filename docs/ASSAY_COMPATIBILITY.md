@@ -5,7 +5,7 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.3.1` requires the released Assay `v3.8.0` contract line or
+Assay Harness `v0.3.2` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
 
@@ -37,7 +37,8 @@ gate for Harness `v0.3.1` passed against Assay `v3.8.0` in
 [`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)
 before the `v0.3.1` tag. The same recipes were verified after the Assay
 `v3.9.0` release in
-[`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377).
+[`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377)
+before the `v0.3.2` tag.
 
 ## Harness Boundary
 
