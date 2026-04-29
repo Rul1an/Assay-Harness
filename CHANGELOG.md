@@ -26,7 +26,8 @@ release-contract line.
 - **Real release-binary proof rail**: `Harness CI` now has a
   `workflow_dispatch` compatibility job that downloads a chosen Assay release
   binary, verifies its checksum, and runs the Promptfoo, OpenFeature, and
-  CycloneDX recipes against it. The default target is `v3.8.0`.
+  CycloneDX recipes against it. At the time of the `v0.3.1` release, the
+  default target was `v3.8.0`.
 - **Recipe artifact preservation**: the compatibility job uploads recipe output
   roots containing raw Trust Basis diff JSON, Markdown summaries, and JUnit XML.
 
