@@ -5,10 +5,9 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-This Harness release-prep branch targets the prepared Assay `v3.7.0` Trust Basis
-release line. Until the Assay tag is cut, the compatible source of truth is the
-Assay release-prep PR for `v3.7.0` plus any later commit that emits the same
-schema v5 / 10-claim Trust Basis surface.
+Assay Harness `v0.3.0` targets the released Assay `v3.7.0` Trust Basis surface.
+Later Assay binaries are compatible when they still emit the same schema v5 /
+10-claim Trust Basis surface.
 
 | Contract | Expected surface |
 |---|---|
@@ -17,10 +16,7 @@ schema v5 / 10-claim Trust Basis surface.
 | Trust Basis claim count | 10 frozen claims |
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 
-Once Assay `v3.7.0` is tagged, this document should be tightened from
-release-prep language to an exact minimum tag. Until then, use an Assay binary
-built from the `v3.7.0` release-prep branch or any later release candidate that
-emits the same schema v5 / 10-claim Trust Basis surface.
+Use Assay `v3.7.0` as the minimum exact tag for this compatibility line.
 
 ## Harness Boundary
 
