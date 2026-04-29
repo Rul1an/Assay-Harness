@@ -187,7 +187,8 @@ ASSAY_BIN=/path/to/assay \
 See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md)
 for the artifact chain and boundary rules.
 
-These receipt recipes target the released Assay `v3.8.0` Trust Basis surface:
+These receipt recipes require the released Assay `v3.8.0` Trust Basis surface
+or a later compatible release. They are verified through Assay `v3.9.0` for
 `assay.trust-basis.diff.v1`, Trust Card schema v5, and the 10-claim eval /
 decision / inventory family set, with machine-readable receipt contracts owned
 by Assay. See
