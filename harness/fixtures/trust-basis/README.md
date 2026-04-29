@@ -25,12 +25,15 @@ The checked-in raw diff artifacts are generated from those inputs by Assay:
 Markdown and JUnit outputs are derived projections only. The raw
 `assay.trust-basis.diff.v1` JSON remains the contract artifact.
 
+These fixtures target the post-P45b Assay Trust Basis surface: Trust Card
+schema v5 and 10 frozen claims.
+
 ## Provenance
 
 Generated with:
 
 - Assay source: `Rul1an/assay`
-- Assay commit: `1e225b0657f79873a704b9573eb602bb738d148f`
+- Assay commit: `787b95fffe2dfafeb77f69f75229b8c4e96c4fdf`
 - Command surface: `assay trust-basis diff --format json`
 
 ## Regeneration

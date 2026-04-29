@@ -44,6 +44,18 @@
       "note": "Promptfoo receipt boundary visible in the candidate run."
     },
     {
+      "id": "external_decision_receipt_boundary_visible",
+      "level": "absent",
+      "source": "external_decision_receipt",
+      "boundary": "supported-external-decision-receipt-events-only"
+    },
+    {
+      "id": "external_inventory_receipt_boundary_visible",
+      "level": "absent",
+      "source": "external_inventory_receipt",
+      "boundary": "supported-external-inventory-receipt-events-only"
+    },
+    {
       "id": "applied_pack_findings_present",
       "level": "absent",
       "source": "pack_execution_results",

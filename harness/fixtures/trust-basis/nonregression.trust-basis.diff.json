@@ -13,7 +13,7 @@
     "removed_claims": 0,
     "added_claims": 0,
     "metadata_changes": 1,
-    "unchanged_claim_count": 7,
+    "unchanged_claim_count": 9,
     "has_regressions": false
   },
   "regressed_claims": [],
@@ -33,5 +33,5 @@
       "note_changed": true
     }
   ],
-  "unchanged_claim_count": 7
+  "unchanged_claim_count": 9
 }

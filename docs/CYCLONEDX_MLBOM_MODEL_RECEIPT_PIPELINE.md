@@ -28,6 +28,11 @@ CycloneDX ML-BOM JSON
 For this recipe, the canonical outputs are the Trust Basis JSON files and raw
 `assay.trust-basis.diff.v1` JSON. Markdown and JUnit are projections only.
 
+On the post-P45b Assay Trust Basis surface, supported CycloneDX ML-BOM model
+receipt bundles can make `external_inventory_receipt_boundary_visible`
+visible. Eval and decision receipt claims stay absent for this recipe unless
+those receipt families are present in the Assay bundle.
+
 ## Run The Recipe
 
 ```bash
@@ -110,8 +115,8 @@ dataset, model-card, or compliance truth.
 Assay Harness consumes the Trust Basis diff contract that Assay emits and
 projects it for CI review without reinterpreting its semantics.
 
-P44 does not add an inventory-specific Trust Basis claim. It proves that
-CycloneDX model-component receipts created by Assay are bundleable,
-verifiable, Trust Basis-readable, and usable by the existing Harness
-gate/report layer.
-
+P44 originally proved that CycloneDX model-component receipts created by Assay
+were bundleable, verifiable, Trust Basis-readable, and usable by the existing
+Harness gate/report layer. With the post-P45b Assay surface, the same generic
+recipe can carry the inventory receipt boundary claim without Harness learning
+CycloneDX semantics.
