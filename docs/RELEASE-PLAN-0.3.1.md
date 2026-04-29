@@ -1,6 +1,6 @@
 # Release Plan — Assay Harness 0.3.1
 
-> **Status:** proposed
+> **Status:** released on 2026-04-29
 > **Companion Assay line:** Assay `v3.8.0`
 > **Purpose:** compatibility proof and release-truth sync after Assay receipt schema registry
 
@@ -47,6 +47,9 @@ Each recipe output root must include:
 - `trust-basis.diff.json`
 - `trust-basis-summary.md`
 - `junit-trust-basis.xml`
+
+Release gate result: passed in
+[`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901).
 
 ## Boundary
 

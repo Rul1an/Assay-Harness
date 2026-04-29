@@ -31,8 +31,10 @@ The default dispatch input is:
 assay_version = v3.8.0
 ```
 
-This job is the proof-before-release check for Harness `v0.3.1`. It should pass
-before tagging the Harness release.
+This job is the proof-before-release check for Harness `v0.3.1`. The release
+gate passed in
+[`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)
+before the `v0.3.1` tag.
 
 ## Harness Boundary
 
