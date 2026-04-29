@@ -5,9 +5,10 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-This Harness branch targets the post-P45b Assay Trust Basis surface on `main`,
-after the decision receipt boundary claim landed and before the next Assay
-release tag has been cut.
+This Harness release-prep branch targets the prepared Assay `v3.7.0` Trust Basis
+release line. Until the Assay tag is cut, the compatible source of truth is the
+Assay release-prep PR for `v3.7.0` plus any later commit that emits the same
+schema v5 / 10-claim Trust Basis surface.
 
 | Contract | Expected surface |
 |---|---|
@@ -16,10 +17,10 @@ release tag has been cut.
 | Trust Basis claim count | 10 frozen claims |
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 
-Release prep should replace the post-P45b wording with the exact minimum Assay
-tag once that tag exists. Until then, use an Assay binary built from `main`
-after P45b, or any later release candidate that emits the same schema v5 /
-10-claim Trust Basis surface.
+Once Assay `v3.7.0` is tagged, this document should be tightened from
+release-prep language to an exact minimum tag. Until then, use an Assay binary
+built from the `v3.7.0` release-prep branch or any later release candidate that
+emits the same schema v5 / 10-claim Trust Basis surface.
 
 ## Harness Boundary
 

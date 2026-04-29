@@ -4,14 +4,45 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
-### OpenFeature Decision Receipt Pipeline Recipe
+## [0.3.0] - 2026-04-29
 
-- **Runnable recipe**: `demo/run-openfeature-decision-receipt-pipeline.sh`
-  shows the downstream path: OpenFeature boolean EvaluationDetails JSONL ->
-  Assay decision receipts -> Trust Basis -> Harness gate/report.
-- **Boundary discipline**: Harness does not parse OpenFeature JSONL, inspect
-  decision receipt payloads, or decide whether flag evaluations are correct.
-  P42 adds no decision-specific Trust Basis claim.
+This companion release prepares Assay Harness for the Assay `v3.7.0`
+three-family evidence-portability line.
+
+### Three-Family Trust Basis Compatibility
+
+- **Compatibility refresh**: Trust Basis fixtures, recipe regression fixtures,
+  and recipe tests now target the prepared Assay `v3.7.0` surface:
+  `assay.trust-basis.diff.v1`, Trust Card schema v5, 10 frozen claims, and the
+  eval / decision / inventory receipt boundary claim families.
+- **Claim-family agnostic gate/report path**: Promptfoo, OpenFeature, and
+  CycloneDX recipes continue to use the same Harness Trust Basis gate/report
+  layer. Harness does not add family-specific branching, report semantics, or
+  gate semantics.
+- **Recipe compatibility docs**: `docs/ASSAY_COMPATIBILITY.md` records the
+  release-prep boundary and should be tightened to the exact Assay `v3.7.0` tag
+  once that tag is cut.
+
+### Receipt Pipeline Recipes
+
+- **Promptfoo**: recipe fixtures regress
+  `external_eval_receipt_boundary_visible` for Trust Basis regression examples.
+- **OpenFeature**: the decision receipt pipeline remains boolean
+  `EvaluationDetails` only and now aligns with the decision receipt boundary
+  claim.
+- **CycloneDX ML-BOM**: the model-component receipt pipeline remains one
+  selected `machine-learning-model` component only and now aligns with the
+  inventory receipt boundary claim.
+
+### Notes for Users
+
+- This is a companion Harness release, not an Assay release. Use it with an
+  Assay binary from the prepared `v3.7.0` release line, or a later binary that
+  emits the same Trust Basis diff schema v1 / Trust Card schema v5 / 10-claim
+  surface.
+- This is not Promptfoo, OpenFeature, or CycloneDX integration or partnership
+  support. These are copyable downstream recipes over existing Assay and Assay
+  Harness contracts.
 
 ## [0.2.0] - 2026-04-27
 
