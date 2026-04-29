@@ -27,10 +27,11 @@ OpenFeature EvaluationDetails JSONL
 For this recipe, the canonical outputs are the Trust Basis JSON files and raw
 `assay.trust-basis.diff.v1` JSON. Markdown and JUnit are projections only.
 
-On the released Assay v3.8.0 Trust Basis surface, supported OpenFeature
-decision receipt bundles can make `external_decision_receipt_boundary_visible`
-visible. Eval and inventory receipt claims stay absent for this recipe unless those
-receipt families are present in the Assay bundle.
+On the released Assay v3.8.0-or-later Trust Basis surface, verified through
+Assay v3.9.0, supported OpenFeature decision receipt bundles can make
+`external_decision_receipt_boundary_visible` visible. Eval and inventory receipt
+claims stay absent for this recipe unless those receipt families are present in
+the Assay bundle.
 
 ## Run The Recipe
 
@@ -119,6 +120,6 @@ without reinterpreting its semantics.
 
 P42 originally proved that OpenFeature decision receipts created by Assay were
 bundleable, verifiable, Trust Basis-readable, and usable by the existing
-Harness gate/report layer. With the released Assay v3.8.0 surface, the same generic
-recipe can carry the decision receipt boundary claim without Harness learning
-OpenFeature semantics.
+Harness gate/report layer. With the released Assay v3.8.0-or-later surface, the
+same generic recipe can carry the decision receipt boundary claim without
+Harness learning OpenFeature semantics.

@@ -5,9 +5,9 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.3.1` targets the released Assay `v3.8.0` contract line.
-Later Assay binaries are compatible when they still emit the same Trust Basis
-diff schema v1, Trust Card schema v5, and 10-claim Trust Basis surface.
+Assay Harness `v0.3.1` requires the released Assay `v3.8.0` contract line or
+later binaries that still emit the same Trust Basis diff schema v1, Trust Card
+schema v5, and 10-claim Trust Basis surface.
 
 | Contract | Expected surface |
 |---|---|
@@ -17,7 +17,8 @@ diff schema v1, Trust Card schema v5, and 10-claim Trust Basis surface.
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
-Use Assay `v3.8.0` as the minimum exact tag for this compatibility line.
+Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The
+latest release-binary proof for this line is Assay `v3.9.0`.
 
 ## Release-Binary Proof
 
@@ -28,13 +29,15 @@ the Promptfoo, OpenFeature, and CycloneDX recipes against that binary.
 The default dispatch input is:
 
 ```text
-assay_version = v3.8.0
+assay_version = v3.9.0
 ```
 
-This job is the proof-before-release check for Harness `v0.3.1`. The release
-gate passed in
+This job is the release-binary compatibility proof rail. The proof-before-release
+gate for Harness `v0.3.1` passed against Assay `v3.8.0` in
 [`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)
-before the `v0.3.1` tag.
+before the `v0.3.1` tag. The same recipes were verified after the Assay
+`v3.9.0` release in
+[`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377).
 
 ## Harness Boundary
 

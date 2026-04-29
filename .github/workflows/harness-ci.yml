@@ -10,7 +10,7 @@ on:
       assay_version:
         description: "Assay release tag to run receipt recipes against"
         required: false
-        default: "v3.8.0"
+        default: "v3.9.0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -413,7 +413,7 @@ jobs:
         run: |
           assay_version="${{ inputs.assay_version }}"
           if [ -z "$assay_version" ]; then
-            assay_version="v3.8.0"
+            assay_version="v3.9.0"
           fi
           case "$assay_version" in
             v*) ;;

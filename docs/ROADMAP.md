@@ -4,12 +4,13 @@
 
 ## v0.3.1 — shipped
 
-### Assay v3.8.0 compatibility proof
+### Assay v3.8.0 minimum, v3.9.0 compatibility proof
 - Harness docs target Assay `v3.8.0` as the minimum exact tag for the current compatibility line
-- `Harness CI` includes a manual release-binary compatibility job with `assay_version` input, defaulting to `v3.8.0`
+- `Harness CI` includes a manual release-binary compatibility job with `assay_version` input, defaulting to the latest proved Assay tag, currently `v3.9.0`
 - The compatibility job runs Promptfoo, OpenFeature, and CycloneDX recipes against a downloaded Assay release binary and uploads raw diff JSON, Markdown, and JUnit artifacts
 - This is release-truth and CI hardening only: no new Harness report semantics, Trust Basis semantics, or family-specific gate logic
 - The release gate passed in [`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)
+- The post-Assay-`v3.9.0` compatibility proof passed in [`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377)
 
 ## v0.3.0 — shipped
 

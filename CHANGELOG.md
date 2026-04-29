@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Compatibility
+
+- Verified the existing `v0.3.1` three-family Trust Basis recipes against the
+  released Assay `v3.9.0` binary in
+  [`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377).
+- Updated the manual release-binary compatibility workflow default to
+  `assay_version = v3.9.0`. Assay `v3.8.0` remains the minimum exact tag for
+  this compatibility line.
+
 ## [0.3.1] - 2026-04-29
 
 This compatibility release aligns Assay Harness with the Assay `v3.8.0`
@@ -17,7 +26,8 @@ release-contract line.
 - **Real release-binary proof rail**: `Harness CI` now has a
   `workflow_dispatch` compatibility job that downloads a chosen Assay release
   binary, verifies its checksum, and runs the Promptfoo, OpenFeature, and
-  CycloneDX recipes against it. The default target is `v3.8.0`.
+  CycloneDX recipes against it. At the time of the `v0.3.1` release, the
+  default target was `v3.8.0`.
 - **Recipe artifact preservation**: the compatibility job uploads recipe output
   roots containing raw Trust Basis diff JSON, Markdown summaries, and JUnit XML.
 
