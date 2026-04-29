@@ -4,6 +4,33 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-29
+
+This compatibility release aligns Assay Harness with the Assay `v3.8.0`
+release-contract line.
+
+### Release Compatibility
+
+- **Assay compatibility target**: docs now require Assay `>= v3.8.0` for this
+  line. Harness still consumes `assay.trust-basis.diff.v1`, Trust Card schema
+  v5, and the 10-claim eval / decision / inventory Trust Basis surface.
+- **Real release-binary proof rail**: `Harness CI` now has a
+  `workflow_dispatch` compatibility job that downloads a chosen Assay release
+  binary, verifies its checksum, and runs the Promptfoo, OpenFeature, and
+  CycloneDX recipes against it. The default target is `v3.8.0`.
+- **Recipe artifact preservation**: the compatibility job uploads recipe output
+  roots containing raw Trust Basis diff JSON, Markdown summaries, and JUnit XML.
+
+### Hygiene
+
+- Promptfoo recipe output-root safety now matches the OpenFeature and CycloneDX
+  recipes by refusing root, repo, harness, and home directory overwrite targets.
+- README wording now separates generic evidence SARIF export from Trust Basis
+  gate/report outputs. Trust Basis gate/report emits raw diff JSON, Markdown,
+  and JUnit, not SARIF.
+- Release docs explicitly keep this as a GitHub release / repository CLI line,
+  not an npm publication claim.
+
 ## [0.3.0] - 2026-04-29
 
 This companion release aligns Assay Harness with the released Assay `v3.7.0`

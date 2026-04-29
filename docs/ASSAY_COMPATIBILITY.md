@@ -5,9 +5,9 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.3.0` targets the released Assay `v3.7.0` Trust Basis surface.
-Later Assay binaries are compatible when they still emit the same schema v5 /
-10-claim Trust Basis surface.
+Assay Harness `v0.3.1` targets the released Assay `v3.8.0` contract line.
+Later Assay binaries are compatible when they still emit the same Trust Basis
+diff schema v1, Trust Card schema v5, and 10-claim Trust Basis surface.
 
 | Contract | Expected surface |
 |---|---|
@@ -15,8 +15,24 @@ Later Assay binaries are compatible when they still emit the same schema v5 /
 | Trust Card schema | `schema_version = 5` |
 | Trust Basis claim count | 10 frozen claims |
 | Receipt families visible in Trust Basis | eval, decision, inventory |
+| Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
-Use Assay `v3.7.0` as the minimum exact tag for this compatibility line.
+Use Assay `v3.8.0` as the minimum exact tag for this compatibility line.
+
+## Release-Binary Proof
+
+The `Harness CI` workflow has a manual `workflow_dispatch` compatibility job.
+It downloads the selected Assay release binary, verifies its checksum, and runs
+the Promptfoo, OpenFeature, and CycloneDX recipes against that binary.
+
+The default dispatch input is:
+
+```text
+assay_version = v3.8.0
+```
+
+This job is the proof-before-release check for Harness `v0.3.1`. It should pass
+before tagging the Harness release.
 
 ## Harness Boundary
 
@@ -28,3 +44,9 @@ Harness must not parse Promptfoo JSONL, OpenFeature JSONL, CycloneDX BOMs, or
 Assay receipt payloads. It must not compare model versions, flag decisions,
 dataset refs, assertion values, or domain-specific metadata. It only preserves,
 gates, and projects the raw Assay Trust Basis diff contract.
+
+## Distribution Boundary
+
+For this line, Assay Harness is a GitHub release and repository CLI. The npm
+package metadata is used for local Node tooling and release bookkeeping; it is
+not a claim that the Harness CLI is published to npm.
