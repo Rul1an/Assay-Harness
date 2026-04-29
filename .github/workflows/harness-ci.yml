@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      assay_version:
+        description: "Assay release tag to run receipt recipes against"
+        required: false
+        default: "v3.8.0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -385,3 +391,113 @@ jobs:
             echo "- valid: ${valid_events} events"
             echo "- failure: ${failure_events} events"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  assay-release-compatibility:
+    name: Assay Release Compatibility Recipes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+
+      - name: Install dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Resolve Assay release tag
+        run: |
+          assay_version="${{ inputs.assay_version }}"
+          if [ -z "$assay_version" ]; then
+            assay_version="v3.8.0"
+          fi
+          case "$assay_version" in
+            v*) ;;
+            *) assay_version="v${assay_version}" ;;
+          esac
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+
+      - name: Download Assay release binary
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/assay-release
+          cd /tmp/assay-release
+
+          asset="assay-${ASSAY_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          base_url="https://github.com/Rul1an/assay/releases/download/${ASSAY_VERSION}"
+          curl -fsSLO "${base_url}/${asset}"
+          curl -fsSLO "${base_url}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          tar -xzf "$asset"
+
+          assay_bin="/tmp/assay-release/assay-${ASSAY_VERSION}-x86_64-unknown-linux-gnu/assay"
+          test -x "$assay_bin"
+          echo "ASSAY_BIN=$assay_bin" >> "$GITHUB_ENV"
+          "$assay_bin" --version
+
+      - name: Run receipt recipes against Assay release
+        run: |
+          set -euo pipefail
+          root="$PWD"
+          results="$root/results/assay-release-compatibility"
+          mkdir -p "$results"
+
+          run_recipe() {
+            family="$1"
+            script="$2"
+            case_name="$3"
+            expected="$4"
+            out_dir="$results/${family}-${case_name}"
+
+            set +e
+            ASSAY_BIN="$ASSAY_BIN" "$script" \
+              --case "$case_name" \
+              --out-dir "$out_dir" \
+              --overwrite
+            status="$?"
+            set -e
+
+            if [ "$status" -ne "$expected" ]; then
+              echo "Expected ${script} ${case_name} to exit ${expected}, got ${status}" >&2
+              exit 1
+            fi
+
+            test -f "$out_dir/trust-basis.diff.json"
+            test -f "$out_dir/trust-basis-summary.md"
+            test -f "$out_dir/junit-trust-basis.xml"
+          }
+
+          run_recipe promptfoo demo/run-promptfoo-receipt-pipeline.sh nonregression 0
+          run_recipe promptfoo demo/run-promptfoo-receipt-pipeline.sh trust-basis-regression-fixture 1
+          run_recipe openfeature demo/run-openfeature-decision-receipt-pipeline.sh nonregression 0
+          run_recipe openfeature demo/run-openfeature-decision-receipt-pipeline.sh trust-basis-regression-fixture 1
+          run_recipe cyclonedx demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh nonregression 0
+          run_recipe cyclonedx demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh trust-basis-regression-fixture 1
+
+      - name: Compatibility summary
+        if: always()
+        run: |
+          {
+            echo "## Assay Release Compatibility Recipes"
+            echo ""
+            echo "**Assay release:** \`${ASSAY_VERSION:-unknown}\`"
+            echo ""
+            echo "| Family | Non-regression | Regression fixture |"
+            echo "|---|---:|---:|"
+            echo "| Promptfoo eval receipts | exit 0 | exit 1 |"
+            echo "| OpenFeature decision receipts | exit 0 | exit 1 |"
+            echo "| CycloneDX ML-BOM inventory receipts | exit 0 | exit 1 |"
+            echo ""
+            echo "Each recipe must produce \`trust-basis.diff.json\`, \`trust-basis-summary.md\`, and \`junit-trust-basis.xml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload recipe compatibility artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: assay-release-compatibility-recipes-${{ env.ASSAY_VERSION }}
+          path: results/assay-release-compatibility/**

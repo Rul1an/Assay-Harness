@@ -23,7 +23,7 @@ Promptfoo CLI JSONL
 For this recipe, the canonical outputs are the Trust Basis JSON files and raw
 `assay.trust-basis.diff.v1` JSON. Markdown and JUnit are projections only.
 
-On the released Assay v3.7.0 Trust Basis surface, supported Promptfoo receipt
+On the released Assay v3.8.0 Trust Basis surface, supported Promptfoo receipt
 bundles can make `external_eval_receipt_boundary_visible` visible. Decision and
 inventory receipt claims stay absent for this recipe unless those receipt
 families are present in the Assay bundle.

@@ -6,7 +6,7 @@ Compare baseline evidence against candidate evidence in every PR.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.3.0 | **Status:** active development
+> **Version:** 0.3.1 | **Status:** active development
 
 ---
 
@@ -187,9 +187,10 @@ ASSAY_BIN=/path/to/assay \
 See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md)
 for the artifact chain and boundary rules.
 
-These receipt recipes target the released Assay `v3.7.0` Trust Basis surface:
+These receipt recipes target the released Assay `v3.8.0` Trust Basis surface:
 `assay.trust-basis.diff.v1`, Trust Card schema v5, and the 10-claim eval /
-decision / inventory family set. See
+decision / inventory family set, with machine-readable receipt contracts owned
+by Assay. See
 [docs/ASSAY_COMPATIBILITY.md](docs/ASSAY_COMPATIBILITY.md) for the exact
 compatibility boundary.
 
@@ -207,7 +208,9 @@ npx tsx src/cli.ts run \
 
 ## CI Integration
 
-The GitHub Actions workflow runs 8 jobs on every push and PR:
+The regular GitHub Actions workflow runs 8 jobs on every push and PR. A manual
+`workflow_dispatch` compatibility job is available before releases to test the
+receipt recipes against a chosen Assay release binary.
 
 | Job | What it checks |
 |---|---|
@@ -218,10 +221,17 @@ The GitHub Actions workflow runs 8 jobs on every push and PR:
 | Policy Validation | allow/deny/require_approval decisions are correct |
 | Verify Evidence | Evidence files pass all contract categories |
 | **Regression Gate** | **Baseline vs candidate compare — blocks on regressions** |
-| Evidence Export | JUnit + SARIF generated, artifacts uploaded |
+| Evidence Export | Evidence JUnit + SARIF generated, artifacts uploaded |
+| Assay Release Compatibility Recipes | Manual proof against a chosen Assay release binary |
 
-Evidence artifacts and SARIF reports are uploaded on every run, including
-failures. The SARIF report appears in the GitHub Security tab.
+Evidence export can generate SARIF for generic evidence findings and upload it
+to the GitHub Security tab. Trust Basis gate/report output is different by
+design: the canonical artifact is raw `assay.trust-basis.diff.v1` JSON, with
+Markdown and JUnit projections only. Trust Basis recipes do not emit SARIF.
+
+For this line, Assay Harness is distributed as the repository CLI and GitHub
+release artifacts. The `harness/package.json` version tracks release metadata;
+it is not an npm publication claim.
 
 ---
 

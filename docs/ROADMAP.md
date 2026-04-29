@@ -2,7 +2,15 @@
 
 > Last updated: 2026-04-29
 
-## Now (v0.3.0) — shipped
+## Now (v0.3.1) — release prep
+
+### Assay v3.8.0 compatibility proof
+- Harness docs target Assay `v3.8.0` as the minimum exact tag for the current compatibility line
+- `Harness CI` includes a manual release-binary compatibility job with `assay_version` input, defaulting to `v3.8.0`
+- The compatibility job runs Promptfoo, OpenFeature, and CycloneDX recipes against a downloaded Assay release binary and uploads raw diff JSON, Markdown, and JUnit artifacts
+- This is release-truth and CI hardening only: no new Harness report semantics, Trust Basis semantics, or family-specific gate logic
+
+## v0.3.0 — shipped
 
 ### Three-family Trust Basis compatibility refresh
 - Harness recipes and fixtures target the released Assay v3.7.0 Trust Basis surface: `assay.trust-basis.diff.v1`, Trust Card schema v5, and 10 frozen claims
