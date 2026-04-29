@@ -2,13 +2,13 @@
 
 > Last updated: 2026-04-29
 
-## Release prep (v0.3.0)
+## Now (v0.3.0) — shipped
 
 ### Three-family Trust Basis compatibility refresh
-- Harness recipes and fixtures target the prepared Assay v3.7.0 Trust Basis surface: `assay.trust-basis.diff.v1`, Trust Card schema v5, and 10 frozen claims
+- Harness recipes and fixtures target the released Assay v3.7.0 Trust Basis surface: `assay.trust-basis.diff.v1`, Trust Card schema v5, and 10 frozen claims
 - Gate/report behavior remains claim-family agnostic across eval, decision, and inventory receipt boundary claims
 - See [P46 plan](PLAN-P46-THREE-FAMILY-TRUST-BASIS-COMPATIBILITY-REFRESH-2026Q2.md) for the refresh boundary
-- See [Assay compatibility](ASSAY_COMPATIBILITY.md) for the release-prep-vs-tag boundary
+- See [Assay compatibility](ASSAY_COMPATIBILITY.md) for the exact compatibility boundary
 
 ### CycloneDX ML-BOM model receipt pipeline recipe
 - `demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh` shows CycloneDX ML-BOM JSON -> Assay model-component receipts -> Trust Basis -> Harness gate/report
@@ -22,7 +22,7 @@
 - Recipe preserves the same 0 clean, 1 Trust Basis regression, 2+ recipe/tool/input error split
 - Harness still does not parse OpenFeature JSONL or decision receipt payloads
 
-## Now (v0.2.0) — shipped
+## v0.2.0 — shipped
 
 What's already built and working.
 

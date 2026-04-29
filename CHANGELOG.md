@@ -6,22 +6,21 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [0.3.0] - 2026-04-29
 
-This companion release prepares Assay Harness for the Assay `v3.7.0`
+This companion release aligns Assay Harness with the released Assay `v3.7.0`
 three-family evidence-portability line.
 
 ### Three-Family Trust Basis Compatibility
 
 - **Compatibility refresh**: Trust Basis fixtures, recipe regression fixtures,
-  and recipe tests now target the prepared Assay `v3.7.0` surface:
+  and recipe tests target the released Assay `v3.7.0` surface:
   `assay.trust-basis.diff.v1`, Trust Card schema v5, 10 frozen claims, and the
   eval / decision / inventory receipt boundary claim families.
 - **Claim-family agnostic gate/report path**: Promptfoo, OpenFeature, and
   CycloneDX recipes continue to use the same Harness Trust Basis gate/report
   layer. Harness does not add family-specific branching, report semantics, or
   gate semantics.
-- **Recipe compatibility docs**: `docs/ASSAY_COMPATIBILITY.md` records the
-  release-prep boundary and should be tightened to the exact Assay `v3.7.0` tag
-  once that tag is cut.
+- **Recipe compatibility docs**: `docs/ASSAY_COMPATIBILITY.md` records Assay
+  `v3.7.0` as the exact compatibility target for this release.
 
 ### Receipt Pipeline Recipes
 
@@ -36,10 +35,9 @@ three-family evidence-portability line.
 
 ### Notes for Users
 
-- This is a companion Harness release, not an Assay release. Use it with an
-  Assay binary from the prepared `v3.7.0` release line, or a later binary that
-  emits the same Trust Basis diff schema v1 / Trust Card schema v5 / 10-claim
-  surface.
+- This is a companion Harness release, not an Assay release. Use it with Assay
+  `v3.7.0`, or a later binary that emits the same Trust Basis diff schema v1 /
+  Trust Card schema v5 / 10-claim surface.
 - This is not Promptfoo, OpenFeature, or CycloneDX integration or partnership
   support. These are copyable downstream recipes over existing Assay and Assay
   Harness contracts.
