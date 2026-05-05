@@ -1,7 +1,7 @@
 """Pure unit tests for the policy-decision-v1 artifact builder.
 
 No claude-agent-sdk installation needed. Tests the hashing,
-Optional[tool_use_id] handling, and artifact shape in isolation.
+tool_use_id validation, and artifact shape in isolation.
 
     python3 -m unittest adapters.claude_agent_sdk.tests.test_evidence -v
 """
@@ -14,7 +14,6 @@ from adapters.claude_agent_sdk.evidence import (
     ARTIFACT_SCHEMA,
     FRAMEWORK_NAME,
     SURFACE,
-    UNRESOLVED_TOOL_USE_ID_PREFIX,
     build_policy_decision_artifact,
     hash_tool_input,
     resolve_tool_use_id,
@@ -45,28 +44,24 @@ class TestHashToolInput(unittest.TestCase):
 
 class TestResolveToolUseId(unittest.TestCase):
     def test_present_string_passed_through(self):
-        got, synth = resolve_tool_use_id("toolu_01ABC")
+        got = resolve_tool_use_id("toolu_01ABC")
         self.assertEqual(got, "toolu_01ABC")
-        self.assertFalse(synth)
 
-    def test_none_produces_flagged_fallback(self):
-        got, synth = resolve_tool_use_id(None)
-        self.assertTrue(got.startswith(UNRESOLVED_TOOL_USE_ID_PREFIX))
-        self.assertTrue(synth)
+    def test_present_string_is_trimmed(self):
+        got = resolve_tool_use_id("  toolu_01ABC  ")
+        self.assertEqual(got, "toolu_01ABC")
 
-    def test_empty_string_produces_fallback(self):
-        got, synth = resolve_tool_use_id("")
-        self.assertTrue(got.startswith(UNRESOLVED_TOOL_USE_ID_PREFIX))
-        self.assertTrue(synth)
+    def test_none_is_malformed_on_can_use_tool_path(self):
+        with self.assertRaisesRegex(ValueError, "tool_use_id is required"):
+            resolve_tool_use_id(None)
 
-    def test_whitespace_string_produces_fallback(self):
-        got, synth = resolve_tool_use_id("   ")
-        self.assertTrue(got.startswith(UNRESOLVED_TOOL_USE_ID_PREFIX))
-        self.assertTrue(synth)
+    def test_empty_string_is_malformed(self):
+        with self.assertRaisesRegex(ValueError, "tool_use_id is required"):
+            resolve_tool_use_id("")
 
-    def test_fallback_never_looks_like_sdk_id(self):
-        got, _ = resolve_tool_use_id(None)
-        self.assertFalse(got.startswith("toolu_"))
+    def test_whitespace_string_is_malformed(self):
+        with self.assertRaisesRegex(ValueError, "tool_use_id is required"):
+            resolve_tool_use_id("   ")
 
 
 class TestBuildArtifact(unittest.TestCase):
@@ -112,9 +107,9 @@ class TestBuildArtifact(unittest.TestCase):
         art = self._call(decision="allow")
         self.assertNotIn("decision_reason", art)
 
-    def test_tool_use_id_none_produces_flagged_fallback(self):
-        art = self._call(tool_use_id=None)
-        self.assertTrue(art["tool_use_id"].startswith(UNRESOLVED_TOOL_USE_ID_PREFIX))
+    def test_tool_use_id_none_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "tool_use_id is required"):
+            self._call(tool_use_id=None)
 
     def test_active_agent_ref_from_agent_id(self):
         art = self._call(active_agent_ref="subagent_xyz")

@@ -4,6 +4,13 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Claude Agent SDK Adapter
+
+- Tightened the Claude Agent SDK `can_use_tool` adapter after
+  [`anthropics/claude-agent-sdk-python#844`](https://github.com/anthropics/claude-agent-sdk-python/issues/844):
+  `tool_use_id` is now treated as required on that path, and missing or blank
+  values are rejected instead of replaced with a placeholder audit id.
+
 ## [0.3.2] - 2026-04-29
 
 This patch release records the post-Assay-`v3.9.0` compatibility proof for the

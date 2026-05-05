@@ -3,9 +3,7 @@
 Core responsibilities:
   1. Hash tool_input (raw args never enter the artifact).
   2. Map SDK permission results to the decision-v1 outcome field.
-  3. Handle the Optional[tool_use_id] caveat from FINDINGS.md:
-     synthesize a flagged fallback id, never silently invent an
-     SDK-shaped id.
+  3. Treat missing tool_use_id as malformed for the can_use_tool path.
   4. Shape the artifact to pass mapper/map_to_assay.py validation for
      framework=claude_agent_sdk, surface=per_call_permission.
 
@@ -22,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,7 +28,6 @@ ARTIFACT_SCHEMA = "assay.harness.policy-decision.v1"
 FRAMEWORK_NAME = "claude_agent_sdk"
 SURFACE = "per_call_permission"
 ALLOWED_DECISIONS = ("allow", "deny")
-UNRESOLVED_TOOL_USE_ID_PREFIX = "tool_use_id:unresolved:"
 
 
 def _canonical_json(value: Any) -> str:
@@ -47,17 +43,17 @@ def hash_tool_input(tool_input: dict[str, Any]) -> str:
     return _sha256(_canonical_json(tool_input))
 
 
-def resolve_tool_use_id(raw: str | None) -> tuple[str, bool]:
-    """Return (tool_use_id, was_synthesized).
+def resolve_tool_use_id(raw: str | None) -> str:
+    """Return the required can_use_tool tool_use_id.
 
-    Per probe FINDINGS.md Q1: ToolPermissionContext.tool_use_id is
-    Optional[str]. When absent we emit a synthetic id prefixed so it
-    never looks like an SDK-issued id. Callers should surface the
-    was_synthesized flag for logging.
+    Anthropic clarified in anthropics/claude-agent-sdk-python#844 that
+    tool_use_id is always populated on the can_use_tool control path.
+    The Python Optional typing exists for dataclass field-ordering
+    compatibility, not because normal can_use_tool callbacks omit it.
     """
     if isinstance(raw, str) and raw.strip():
-        return raw, False
-    return f"{UNRESOLVED_TOOL_USE_ID_PREFIX}{uuid.uuid4().hex}", True
+        return raw.strip()
+    raise ValueError("tool_use_id is required on the can_use_tool path")
 
 
 def build_policy_decision_artifact(
@@ -88,7 +84,7 @@ def build_policy_decision_artifact(
     if not isinstance(policy_snapshot_hash, str) or not policy_snapshot_hash.startswith("sha256:"):
         raise ValueError("policy_snapshot_hash must be a sha256: reference")
 
-    resolved_id, _synthesized = resolve_tool_use_id(tool_use_id)
+    resolved_id = resolve_tool_use_id(tool_use_id)
 
     artifact: dict[str, Any] = {
         "schema": ARTIFACT_SCHEMA,

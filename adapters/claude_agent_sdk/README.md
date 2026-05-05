@@ -6,16 +6,14 @@ A minimal external-consumer adapter around the Claude Agent SDK's
 the shape the Assay mapper already consumes.
 
 This adapter is deliberately tiny. It exists to prove the per-call
-policy seam carries the fields decision-v1 needs, and to surface the
-one defensive caveat (`Optional[tool_use_id]`) cleanly.
+policy seam carries the fields decision-v1 needs.
 
 ## What it does
 
 1. Wraps a consumer-supplied `decide(tool_name, tool_input) -> (decision, reason)`
    function in a `can_use_tool`-shaped async callback.
-2. On each invocation: hashes `tool_input`, resolves `tool_use_id` with
-   the None fallback, builds the artifact, calls the consumer's `emit`
-   function.
+2. On each invocation: hashes `tool_input`, requires the SDK-provided
+   `tool_use_id`, builds the artifact, calls the consumer's `emit` function.
 3. Returns the matching `PermissionResultAllow | PermissionResultDeny`
    to the SDK so the run continues.
 
@@ -25,16 +23,16 @@ permission-callback-shaped, not runtime-shaped.
 ## Acceptance criteria (phase 4, landed here)
 
 - [x] Wraps `can_use_tool` callback with decision-v1 emission.
-- [x] `tool_use_id` Optional caveat handled via flagged fallback prefix
-      `tool_use_id:unresolved:<uuid4>`, never a fake SDK-looking id.
+- [x] `tool_use_id` treated as required on the `can_use_tool` path per
+      anthropics/claude-agent-sdk-python#844; missing or blank values are
+      malformed rather than silently synthesized.
 - [x] `decision_reason` surfaced for deny cases via
       `PermissionResultDeny.message`.
 - [x] `context.agent_id` surfaces as optional `active_agent_ref`.
 - [x] Five fixtures in `fixtures/claude_agent_sdk/` (valid allow,
       failure deny-with-reason, three malformed), all verified against
       the mapper.
-- [x] Pure-unit tests for hashing, Optional[tool_use_id], and artifact
-      shape.
+- [x] Pure-unit tests for hashing, `tool_use_id` validation, and artifact shape.
 - [x] Runtime roundtrip tests that exercise the real SDK types and
       pipe output through the mapper. Skipped when SDK is absent.
 
@@ -55,25 +53,18 @@ This adapter deliberately does NOT:
   not in decision-v1)
 - claim that one callback defines a universal contract
 
-## Stability caveat: `tool_use_id` may be `None`
+## `tool_use_id` posture
 
-Per `probes/claude_agent_sdk/FINDINGS.md` Q1, the SDK's
-`ToolPermissionContext.tool_use_id` is typed `str | None`. When it
-arrives as None, the adapter synthesizes:
+`ToolPermissionContext.tool_use_id` is typed `str | None` in Python, but
+Anthropic clarified in
+[`anthropics/claude-agent-sdk-python#844`](https://github.com/anthropics/claude-agent-sdk-python/issues/844)
+that it is always populated on the `can_use_tool` control path. The Optional
+typing exists for dataclass field-ordering compatibility, not normal callback
+behavior.
 
-```
-tool_use_id:unresolved:<uuid4-hex>
-```
-
-This fallback is deliberately chosen so it can never be confused with
-an SDK-issued id (`toolu_*`). Consumers can grep their evidence stream
-for the `tool_use_id:unresolved:` prefix to find decisions where the
-SDK did not supply an id.
-
-We have not observed this in a live CLI run during the probe. If it
-never fires in practice, the caveat is harmless. If it does fire, the
-evidence stream remains correct and the fallback id is stable across
-the one callback invocation (artifact idempotency per call).
+The adapter therefore treats missing, empty, or whitespace-only `tool_use_id`
+as malformed. It does not synthesize placeholder audit ids in the normal
+evidence path.
 
 ## Running
 
@@ -133,5 +124,5 @@ fixtures/claude_agent_sdk/
 - `docs/outreach/CLAUDE_AGENT_SDK_PLAN.md` — lane strategy.
 - `docs/outreach/CLAUDE_AGENT_SDK_PREP.md` — seam and artifact shape.
 - `docs/outreach/CLAUDE_AGENT_SDK_MAPPER_SMOKECHECK.md` — mapper-fit findings.
-- `probes/claude_agent_sdk/FINDINGS.md` — probe results including the
-  `Optional[tool_use_id]` caveat.
+- `probes/claude_agent_sdk/FINDINGS.md` — probe results plus the later
+  #844 upstream clarification on required `tool_use_id`.

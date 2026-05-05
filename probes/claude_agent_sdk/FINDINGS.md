@@ -67,24 +67,24 @@ No correlation step against `ToolUseBlock` or `AIMessage` is needed.
 This is a materially cleaner seam than Deep Agents.
 
 **Usable for decision-v1?**
-Yes, with one defensive caveat.
+Yes.
 
-**If yes, under what caveat?**
+**Original probe caveat**
 `tool_use_id` is typed `str | None` on `ToolPermissionContext`. In the
 synthetic invocation we explicitly passed a value, but the SDK types
-permit None. The adapter must handle None defensively rather than
-assume presence.
+permit None.
 
-Concrete adapter rule: if `context.tool_use_id` is None, emit the
-artifact with a synthetic identifier prefixed `tool_use_id:unresolved:`
-and flag the event. Do not silently synthesize a fake id that looks
-like the SDK's format.
+**2026-05-05 upstream clarification**
+Anthropic answered
+[`anthropics/claude-agent-sdk-python#844`](https://github.com/anthropics/claude-agent-sdk-python/issues/844)
+and clarified that `tool_use_id` is never `None` on the `can_use_tool`
+path. The wire schema requires it, and CLI send sites populate either
+the real `toolu_...` id or a generated UUID for synthetic prompts. The
+Python Optional typing exists for dataclass field-ordering compatibility.
 
-This caveat is a legitimate single post angle later if the probe
-confirms real SDK invocations can produce None. The probe cannot
-confirm that without a live CLI run. Recorded as **open runtime
-question** for the adapter to log whenever it observes None in
-practice.
+Concrete adapter rule after #844: missing, empty, or whitespace-only
+`tool_use_id` is malformed on the `can_use_tool` evidence path. Do not
+synthesize placeholder audit ids.
 
 ---
 
@@ -144,8 +144,9 @@ correct: the SDK does not own the consumer's policy.
 
 All three questions are green.
 
-- **Q1: green with defensive caveat.** `tool_use_id` can in principle
-  be None. Adapter handles this without synthesizing SDK-looking ids.
+- **Q1: green.** `tool_use_id` is required on the `can_use_tool` path
+  per #844; adapter rejects missing values rather than synthesizing
+  audit ids.
 - **Q2: green.** Async callback, synchronous emission inside the body
   is fine.
 - **Q3: green.** Harness-side concern, SDK correctly uninvolved.
@@ -163,18 +164,17 @@ via public types.
    the decision, and calls `emit_fn(artifact_dict)`. The emit function
    is the consumer's evidence writer, typically writing JSON to disk
    or appending to a stream.
-3. The `tool_use_id` None case is surfaced by replacing with
-   `tool_use_id:unresolved:<uuid4>`, and the adapter README explicitly
-   documents this fallback so consumers know when it fires.
+3. Missing, empty, or whitespace-only `tool_use_id` is malformed for
+   the `can_use_tool` path. The adapter README documents this so
+   consumers do not treat placeholder ids as normal audit anchors.
 4. No subagent correlation logic is needed for the first adapter.
    `context.agent_id` maps to `active_agent_ref` when present, and
    subagent hierarchies are a non-goal.
 
 ## Out-of-scope questions surfaced by the probe (do not answer here)
 
-- Does `tool_use_id` ever actually come through as None in a live CLI
-  run? Can only be answered with a real SDK invocation, which requires
-  a CLI install and likely an API key.
+- Historical note: whether `tool_use_id` could arrive as None was
+  answered in #844. It should not happen on the `can_use_tool` path.
 - How does `updated_input` on `PermissionResultAllow` interact with the
   artifact's `arguments_hash`? If a consumer modifies the args before
   returning, should the hash reflect the original or the modified
@@ -188,6 +188,6 @@ All three deferred.
 ## One-line summary
 
 The `can_use_tool` callback carries everything needed for
-`policy-decision-v1` emission via public types, with one defensive
-caveat on `Optional[tool_use_id]`, and no runtime-side blockers for
-phase 4.
+`policy-decision-v1` emission via public types. `tool_use_id` is
+required on the `can_use_tool` path; missing values are malformed, not
+normal fallback cases.
