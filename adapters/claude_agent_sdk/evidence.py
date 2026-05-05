@@ -51,9 +51,11 @@ def resolve_tool_use_id(raw: str | None) -> str:
     The Python Optional typing exists for dataclass field-ordering
     compatibility, not because normal can_use_tool callbacks omit it.
     """
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
-    raise ValueError("tool_use_id is required on the can_use_tool path")
+    if isinstance(raw, str) and raw and raw == raw.strip():
+        return raw
+    raise ValueError(
+        "tool_use_id is required on the can_use_tool path and must not be rewritten"
+    )
 
 
 def build_policy_decision_artifact(

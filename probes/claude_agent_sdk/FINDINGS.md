@@ -82,9 +82,10 @@ path. The wire schema requires it, and CLI send sites populate either
 the real `toolu_...` id or a generated UUID for synthetic prompts. The
 Python Optional typing exists for dataclass field-ordering compatibility.
 
-Concrete adapter rule after #844: missing, empty, or whitespace-only
-`tool_use_id` is malformed on the `can_use_tool` evidence path. Do not
-synthesize placeholder audit ids.
+Concrete adapter rule after #844: missing, empty, whitespace-only, or
+whitespace-padded `tool_use_id` is malformed on the `can_use_tool` evidence
+path. Record the exact SDK identifier or fail closed; do not synthesize or
+rewrite audit ids.
 
 ---
 
@@ -145,8 +146,8 @@ correct: the SDK does not own the consumer's policy.
 All three questions are green.
 
 - **Q1: green.** `tool_use_id` is required on the `can_use_tool` path
-  per #844; adapter rejects missing values rather than synthesizing
-  audit ids.
+  per #844; adapter rejects missing or rewritten values rather than
+  synthesizing audit ids.
 - **Q2: green.** Async callback, synchronous emission inside the body
   is fine.
 - **Q3: green.** Harness-side concern, SDK correctly uninvolved.
@@ -164,9 +165,10 @@ via public types.
    the decision, and calls `emit_fn(artifact_dict)`. The emit function
    is the consumer's evidence writer, typically writing JSON to disk
    or appending to a stream.
-3. Missing, empty, or whitespace-only `tool_use_id` is malformed for
-   the `can_use_tool` path. The adapter README documents this so
-   consumers do not treat placeholder ids as normal audit anchors.
+3. Missing, empty, whitespace-only, or whitespace-padded `tool_use_id`
+   is malformed for the `can_use_tool` path. The adapter README
+   documents this so consumers do not treat placeholder or rewritten ids
+   as normal audit anchors.
 4. No subagent correlation logic is needed for the first adapter.
    `context.agent_id` maps to `active_agent_ref` when present, and
    subagent hierarchies are a non-goal.
@@ -189,5 +191,5 @@ All three deferred.
 
 The `can_use_tool` callback carries everything needed for
 `policy-decision-v1` emission via public types. `tool_use_id` is
-required on the `can_use_tool` path; missing values are malformed, not
-normal fallback cases.
+required on the `can_use_tool` path; missing or rewritten values are
+malformed, not normal fallback cases.

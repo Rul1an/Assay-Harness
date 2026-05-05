@@ -47,9 +47,9 @@ class TestResolveToolUseId(unittest.TestCase):
         got = resolve_tool_use_id("toolu_01ABC")
         self.assertEqual(got, "toolu_01ABC")
 
-    def test_present_string_is_trimmed(self):
-        got = resolve_tool_use_id("  toolu_01ABC  ")
-        self.assertEqual(got, "toolu_01ABC")
+    def test_present_string_with_surrounding_whitespace_is_malformed(self):
+        with self.assertRaisesRegex(ValueError, "must not be rewritten"):
+            resolve_tool_use_id("  toolu_01ABC  ")
 
     def test_none_is_malformed_on_can_use_tool_path(self):
         with self.assertRaisesRegex(ValueError, "tool_use_id is required"):

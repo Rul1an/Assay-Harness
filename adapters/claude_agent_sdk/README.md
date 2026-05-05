@@ -25,7 +25,7 @@ permission-callback-shaped, not runtime-shaped.
 - [x] Wraps `can_use_tool` callback with decision-v1 emission.
 - [x] `tool_use_id` treated as required on the `can_use_tool` path per
       anthropics/claude-agent-sdk-python#844; missing or blank values are
-      malformed rather than silently synthesized.
+      malformed rather than silently synthesized or rewritten.
 - [x] `decision_reason` surfaced for deny cases via
       `PermissionResultDeny.message`.
 - [x] `context.agent_id` surfaces as optional `active_agent_ref`.
@@ -62,9 +62,10 @@ that it is always populated on the `can_use_tool` control path. The Optional
 typing exists for dataclass field-ordering compatibility, not normal callback
 behavior.
 
-The adapter therefore treats missing, empty, or whitespace-only `tool_use_id`
-as malformed. It does not synthesize placeholder audit ids in the normal
-evidence path.
+The adapter therefore treats missing, empty, whitespace-only, or
+whitespace-padded `tool_use_id` values as malformed. It records the exact SDK
+identifier or fails closed; it does not synthesize placeholder audit ids or
+rewrite audit anchors in the normal evidence path.
 
 ## Running
 
