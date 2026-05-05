@@ -136,6 +136,7 @@ that are directly relevant when writing a post later. Do **not**
 ground the first post on any of these as "the seam is unclear."
 
 - [#376](https://github.com/anthropics/claude-agent-sdk-python/issues/376) closed — `tool_use_id` exposure on `can_use_tool`, the pattern that removes our Deep Agents correlation friction on this lane.
+- [#844](https://github.com/anthropics/claude-agent-sdk-python/issues/844) closed — `tool_use_id` is required on the `can_use_tool` path; the Python Optional typing is compatibility-only.
 - [#816](https://github.com/anthropics/claude-agent-sdk-python/issues/816) open — `permissionDecisionReason` not forwarded.
 - [#381](https://github.com/anthropics/claude-agent-sdk-python/issues/381) open — `updatedInput` in `PreToolUse` without decision.
 - [#469](https://github.com/anthropics/claude-agent-sdk-python/issues/469) open — control-protocol mismatch.
