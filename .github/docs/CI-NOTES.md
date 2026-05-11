@@ -20,8 +20,9 @@ in folklore.
 **Composite action `setup-node-harness`** combines the three repeated steps
 that every Node-flavoured job had: `actions/setup-node@v6` with the npm
 cache, the `Install dependencies` step running `npm ci` in `harness/`. The
-caller still does its own `actions/checkout` (composite actions can't checkout
-the repo that hosts them) and applies its own `persist-credentials: false`
+caller still does its own `actions/checkout` (a local composite action is
+only resolvable after the repo has been checked out, so the caller must
+perform that step itself) and applies its own `persist-credentials: false`
 per the workflow-security baseline.
 
 Net effect:
