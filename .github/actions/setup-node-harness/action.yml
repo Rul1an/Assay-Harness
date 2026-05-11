@@ -1,0 +1,28 @@
+name: Setup Node Harness
+description: |
+  setup-node@v6 with the npm cache + `npm ci` in the harness/ directory.
+
+  Composite local actions are only available after `actions/checkout` has run
+  in the calling job, so this action deliberately does NOT include checkout —
+  the caller is still responsible for that step (and for setting
+  `persist-credentials: false` per the workflow-security baseline).
+
+inputs:
+  node-version:
+    description: Node major version
+    required: false
+    default: "20"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: harness/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: harness
+      run: npm ci
