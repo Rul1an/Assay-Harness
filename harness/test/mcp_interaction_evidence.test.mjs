@@ -181,3 +181,84 @@ test("createMcpServer rejects empty or non-string command", () => {
     /non-empty string/,
   );
 });
+
+// --- allowUnsafeFullCommand escape hatch ---
+//
+// The strict denylist rejects whitespace, which breaks legitimate paths
+// such as "/Users/me/Application Support/...". The opt-out gives the
+// caller a way to accept that risk explicitly. The option is named
+// "allowUnsafeFullCommand" rather than "trustedCommand" so the risk is
+// visible at the call site — code review sees the word "unsafe" in the
+// option name, not a euphemism.
+
+test("path with space is REJECTED by default (strict mode)", () => {
+  // Whitespace is on the denylist for the default strict mode. This is
+  // the safe default — even a legitimate path-with-space is refused
+  // until the caller opts out explicitly.
+  assert.throws(
+    () => createMcpServer({
+      name: "x",
+      command: "/Users/me/Application Support/foo/bin",
+      args: [],
+    }),
+    /shell metacharacters/,
+  );
+});
+
+test("path with space is ACCEPTED with allowUnsafeFullCommand: true (caller-owned risk)", () => {
+  // This test verifies that the escape hatch genuinely bypasses the
+  // denylist. The path is legitimate (no actual injection); the caller
+  // accepts responsibility for that determination.
+  const server = createMcpServer({
+    name: "x",
+    command: "/Users/me/Application Support/foo/bin",
+    args: ["--mode", "stdio"],
+    allowUnsafeFullCommand: true,
+  });
+  assert.ok(server, "createMcpServer must return a server when opt-out is true");
+});
+
+test("allowUnsafeFullCommand: true ALSO bypasses the metachar denylist (caller-owned risk)", () => {
+  // Documents the full extent of the opt-out: not just whitespace, but
+  // every denylisted metacharacter. This is what makes the option
+  // "unsafe" — the caller MUST have validated the input upstream.
+  const server = createMcpServer({
+    name: "x",
+    // Contrived input that would explode under any normal validation;
+    // the test name documents that this is caller-owned risk.
+    command: "echo",
+    args: ["a;b", "$(c)", "`d`"],
+    allowUnsafeFullCommand: true,
+  });
+  assert.ok(server, "opt-out must bypass the entire denylist, not just whitespace");
+});
+
+test("allowUnsafeFullCommand: false behaves identically to omitted (strict default preserved)", () => {
+  // Explicit false must equal omitted — no implicit truthy coercion of
+  // the opt-out flag.
+  assert.throws(
+    () => createMcpServer({
+      name: "x",
+      command: "echo; rm -rf /",
+      args: [],
+      allowUnsafeFullCommand: false,
+    }),
+    /shell metacharacters/,
+  );
+});
+
+test("allowUnsafeFullCommand: true still requires args to be an array", () => {
+  // The args-shape check happens regardless of the opt-out flag, so
+  // calling with `args: undefined` still throws — just with the
+  // shape error rather than the metachar error.
+  assert.throws(
+    () => createMcpServer({
+      name: "x",
+      command: "echo",
+      // @ts-expect-error: deliberately violating the type for the test
+      args: undefined,
+      allowUnsafeFullCommand: true,
+    }),
+    /args must be an array/,
+  );
+});
