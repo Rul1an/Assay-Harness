@@ -4,13 +4,121 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
-### Claude Agent SDK Adapter
+## [0.4.0] - 2026-05-11
+
+This minor release rolls up two audit cycles (audit baseline `c2c869c` and
+follow-up audit at `31669dc`) plus the Claude Agent SDK adapter tightening
+that was previously sitting under `[Unreleased]`. Behaviour-affecting
+changes are listed first; refactor and CI posture below.
+
+The version bump from `0.3.2` to `0.4.0` is required: `PRODUCER_VERSION`
+is now sourced from `package.json` (see Evidence integrity below), so every
+emitted evidence event now stamps the package version. Continuing to ship
+`0.3.2` would leave the version-truth test asserting against stale state.
+
+### Evidence integrity
+
+- Recursive forbidden-key scan in `assay-harness verify`. Previous shallow
+  check only inspected keys directly under `event.data`; nested shapes
+  such as `data.observed.raw_run_state` slipped through. New scan walks
+  the full object graph (including array elements with bracket-index
+  paths) and emits the precise dotted path in error messages.
+- Two error-code classes replace the prior single `VERIFY_REJECTED_KEY`:
+  - `VERIFY_FORBIDDEN_RUNTIME_KEY` — raw SDK state
+    (`raw_run_state`, `history`, `newItems`, `lastResponseId`, `session`).
+  - `VERIFY_FORBIDDEN_PAYLOAD_KEY` — raw payload bodies
+    (`raw_arguments`, `raw_output`, `transcript`, `audio_blob`,
+    `session_recording`, `request_payload`, `response_payload`,
+    `raw_payload`). Keeps verifier-policy symmetric with the MCP
+    hardening tests that already reject these on the way in.
+- `PRODUCER_VERSION` in `harness/src/evidence.ts` is now sourced from
+  `package.json` via `readFileSync` + `JSON.parse` (Node 20-compatible;
+  the experimental `import ... with { type: "json" }` form was avoided).
+  A regression test pins `PRODUCER_VERSION === package.json.version`,
+  with semver-grammar validation that allows build metadata.
+- Dropped the unused `canonicalJson` helper; `sortedStringify` is the
+  live implementation.
+
+### MCP lane
+
+- `assay-harness mcp` now emits a real `assay.harness.mcp-interaction`
+  event per tool invocation (server_ref, tool_name, decision,
+  content-hashed args). The previous implementation built the artifact
+  but discarded it before emission.
+- `createMcpServer` validates `command` and every `args[]` element
+  against a shell-metacharacter denylist before concatenating into
+  `fullCommand` (OWASP MCP Top 10 — MCP05 command injection).
+- New opt-in `allowUnsafeFullCommand?: boolean` on `createMcpServer`
+  for legitimate paths with whitespace that the strict default
+  rejects (e.g. `/Users/me/Application Support/...`). Default
+  preserves the denylist. The option is named to make the risk
+  visible at the call site rather than reading as a blessed mode.
+- Renamed `argument_hash` → `arguments_hash` on the MCP-interaction
+  event for schema consistency with the existing `ApprovalInterruption`
+  shape and the `hashArguments` helper.
+
+### Policy and Trust Basis
+
+- Policy wildcard matcher escapes all 12 regex metacharacters before
+  building the matching pattern, not just `.` and `*`. Patterns like
+  `tool(name)?` no longer surprise authors by turning `?` into a
+  regex quantifier.
+- Policy YAML is validated against a `zod` schema at load time, with
+  precise field-path errors instead of the previous shallow truthiness
+  check.
+- `assay-harness trust-basis gate` adds a 30 s `spawnSync` timeout
+  and a 10 MiB per-stream `maxBuffer`, with explicit error
+  discrimination for `ETIMEDOUT` / `SIGTERM` and
+  `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`.
+
+### Claude Agent SDK adapter
 
 - Tightened the Claude Agent SDK `can_use_tool` adapter after
   [`anthropics/claude-agent-sdk-python#844`](https://github.com/anthropics/claude-agent-sdk-python/issues/844):
-  `tool_use_id` is now treated as required on that path, and missing, blank,
-  or whitespace-padded values are rejected instead of replaced with a
-  placeholder or rewritten audit id.
+  `tool_use_id` is now treated as required on that path, and missing,
+  blank, or whitespace-padded values are rejected instead of replaced
+  with a placeholder or rewritten audit id.
+
+### Workflow security and release posture
+
+- Workflow-level `permissions: {}` on all workflows, with each job
+  granting only the scope it needs. SARIF-uploading jobs get
+  `security-events: write`; release jobs get
+  `contents: write` + `id-token: write` + `attestations: write`.
+- `persist-credentials: false` on every `actions/checkout` invocation.
+- Template injection fix on the `workflow_dispatch` `assay_version`
+  input — now routed through env before reaching the shell.
+- Release workflow uses `gh release create` (with idempotent
+  fall-through to `gh release upload --clobber` on re-runs) instead
+  of `softprops/action-gh-release@v3`.
+- Release workflow no longer caches npm (`cache: npm` removed). For
+  release workflows the cache hit-rate is near-zero by construction
+  and the cache substrate adds supply-chain ambiguity at the moment
+  attestations are written.
+- Dependabot cooldown configured: 5-day default, 14-day major on npm.
+- New `.github/workflows/zizmor.yml` canary running on PRs, push to
+  main, and weekly, enforcing `--min-confidence high` with SARIF
+  upload to GitHub code scanning. Trust-anchored organisations
+  (`actions/*`, `github/*`, `peter-evans/*`) are accepted at
+  ref-pin via `.github/zizmor.yml`; everything else falls back to
+  the strict default.
+
+### CI plumbing
+
+- New `.github/actions/setup-node-harness` composite action wrapping
+  `setup-node@v6` + `npm ci`. Six jobs in `harness-ci.yml` now invoke
+  the composite, removing ~48 lines of duplicated YAML.
+- `.github/docs/CI-NOTES.md` documents what was investigated and
+  deliberately not changed (job consolidation, `node_modules`
+  caching, path-filtered skipping, bigger runners), each with a
+  "when to revisit" trigger.
+
+### Mapper
+
+- Documented the `PLACEHOLDER_*` constants in `mapper/map_to_assay.py`
+  as intentional. The mapper produces example envelopes; the
+  placeholder identity must not be silently replaced with a real
+  producer version.
 
 ## [0.3.2] - 2026-04-29
 
