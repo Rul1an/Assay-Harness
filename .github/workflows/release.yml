@@ -4,16 +4,19 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
+# Workflow default: no privileges. Each job grants the minimum it needs.
+# Release-write/attest scopes are job-level only.
+permissions: {}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -42,8 +45,14 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the release
+      id-token: write       # mint OIDC token for attestations
+      attestations: write   # upload build provenance attestation
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -82,12 +91,29 @@ jobs:
           cp fixtures/valid.assay.ndjson artifacts/
           cp fixtures/failure.assay.ndjson artifacts/
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
-          files: |
-            artifacts/*
+      - name: Create or update GitHub Release
+        # Use the GitHub CLI directly instead of a third-party action so the
+        # release-create surface uses only the workflow's existing
+        # GITHUB_TOKEN scope. Equivalent functionality to the prior
+        # softprops/action-gh-release call with generate_release_notes + files.
+        #
+        # Idempotent: if the release already exists (workflow re-run, manual
+        # tag re-push, or a previously created draft), upload the assets to
+        # the existing release with --clobber instead of failing.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; uploading assets to it."
+            gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              artifacts/*
+          fi
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4

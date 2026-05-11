@@ -1,0 +1,64 @@
+name: Zizmor Workflow Audit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+      - ".github/workflows/zizmor.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+  schedule:
+    # Weekly canary so upstream zizmor rules surface drift before it lands.
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: Audit workflow security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # SARIF upload to Code Scanning
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        run: |
+          set -euo pipefail
+          pipx install zizmor
+
+      - name: Run zizmor (high confidence)
+        # Capture findings without failing the job here, so the threshold
+        # step can fail visibly and the SARIF upload always runs.
+        # zizmor exits non-zero on findings; tolerate that for the SARIF
+        # capture phase and let the enforcement step be the gate.
+        run: |
+          set -uo pipefail
+          zizmor --min-confidence high --format sarif .github/workflows > zizmor.sarif || true
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        # Tolerate upload failures (e.g. fork PRs without
+        # security-events: write) so the threshold-enforcement step still
+        # runs and the gate signal is not silently swallowed.
+        continue-on-error: true
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+      - name: Enforce high-confidence threshold
+        # Always run so the gate cannot be skipped by a prior step failing.
+        if: always()
+        run: |
+          set -euo pipefail
+          # Re-run, fail on any high-confidence finding.
+          zizmor --min-confidence high .github/workflows
