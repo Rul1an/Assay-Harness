@@ -10,11 +10,26 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type { PolicyDecisionResult } from "./policy.js";
-// Read the package.json at compile time so the producer-version emitted on
+
+// Read the package.json at module-load time so the producer-version emitted on
 // every evidence event matches the installed harness release. Avoids the
 // hardcoded-version drift the audit at commit c2c869c flagged.
-import packageJson from "../package.json" with { type: "json" };
+//
+// Implementation note: readFileSync + JSON.parse rather than
+// `import packageJson from "../package.json" with { type: "json" }`. The
+// import-attribute form is still experimental on Node 20.x (the runtime
+// CI pins) and would emit a runtime warning; the readFileSync form works
+// on every supported Node release without flags.
+const packageJson = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../package.json"),
+    "utf-8",
+  ),
+) as { version: string };
 
 // --- Types ---
 

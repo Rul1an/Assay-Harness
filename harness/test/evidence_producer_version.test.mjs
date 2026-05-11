@@ -12,12 +12,17 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import { PRODUCER_VERSION } from "../dist/evidence.js";
 
-const harnessRoot = join(import.meta.dirname, "..");
+// Resolve harness/ from this test file's URL. fileURLToPath + dirname
+// works on every supported Node version (matches the convention in
+// trust_basis_*.test.mjs and avoids the Node 20.11+-only
+// `import.meta.dirname` shortcut).
+const harnessRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 test("evidence PRODUCER_VERSION matches package.json version", () => {
   const pkg = JSON.parse(readFileSync(join(harnessRoot, "package.json"), "utf8"));
@@ -31,10 +36,13 @@ test("evidence PRODUCER_VERSION matches package.json version", () => {
 test("evidence PRODUCER_VERSION is a non-empty semver-like string", () => {
   assert.ok(typeof PRODUCER_VERSION === "string", "PRODUCER_VERSION must be a string");
   assert.ok(PRODUCER_VERSION.length > 0, "PRODUCER_VERSION must not be empty");
+  // semver.org grammar: <major>.<minor>.<patch>[-pre][+build]
+  // Both pre-release and build-metadata identifiers are dot-separated
+  // sequences of [0-9A-Za-z-].
   assert.match(
     PRODUCER_VERSION,
-    /^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/,
-    `PRODUCER_VERSION must look like a semver, got: ${PRODUCER_VERSION}`,
+    /^\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/,
+    `PRODUCER_VERSION must look like a semver (including optional build metadata), got: ${PRODUCER_VERSION}`,
   );
 });
 
