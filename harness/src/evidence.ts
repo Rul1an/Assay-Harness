@@ -11,6 +11,10 @@
 
 import { createHash } from "node:crypto";
 import type { PolicyDecisionResult } from "./policy.js";
+// Read the package.json at compile time so the producer-version emitted on
+// every evidence event matches the installed harness release. Avoids the
+// hardcoded-version drift the audit at commit c2c869c flagged.
+import packageJson from "../package.json" with { type: "json" };
 
 // --- Types ---
 
@@ -97,17 +101,20 @@ export interface AssayEvidenceEvent {
 // --- Constants ---
 
 const PRODUCER = "assay-harness";
-const PRODUCER_VERSION = "0.1.0";
+/**
+ * Producer version stamped on every evidence event. Sourced from the package's
+ * own package.json so the value tracks the harness release that emitted the
+ * evidence, not a hardcoded literal.
+ *
+ * Exported so tests can verify version-truth without re-parsing the package.
+ */
+export const PRODUCER_VERSION: string = packageJson.version;
 const SOURCE_PREFIX = "urn:assay:harness";
 
 // --- Hashing ---
 
 function sha256(input: string): string {
   return "sha256:" + createHash("sha256").update(input, "utf-8").digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, Object.keys(value as Record<string, unknown>).sort());
 }
 
 function sortedStringify(value: unknown): string {

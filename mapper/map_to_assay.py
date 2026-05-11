@@ -12,6 +12,19 @@ from typing import Any, Optional
 
 
 # --- Constants ---
+#
+# The `PLACEHOLDER_*` constants below are intentional, not drift. This module
+# is an example mapper that produces *placeholder* Assay envelopes from a
+# harness approval-interruption artifact. The envelopes are not signed by a
+# production producer and must not be interpreted as Assay-released evidence.
+#
+# When the harness becomes a real Assay receipt producer, replace these with
+# real values sourced from the package version and the producing system's
+# identity. Until then, keep the `PLACEHOLDER_*` naming so that downstream
+# verifiers can distinguish example envelopes from production receipts.
+#
+# Auditors and contract tests rely on these specific literal values to detect
+# accidental drift. Do not change them without updating the contract fixtures.
 
 PLACEHOLDER_EVENT_TYPE_PREFIX = "example.placeholder.harness"
 PLACEHOLDER_SOURCE = "urn:example:assay:external:harness:approval-interruption"
