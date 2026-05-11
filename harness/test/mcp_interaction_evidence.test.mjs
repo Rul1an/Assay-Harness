@@ -67,7 +67,7 @@ test("mcp-interaction event carries server_ref, tool_name, decision, timestamp",
   );
 });
 
-test("argument_hash is content-addressed and only present when args are provided", () => {
+test("arguments_hash is content-addressed and only present when args are provided", () => {
   const withArgsCfg = buildConfig({});
   const noArgsCfg = buildConfig({});
 
@@ -78,20 +78,20 @@ test("argument_hash is content-addressed and only present when args are provided
   );
   const { evidenceEvent: noArgs } = evaluateMcpCall(noArgsCfg, "safe_tool");
 
-  assert.equal(typeof withArgs.data.argument_hash, "string");
+  assert.equal(typeof withArgs.data.arguments_hash, "string");
   assert.equal(
-    withArgs.data.argument_hash,
+    withArgs.data.arguments_hash,
     hashArguments({ path: "/tmp/x", flag: true }),
-    "argument_hash must match hashArguments output for identical inputs",
+    "arguments_hash must match hashArguments output for identical inputs",
   );
   assert.equal(
-    noArgs.data.argument_hash,
+    noArgs.data.arguments_hash,
     undefined,
-    "argument_hash must be absent when no args are provided",
+    "arguments_hash must be absent when no args are provided",
   );
 });
 
-test("argument_hash carries the raw arguments only as a content hash, not the values", () => {
+test("arguments_hash carries the raw arguments only as a content hash, not the values", () => {
   const config = buildConfig({});
   const sensitive = { api_key: "sk-secret-do-not-leak", path: "/etc/passwd" };
 
@@ -109,8 +109,8 @@ test("argument_hash carries the raw arguments only as a content hash, not the va
     "raw path value must not appear in the emitted evidence event",
   );
   assert.ok(
-    evidenceEvent.data.argument_hash.startsWith("sha256:"),
-    "argument_hash must be a sha256: ref",
+    evidenceEvent.data.arguments_hash.startsWith("sha256:"),
+    "arguments_hash must be a sha256: ref",
   );
 });
 
