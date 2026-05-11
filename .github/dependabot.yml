@@ -4,6 +4,11 @@ updates:
     directory: "harness/"
     schedule:
       interval: "weekly"
+    # 5-day cooldown so freshly published versions ripen before we ingest.
+    # Mitigates flash-spread compromise vectors on the npm ecosystem.
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
     groups:
       npm-minor-patch:
         update-types:
@@ -14,6 +19,9 @@ updates:
     directory: ".github/workflows/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
     groups:
       actions:
         patterns:

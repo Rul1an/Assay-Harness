@@ -16,12 +16,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+# Default to no privileges at workflow level; jobs grant the minimum they need.
+permissions: {}
+
 jobs:
   node-tests:
     name: Node Tests + Type Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -44,8 +51,12 @@ jobs:
   contract-validation:
     name: Contract Validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -89,8 +100,12 @@ jobs:
   golden-contracts:
     name: Golden Contract Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -102,8 +117,12 @@ jobs:
   hardening:
     name: Hardening Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -125,8 +144,12 @@ jobs:
   policy-validation:
     name: Policy Validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -164,9 +187,13 @@ jobs:
   verify-evidence:
     name: Verify Evidence
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: contract-validation
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -189,9 +216,13 @@ jobs:
   regression-gate:
     name: Regression Gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [contract-validation, verify-evidence]
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -323,9 +354,14 @@ jobs:
   evidence-export:
     name: Evidence Export
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     needs: [contract-validation, verify-evidence, regression-gate]
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -396,8 +432,12 @@ jobs:
     name: Assay Release Compatibility Recipes
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -410,8 +450,12 @@ jobs:
         run: npm ci
 
       - name: Resolve Assay release tag
+        # The workflow_dispatch input is read via env to prevent shell
+        # template injection (zizmor: template-injection).
+        env:
+          ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
         run: |
-          assay_version="${{ inputs.assay_version }}"
+          assay_version="$ASSAY_VERSION_INPUT"
           if [ -z "$assay_version" ]; then
             assay_version="v3.9.0"
           fi

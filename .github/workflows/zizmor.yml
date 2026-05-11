@@ -1,0 +1,54 @@
+name: Zizmor Workflow Audit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+      - ".github/workflows/zizmor.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+  schedule:
+    # Weekly canary so upstream zizmor rules surface drift before it lands.
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: Audit workflow security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # SARIF upload to Code Scanning
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        run: |
+          set -euo pipefail
+          pipx install zizmor
+
+      - name: Run zizmor (high confidence)
+        run: |
+          set -euo pipefail
+          zizmor --min-confidence high --format sarif .github/workflows > zizmor.sarif
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+      - name: Enforce high-confidence threshold
+        run: |
+          set -euo pipefail
+          # Re-run, fail on any high-confidence finding.
+          zizmor --min-confidence high .github/workflows
