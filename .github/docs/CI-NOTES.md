@@ -37,6 +37,26 @@ Net effect:
 their setup shapes diverge slightly (no `npm ci` afterwards, or release-only
 context). Consolidating those was not worth the asymmetry.
 
+### Release workflow does not use the npm cache
+
+`release.yml` deliberately drops `cache: npm` from both its `setup-node`
+steps. Two reasons:
+
+1. **Cache hit-rate is near-zero by construction.** A release workflow
+   runs once per tag push. The previous run was on a different tag —
+   often weeks earlier — and the cache key (derived from the lockfile)
+   may already have rotated.
+2. **Supply-chain surface.** The `actions/cache` substrate is itself a
+   target: cache-poisoning research has shown an attacker who can land
+   a poisoned cache entry under a key the release workflow loads could
+   substitute dependency tarballs at release time. For a workflow that
+   produces signed release artifacts and writes attestations, the
+   minute saved per release is not worth the extra trust dependency.
+
+`harness-ci.yml` keeps `cache: npm` via the composite action because it
+runs on every PR (high cache hit-rate, low integrity stakes — pre-merge
+artifacts are not signed/published).
+
 ## What was investigated and not done
 
 ### 1. Job consolidation
