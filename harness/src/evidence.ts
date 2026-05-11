@@ -53,6 +53,27 @@ export interface ApprovalInterruptionArtifact {
   metadata_ref?: string;
 }
 
+/**
+ * Bounded MCP interaction artifact.
+ *
+ * Captures what a single MCP tool call attempted and what the harness decided,
+ * without retaining the raw arguments, raw output, or the server's payload.
+ *
+ * Required fields are the minimum needed for audit/replay: which server,
+ * which tool, what the policy verdict was, when. `arguments_hash` and
+ * `call_id_ref` are surfaced when the caller has them so a future verifier
+ * can chain back to the original interaction without exposing payload.
+ */
+export interface McpInteractionArtifact {
+  server_ref: string;
+  tool_name: string;
+  decision: string;
+  timestamp: string;
+  approval_ref?: string;
+  call_id_ref?: string;
+  arguments_hash?: string;
+}
+
 export interface PolicyDecisionArtifact {
   decision: string;
   policy_id: string;
@@ -234,6 +255,21 @@ export class EvidenceCompiler {
 
   emitApprovalInterruption(artifact: ApprovalInterruptionArtifact): AssayEvidenceEvent {
     return this.emit("assay.harness.approval-interruption", artifact as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Emit a bounded MCP interaction event. Companion to `emitPolicyDecision`:
+   * the policy event records that the harness made a decision, this event
+   * records the MCP-specific context (which server, which tool, content-hash
+   * of the args). Both are useful in audit; neither carries raw payload.
+   *
+   * Returns the emitted event so callers can read its id/timestamp.
+   */
+  emitMcpInteraction(artifact: McpInteractionArtifact): AssayEvidenceEvent {
+    return this.emit(
+      "assay.harness.mcp-interaction",
+      artifact as unknown as Record<string, unknown>,
+    );
   }
 
   emitDeniedAction(artifact: DeniedActionArtifact): AssayEvidenceEvent {
