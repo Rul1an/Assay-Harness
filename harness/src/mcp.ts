@@ -9,7 +9,7 @@
  * - server_ref (which server)
  * - tool_name (which tool)
  * - decision (allow/deny/require_approval)
- * - argument_hash (content-addressed, not raw args)
+ * - arguments_hash (content-addressed, not raw args)
  *
  * NOT captured: full MCP payloads, server state, transport details.
  */
@@ -123,7 +123,7 @@ export function evaluateMcpCall(
   };
 
   if (args) {
-    mcpArtifact.argument_hash = hashArguments(args);
+    mcpArtifact.arguments_hash = hashArguments(args);
   }
   if (callIdRef) {
     mcpArtifact.call_id_ref = callIdRef;

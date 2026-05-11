@@ -60,7 +60,7 @@ export interface ApprovalInterruptionArtifact {
  * without retaining the raw arguments, raw output, or the server's payload.
  *
  * Required fields are the minimum needed for audit/replay: which server,
- * which tool, what the policy verdict was, when. `argument_hash` and
+ * which tool, what the policy verdict was, when. `arguments_hash` and
  * `call_id_ref` are surfaced when the caller has them so a future verifier
  * can chain back to the original interaction without exposing payload.
  */
@@ -71,7 +71,7 @@ export interface McpInteractionArtifact {
   timestamp: string;
   approval_ref?: string;
   call_id_ref?: string;
-  argument_hash?: string;
+  arguments_hash?: string;
 }
 
 export interface PolicyDecisionArtifact {
