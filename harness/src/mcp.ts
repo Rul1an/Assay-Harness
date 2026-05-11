@@ -76,14 +76,37 @@ export function createMcpServer(config: {
   name: string;
   command: string;
   args: string[];
+  /**
+   * Opt-in escape hatch: skip the shell-metacharacter denylist.
+   *
+   * Caller takes responsibility for ensuring `command` and every element
+   * of `args` are safe to concatenate into a shell-interpreted string.
+   * Use only when `command`/`args` come from a trusted, pre-validated
+   * source (config schema, hard-coded path table, allowlist).
+   *
+   * Named `allowUnsafeFullCommand` rather than `trustedCommand` so the
+   * risk surface is visible at the call site: code review sees the word
+   * "unsafe" in the option name, not a euphemism that reads as blessed.
+   *
+   * Typical legitimate use: a path with spaces such as
+   * `/Users/me/Application Support/foo/bin` that the default denylist
+   * (which rejects whitespace) would otherwise refuse.
+   *
+   * TODO: remove this escape hatch once the OpenAI Agents SDK exposes
+   * an argv-array form of `MCPServerStdio` and shell concatenation is
+   * no longer required.
+   */
+  allowUnsafeFullCommand?: boolean;
 }): MCPServerStdio {
-  validateCommandPart(config.command, "createMcpServer: command");
   if (!Array.isArray(config.args)) {
     throw new Error("createMcpServer: args must be an array of strings");
   }
-  config.args.forEach((arg, i) =>
-    validateCommandPart(arg, `createMcpServer: args[${i}]`),
-  );
+  if (config.allowUnsafeFullCommand !== true) {
+    validateCommandPart(config.command, "createMcpServer: command");
+    config.args.forEach((arg, i) =>
+      validateCommandPart(arg, `createMcpServer: args[${i}]`),
+    );
+  }
   return new MCPServerStdio({
     name: config.name,
     fullCommand: `${config.command} ${config.args.join(" ")}`,
