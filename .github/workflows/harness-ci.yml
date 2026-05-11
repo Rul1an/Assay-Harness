@@ -30,15 +30,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Type check
         working-directory: harness
@@ -128,15 +120,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install Node dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Run hardening tests
         run: python3 -m unittest tests.test_hardening -v
@@ -151,15 +135,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Validate policy - allowed tool
         working-directory: harness
@@ -195,15 +171,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Verify valid evidence (all categories)
         working-directory: harness
@@ -224,15 +192,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Run compare
         id: compare
@@ -439,15 +399,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-
-      - name: Install dependencies
-        working-directory: harness
-        run: npm ci
+      - uses: ./.github/actions/setup-node-harness
 
       - name: Resolve Assay release tag
         # The workflow_dispatch input is read via env to prevent shell
