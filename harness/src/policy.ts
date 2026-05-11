@@ -9,8 +9,27 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import yaml from "js-yaml";
+import { z } from "zod";
 
 export type PolicyDecision = "allow" | "deny" | "require_approval";
+
+// Runtime schema for the on-disk policy.yaml. yaml.load returns `unknown`-shaped
+// data so a `as PolicyConfig` cast alone is unsafe: a malformed YAML file would
+// flow into `evaluateTool` and only fail at the .deny array iteration. Zod
+// validates the structure at load time and produces a precise error path.
+const PolicySectionSchema = z.object({
+  allow: z.array(z.string()).default([]),
+  deny: z.array(z.string()).default([]),
+  require_approval: z.array(z.string()).default([]),
+});
+
+const PolicyConfigSchema = z.object({
+  version: z.string().min(1, "version must be a non-empty string"),
+  name: z.string().min(1, "name must be a non-empty string"),
+  description: z.string().optional(),
+  tools: PolicySectionSchema,
+  mcp: PolicySectionSchema.optional(),
+});
 
 export interface PolicyRule {
   pattern: string;
@@ -43,10 +62,30 @@ export interface PolicyDecisionResult {
 }
 
 /**
+ * Convert a glob-style policy pattern into an anchored RegExp.
+ *
+ * Escapes every regex metacharacter in the source pattern, then re-introduces
+ * the asterisk as a `.*` wildcard. This matters because a policy author who
+ * writes a literal `[`, `(`, `?`, `{`, `|`, etc. in a tool name expects it to
+ * match that literal character, not act as regex syntax. Without full
+ * escaping, `tool(name)?` becomes `/^tool(name)?$/` and the `?` makes the
+ * group optional — surprising the policy author and potentially matching
+ * tool names they intended to reject.
+ */
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Re-introduce the asterisk as a wildcard now that all metacharacters,
+  // including the asterisk itself, have been neutralised.
+  const withGlob = escaped.replace(/\\\*/g, ".*");
+  return new RegExp("^" + withGlob + "$");
+}
+
+/**
  * Match a tool name against a pattern. Supports:
  * - exact match: "read_file"
- * - wildcard suffix: "*.readonly"
- * - wildcard prefix: "mcp.*"
+ * - wildcard suffix: "*.readonly"        (string endsWith — no regex)
+ * - wildcard prefix: "mcp.*"             (string startsWith — no regex)
+ * - mid-pattern wildcard: "tool.*.read"  (regex, with full escaping)
  */
 function matchPattern(toolName: string, pattern: string): boolean {
   if (pattern === toolName) return true;
@@ -57,10 +96,7 @@ function matchPattern(toolName: string, pattern: string): boolean {
     return toolName.startsWith(pattern.slice(0, -1));
   }
   if (pattern.includes("*")) {
-    const regex = new RegExp(
-      "^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$"
-    );
-    return regex.test(toolName);
+    return globToRegex(pattern).test(toolName);
   }
   return false;
 }
@@ -80,11 +116,18 @@ export class PolicyEngine {
 
   static fromFile(path: string): PolicyEngine {
     const raw = readFileSync(path, "utf-8");
-    const config = yaml.load(raw) as PolicyConfig;
-    if (!config.version || !config.name || !config.tools) {
-      throw new Error(`Invalid policy file: missing required fields in ${path}`);
+    const parsed = yaml.load(raw);
+    const result = PolicyConfigSchema.safeParse(parsed);
+    if (!result.success) {
+      // zod includes the exact field path; surface it so a policy author can
+      // see where their YAML drifted from the schema instead of getting a
+      // generic "missing required fields" message.
+      const issues = result.error.issues
+        .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+        .join("; ");
+      throw new Error(`Invalid policy file ${path}: ${issues}`);
     }
-    return new PolicyEngine(config, raw);
+    return new PolicyEngine(result.data, raw);
   }
 
   /**
