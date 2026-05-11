@@ -127,6 +127,84 @@ interface VerifyError {
   message: string;
 }
 
+/**
+ * Raw SDK state that must never appear in any evidence event.
+ *
+ * Captures the OpenAI Agents SDK RunState and adjacent conversational
+ * state that would leak prompt history, model session tokens, or other
+ * runtime internals into a bundle.
+ */
+const FORBIDDEN_RUNTIME_KEYS: ReadonlySet<string> = new Set([
+  "raw_run_state",
+  "history",
+  "newItems",
+  "lastResponseId",
+  "session",
+]);
+
+/**
+ * Raw payload bodies that must stay content-addressed (`*_hash` /
+ * `*_ref` fields) rather than embedded as plaintext in evidence.
+ *
+ * The verifier policy is symmetric to the harness emitter policy: the
+ * MCP hardening tests reject these on the way in; the verifier rejects
+ * them on the way out of bundle inspection. Keeps fixture-policy and
+ * verifier-policy aligned.
+ */
+const FORBIDDEN_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  "raw_arguments",
+  "raw_output",
+  "transcript",
+  "audio_blob",
+  "session_recording",
+  "request_payload",
+  "response_payload",
+  "raw_payload",
+]);
+
+/**
+ * Walk an object graph and report any forbidden key found at any depth.
+ *
+ * Error messages include the full dotted path (`data.observed.raw_arguments`)
+ * so a reviewer can locate the leak without re-parsing the bundle. Arrays
+ * are descended into with bracket-index notation.
+ */
+function scanForbiddenKeys(
+  value: unknown,
+  path: string,
+  lineNum: number,
+  errors: VerifyError[],
+): void {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      scanForbiddenKeys(value[i], `${path}[${i}]`, lineNum, errors);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${key}`;
+    if (FORBIDDEN_RUNTIME_KEYS.has(key)) {
+      errors.push({
+        line: lineNum,
+        category: "type",
+        code: "VERIFY_FORBIDDEN_RUNTIME_KEY",
+        message: `forbidden runtime key "${key}" found at ${childPath} — raw SDK state must not appear in evidence`,
+      });
+    } else if (FORBIDDEN_PAYLOAD_KEYS.has(key)) {
+      errors.push({
+        line: lineNum,
+        category: "type",
+        code: "VERIFY_FORBIDDEN_PAYLOAD_KEY",
+        message: `forbidden payload key "${key}" found at ${childPath} — raw payload must stay content-addressed, not embedded`,
+      });
+    }
+    scanForbiddenKeys(child, childPath, lineNum, errors);
+  }
+}
+
 function verifyEvents(lines: string[], category: string): VerifyError[] {
   const errors: VerifyError[] = [];
   const runIds = new Set<string>();
@@ -276,19 +354,25 @@ function verifyEvents(lines: string[], category: string): VerifyError[] {
         }
       }
 
-      // Rejected content checks
-      if (event.data) {
-        const rejectedKeys = ["raw_run_state", "history", "newItems", "lastResponseId", "session"];
-        for (const key of rejectedKeys) {
-          if (key in event.data) {
-            errors.push({
-              line: lineNum,
-              category: "type",
-              code: "VERIFY_REJECTED_KEY",
-              message: `data contains rejected key "${key}" — raw state must not appear in evidence`,
-            });
-          }
-        }
+      // Rejected content checks — recursive scan of event.data.
+      //
+      // Two classes of forbidden keys, each with its own error code so
+      // the verifier output tells a reviewer immediately which boundary
+      // was crossed:
+      //
+      //   FORBIDDEN_RUNTIME_KEYS: raw SDK state that must never appear
+      //     in evidence (RunState, conversation history, session tokens).
+      //
+      //   FORBIDDEN_PAYLOAD_KEYS: raw payload bodies that must stay as
+      //     content hashes only (tool arguments/outputs, transcripts,
+      //     audio blobs, full request/response payloads).
+      //
+      // The audit at commit 31669dc found the previous check only looked
+      // one level deep under `event.data`, so a nested shape such as
+      // `data.observed.raw_run_state` slipped through. This scan walks
+      // the full object graph and reports the precise key path.
+      if (event.data && typeof event.data === "object") {
+        scanForbiddenKeys(event.data, "data", lineNum, errors);
       }
     }
   }
