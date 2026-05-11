@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
+# Workflow-level: no privileges. Each job grants the minimum it needs.
+permissions: {}
 
 jobs:
   sbom:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:

@@ -91,20 +91,29 @@ jobs:
           cp fixtures/valid.assay.ndjson artifacts/
           cp fixtures/failure.assay.ndjson artifacts/
 
-      - name: Create GitHub Release
-        # Use the GitHub CLI directly instead of a third-party action so that
-        # the release-create surface uses only the workflow's existing
+      - name: Create or update GitHub Release
+        # Use the GitHub CLI directly instead of a third-party action so the
+        # release-create surface uses only the workflow's existing
         # GITHUB_TOKEN scope. Equivalent functionality to the prior
         # softprops/action-gh-release call with generate_release_notes + files.
+        #
+        # Idempotent: if the release already exists (workflow re-run, manual
+        # tag re-push, or a previously created draft), upload the assets to
+        # the existing release with --clobber instead of failing.
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" \
-            --title "$RELEASE_TAG" \
-            --generate-notes \
-            artifacts/*
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; uploading assets to it."
+            gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              artifacts/*
+          fi
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
