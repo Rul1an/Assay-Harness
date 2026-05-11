@@ -1,0 +1,37 @@
+# zizmor configuration for Assay-Harness.
+#
+# Documents the deferred-by-design audits from PR1 of the audit series.
+# The zizmor.yml canary workflow reads this so the gate enforces every rule
+# PR1 accepted and only relaxes what PR1 deliberately chose not to do.
+#
+# See PR1 commit message + PR body for the full rationale on each entry.
+
+rules:
+  # `unpinned-uses` defaults to requiring a full SHA on every `uses:`. PR1
+  # chose major-version pinning (e.g. `@v6`) for actions in trust-anchored
+  # organisations, combined with Dependabot cooldown for the flash-spread
+  # vector. Patterns below grant `ref-pin` only to those organisations.
+  #
+  # Anything outside these patterns falls back to zizmor's implicit
+  # `"*": hash-pin` rule, so a new third-party action automatically picks
+  # up the strict default — exactly what we want for new dependencies we
+  # have not yet trust-anchored.
+  #
+  # Revisit if any of these hold:
+  #   - Assay-Harness becomes a published GitHub Action via Marketplace.
+  #   - The threat model shifts to require deterministic SHA reproducibility.
+  #   - A future audit demands SHA-pinning regardless of org.
+  #
+  # When that happens, remove this whole block and replace every `@v<n>`
+  # in the workflows with a full commit SHA (Dependabot supports this via
+  # the `commit-message-include: scope` + SHA-update flow).
+  unpinned-uses:
+    config:
+      policies:
+        # Official GitHub-published actions. Trust anchor: the GitHub
+        # organisation itself plus Dependabot cooldown.
+        actions/*: ref-pin
+        github/*: ref-pin
+        # peter-evans/* are used by the planned release-comment flow.
+        # Same cooldown protection applies; small surface.
+        peter-evans/*: ref-pin
