@@ -48,6 +48,13 @@ export function runTrustBasisGate(args: TrustBasisGateArgs): TrustBasisGateResul
   }
 
   const assayBin = args.assayBin ?? "assay";
+  // Bound the child process so a hung `assay` binary cannot wedge CI. 30 s
+  // is generous for a JSON diff over normal-sized evidence; 10 MiB is
+  // generous for the captured stdout/stderr each. If either limit is hit,
+  // spawnSync sets `error` or `signal` accordingly and the handler below
+  // converts that into a TrustBasisGateError instead of returning silently.
+  const SPAWN_TIMEOUT_MS = 30_000;
+  const SPAWN_MAX_BUFFER = 10 * 1024 * 1024;
   const result = spawnSync(
     assayBin,
     [
@@ -59,10 +66,29 @@ export function runTrustBasisGate(args: TrustBasisGateArgs): TrustBasisGateResul
       "json",
       "--fail-on-regression",
     ],
-    { encoding: "utf8" },
+    {
+      encoding: "utf8",
+      timeout: SPAWN_TIMEOUT_MS,
+      maxBuffer: SPAWN_MAX_BUFFER,
+    },
   );
 
   if (result.error) {
+    const errCode = (result.error as NodeJS.ErrnoException).code;
+    if (errCode === "ETIMEDOUT" || result.signal === "SIGTERM") {
+      throw new TrustBasisGateError(
+        `${assayBin} trust-basis diff timed out after ${SPAWN_TIMEOUT_MS}ms`,
+      );
+    }
+    if (errCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      // Node's spawnSync `maxBuffer` is enforced *per stream* (stdout and
+      // stderr each), not as a combined budget. Spell that out so a CI
+      // operator can interpret the failure without re-reading the Node
+      // docs.
+      throw new TrustBasisGateError(
+        `${assayBin} trust-basis diff exceeded the ${SPAWN_MAX_BUFFER}-byte per-stream cap (stdout or stderr individually)`,
+      );
+    }
     throw new TrustBasisGateError(
       `failed to run ${assayBin}: ${result.error.message}`,
     );
