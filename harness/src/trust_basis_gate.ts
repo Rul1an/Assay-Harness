@@ -81,8 +81,12 @@ export function runTrustBasisGate(args: TrustBasisGateArgs): TrustBasisGateResul
       );
     }
     if (errCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      // Node's spawnSync `maxBuffer` is enforced *per stream* (stdout and
+      // stderr each), not as a combined budget. Spell that out so a CI
+      // operator can interpret the failure without re-reading the Node
+      // docs.
       throw new TrustBasisGateError(
-        `${assayBin} trust-basis diff exceeded stdout/stderr cap of ${SPAWN_MAX_BUFFER} bytes`,
+        `${assayBin} trust-basis diff exceeded the ${SPAWN_MAX_BUFFER}-byte per-stream cap (stdout or stderr individually)`,
       );
     }
     throw new TrustBasisGateError(
