@@ -18,11 +18,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # No `cache: npm` here. Release workflows run once per tag, so the
+      # cache hit-rate is negligible and the extra cache-storage round-trip
+      # adds a small supply-chain surface (cache poisoning, replay across
+      # tags). Cheaper to re-resolve `npm ci` from the registry on each
+      # release. See .github/docs/CI-NOTES.md for the broader rationale.
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
 
       - name: Install dependencies
         working-directory: harness
@@ -54,11 +57,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # No `cache: npm` here either — see comment in the test job.
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
 
       - name: Install dependencies
         working-directory: harness
