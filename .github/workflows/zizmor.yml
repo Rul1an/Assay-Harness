@@ -46,7 +46,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v4.35.3
+        uses: github/codeql-action/upload-sarif@v4.35.4
         # Tolerate upload failures (e.g. fork PRs without
         # security-events: write) so the threshold-enforcement step still
         # runs and the gate signal is not silently swallowed.
