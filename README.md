@@ -1,12 +1,30 @@
 # Assay Harness
 
-**Catch agent regressions before they merge.**
+**The verified last mile from Assay evidence to reviewable CI artifacts.**
 
-Compare baseline evidence against candidate evidence in every PR.
-New denials, hash mismatches, or policy changes surface as structured
-regression output — reviewable by humans and consumable by CI.
+Assay Harness runs its recipes against released Assay capabilities and
+produces verify-before-diff comparisons of baseline vs candidate evidence. New denials, hash mismatches,
+or policy changes surface as structured regression output — reviewable by
+humans and consumable by CI.
 
-> **Version:** 0.3.2 | **Status:** active development
+> **Version:** 0.4.0 | **Status:** active development
+
+### What this is
+
+A CI/review layer over canonical Assay artifacts: a recipe, gate, and report
+projection. It *composes* released Assay capabilities; it does not define
+artifact semantics — those live in Assay.
+
+### What this is not
+
+- not an agent runtime or execution harness
+- not an eval runner
+- not an observability platform or dashboard
+- not a second policy or trust model beside Assay
+
+See [docs/POSITIONING.md](docs/POSITIONING.md) for the full positioning and
+the `assay` / `assay-action` / Assay-Harness boundary (compiler / button /
+playbook).
 
 ---
 
