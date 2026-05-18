@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,22 @@ def _read_events(path: Path) -> list[tuple[int, dict[str, Any]]]:
             if line:
                 events.append((lineno, json.loads(line)))
     return events
+
+
+def _relative_uri(input_path: Path) -> str:
+    """Repo-relative POSIX uri for the evidence file.
+
+    SARIF locations must point at a path the repo UI can resolve, so an
+    absolute input path must be normalised against the workspace root
+    (``GITHUB_WORKSPACE`` in CI, otherwise the current directory). Inputs
+    outside the workspace degrade to the bare filename rather than leaking
+    an absolute runner path.
+    """
+    base = Path(os.environ.get("GITHUB_WORKSPACE") or Path.cwd()).resolve()
+    try:
+        return input_path.resolve().relative_to(base).as_posix()
+    except ValueError:
+        return input_path.name
 
 
 def _location(source_uri: str, lineno: int) -> dict[str, Any]:
@@ -159,7 +176,7 @@ def main() -> int:
         return 2
 
     events = _read_events(args.input)
-    sarif = _build_sarif(events, args.tool_name, args.input.as_posix())
+    sarif = _build_sarif(events, args.tool_name, _relative_uri(args.input))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(sarif, indent=2) + "\n", encoding="utf-8")
