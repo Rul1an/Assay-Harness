@@ -2,8 +2,8 @@
 
 **The verified last mile from Assay evidence to reviewable CI artifacts.**
 
-Assay Harness runs released Assay recipes and produces verify-before-diff
-comparisons of baseline vs candidate evidence. New denials, hash mismatches,
+Assay Harness runs its recipes against released Assay capabilities and
+produces verify-before-diff comparisons of baseline vs candidate evidence. New denials, hash mismatches,
 or policy changes surface as structured regression output — reviewable by
 humans and consumable by CI.
 
