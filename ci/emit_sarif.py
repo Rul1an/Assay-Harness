@@ -39,20 +39,39 @@ RULES = {
 }
 
 
-def _read_events(path: Path) -> list[dict[str, Any]]:
+def _read_events(path: Path) -> list[tuple[int, dict[str, Any]]]:
+    """Return (line_number, event) pairs. Line numbers anchor SARIF results."""
     events = []
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for lineno, line in enumerate(f, start=1):
             line = line.strip()
             if line:
-                events.append(json.loads(line))
+                events.append((lineno, json.loads(line)))
     return events
 
 
-def _build_sarif(events: list[dict[str, Any]], tool_name: str) -> dict[str, Any]:
+def _location(source_uri: str, lineno: int) -> dict[str, Any]:
+    """A SARIF location anchored to the evidence NDJSON line that produced it.
+
+    GitHub code scanning rejects any result that has no location, so every
+    result must carry one even though harness evidence is not source code.
+    """
+    return {
+        "physicalLocation": {
+            "artifactLocation": {"uri": source_uri},
+            "region": {"startLine": lineno},
+        }
+    }
+
+
+def _build_sarif(
+    events: list[tuple[int, dict[str, Any]]],
+    tool_name: str,
+    source_uri: str,
+) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
 
-    for event in events:
+    for lineno, event in events:
         event_type = event.get("type", "unknown")
         data = event.get("data", {})
         observed = data.get("observed", {})
@@ -67,6 +86,7 @@ def _build_sarif(events: list[dict[str, Any]], tool_name: str) -> dict[str, Any]
                     "ruleId": "HARNESS-D001",
                     "level": "error",
                     "message": {"text": f"Policy denied tool call: {target}"},
+                    "locations": [_location(source_uri, lineno)],
                     "partialFingerprints": {"eventId": event_id},
                     "properties": {
                         "decision": decision,
@@ -80,6 +100,7 @@ def _build_sarif(events: list[dict[str, Any]], tool_name: str) -> dict[str, Any]
                     "ruleId": "HARNESS-A001",
                     "level": "warning",
                     "message": {"text": f"Tool call requires approval: {target}"},
+                    "locations": [_location(source_uri, lineno)],
                     "partialFingerprints": {"eventId": event_id},
                     "properties": {
                         "decision": decision,
@@ -94,6 +115,7 @@ def _build_sarif(events: list[dict[str, Any]], tool_name: str) -> dict[str, Any]
                 "ruleId": "HARNESS-R001",
                 "level": "note",
                 "message": {"text": f"Run resumed with decision: {resume_decision}"},
+                "locations": [_location(source_uri, lineno)],
                 "partialFingerprints": {"eventId": event_id},
                 "properties": {
                     "resume_decision": resume_decision,
@@ -137,7 +159,7 @@ def main() -> int:
         return 2
 
     events = _read_events(args.input)
-    sarif = _build_sarif(events, args.tool_name)
+    sarif = _build_sarif(events, args.tool_name, args.input.as_posix())
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(sarif, indent=2) + "\n", encoding="utf-8")
