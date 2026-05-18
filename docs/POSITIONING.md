@@ -15,9 +15,9 @@
 
 **Subtitle (what it does):**
 
-> Runs released Assay recipes, produces verify-before-diff comparisons, and
-> projects them into the artifacts, job summaries, and JUnit your CI already
-> shows.
+> Runs Harness recipes against released Assay capabilities, produces
+> verify-before-diff comparisons, and projects them into the artifacts, job
+> summaries, and JUnit your CI already shows.
 
 **Canonical architecture sentence (internal):**
 
@@ -65,7 +65,7 @@ not a control plane.
 - become a runtime/agent harness, an eval runner, or a dashboard
 - invent a second policy or trust model beside Assay
 
-All artifact semantics live in Assay-core. Assay-Harness composes; it does not
+All artifact semantics live in `assay`. Assay-Harness composes; it does not
 define.
 
 ## Boundary with `assay-action` and `assay`
