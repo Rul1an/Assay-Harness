@@ -50,6 +50,10 @@ import {
   compareRunnerArchivesCapabilitySurface,
   formatRunnerCompareResult,
 } from "./runner_compare.js";
+import {
+  formatCrossRuntimeReport,
+  loadCrossRuntimeReport,
+} from "./runner_cross_runtime.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -75,6 +79,8 @@ Commands:
   verify   <evidence-file> [--category <all|envelope|hash|type>]
   verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]
+  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]
+  runner cross-runtime gate --diff <cross-runtime-diff.json>
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -131,6 +137,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 
   if (positional.length > 0) args._command = positional[0];
   if (positional.length > 1) args._file = positional[1];
+  // Third positional is used by nested namespaces such as
+  // `runner cross-runtime report` where `_command=runner`, `_file=cross-runtime`,
+  // and `_subfile=report`. Older verbs do not consume it.
+  if (positional.length > 2) args._subfile = positional[2];
   return args;
 }
 
@@ -707,11 +717,145 @@ function cmdRunner(args: Record<string, string | boolean>): void {
     cmdRunnerCompare(args);
     return;
   }
+  if (subcommand === "cross-runtime") {
+    cmdRunnerCrossRuntime(args);
+    return;
+  }
   console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
   console.error(
-    "Usage: runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]",
+    "Usage:\n" +
+      "  runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]\n" +
+      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]\n" +
+      "  runner cross-runtime gate --diff <cross-runtime-diff.json>",
   );
   process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCrossRuntime(args: Record<string, string | boolean>): void {
+  const subsubcommand = args._subfile as string | undefined;
+  if (subsubcommand === "report") {
+    cmdRunnerCrossRuntimeReport(args);
+    return;
+  }
+  if (subsubcommand === "gate") {
+    cmdRunnerCrossRuntimeGate(args);
+    return;
+  }
+  console.error(
+    `[config_error] Unknown runner cross-runtime subcommand: ${subsubcommand ?? "(none)"}`,
+  );
+  console.error(
+    "Usage:\n" +
+      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]\n" +
+      "  runner cross-runtime gate --diff <cross-runtime-diff.json>",
+  );
+  console.error(
+    "Tier 3B (archive-pair convenience wrapper) is not implemented yet.",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCrossRuntimeReport(args: Record<string, string | boolean>): void {
+  const diffArg = args.diff;
+  const format = (args.format as string) ?? "markdown";
+
+  // Bare `--diff` without a value is parsed as `true` by parseArgs, so
+  // require an explicit non-empty string here to avoid passing `true` (or
+  // any non-string) into existsSync / readFileSync.
+  if (typeof diffArg !== "string" || diffArg.length === 0) {
+    console.error(
+      "[config_error] --diff <cross-runtime-diff.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const diffPath = diffArg;
+
+  const load = loadCrossRuntimeReport(diffPath);
+  if (load.not_found) {
+    console.error(`[config_error] Cross-runtime diff file not found: ${diffPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatCrossRuntimeReport(report));
+  }
+
+  // Exit routing for Tier 3A `report`:
+  //   - invalid diff (schema mismatch, JSON parse failure, contract-shape
+  //     violation, out-of-scope-marker tampering) → ARTIFACT_CONTRACT (3)
+  //   - otherwise (including a diff that contains regressions) → SUCCESS (0)
+  // The regression signal is rendered in the report status line but does
+  // NOT translate to exit 6 here — that is the `gate` verb's job
+  // (cmdRunnerCrossRuntimeGate below).
+  if (!report.validation.valid) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdRunnerCrossRuntimeGate(args: Record<string, string | boolean>): void {
+  // Tier 3C — same parser as `report`, different exit-code semantics.
+  // The gate verb translates the v0 capability-regression signal into a
+  // CI-blocking exit code. No new contract logic and no new validation —
+  // it consumes the exact same `CrossRuntimeReport` and applies the
+  // documented routing.
+  const diffArg = args.diff;
+
+  if (typeof diffArg !== "string" || diffArg.length === 0) {
+    console.error(
+      "[config_error] --diff <cross-runtime-diff.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: runner cross-runtime gate --diff <cross-runtime-diff.json>",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const diffPath = diffArg;
+
+  const load = loadCrossRuntimeReport(diffPath);
+  if (load.not_found) {
+    console.error(`[config_error] Cross-runtime diff file not found: ${diffPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  // The gate verb is exit-focused, so emit a one-line summary on stderr
+  // for CI logs but keep stdout clean. (Callers that want full output
+  // should use `runner cross-runtime report` instead.)
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] runner cross-runtime gate: invalid diff (${codes})`);
+  } else if (report.has_added_capability) {
+    const counts = Object.entries(report.added_counts)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(",");
+    console.error(`[regression] runner cross-runtime gate: added capability surface (${counts})`);
+  } else {
+    console.error("[success] runner cross-runtime gate: no added capability surface");
+  }
+
+  // Exit routing for Tier 3C `gate`:
+  //   - invalid diff (schema/contract violation) → ARTIFACT_CONTRACT (3)
+  //   - added capability surface on any of the five v0 categories →
+  //     REGRESSION (6). New `allow:*` policy decisions count here per the
+  //     within-runtime Tier-2A policy mirrored cross-runtime.
+  //   - removed entries / SDK metadata changes / notes / etc. → SUCCESS (0)
+  //   - missing file / bare --diff → CONFIG_ERROR (2) (handled above)
+  // No new semantic logic vs `report`; only the exit translation.
+  if (!report.validation.valid) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (report.has_added_capability) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
 }
 
 function cmdRunnerCompare(args: Record<string, string | boolean>): void {

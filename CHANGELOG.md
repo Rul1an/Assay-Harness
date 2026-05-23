@@ -4,6 +4,85 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner cross-runtime diff consumer + gate (Tier 3A + Tier 3C)
+
+Adds two new CLI verbs for reading and gating on a precomputed
+`assay.runner.cross_runtime_diff.v0` JSON artefact (produced Runner-side in
+`Rul1an/assay`). Both verbs reuse the same strict v0 clean-schema validator:
+
+- `assay-harness runner cross-runtime report --diff <path> [--format markdown|json]`
+  — reviewer projection of the diff. Informational only; exits 0 on a
+  valid diff regardless of whether it contains a regression, exits 3 on a
+  contract-shape violation.
+- `assay-harness runner cross-runtime gate --diff <path>`
+  — CI-blocking translation of the same signal. Exits 0 on a clean diff,
+  6 on any added capability surface, 3 on contract-shape violation. No
+  new semantic logic vs `report`; only exit translation. Stdout stays
+  clean; status line goes to stderr for CI logs.
+
+Tier 3A + 3C are **consumer**, not semantic owner. The Runner side defines
+the cross-runtime semantics (A1+B3+C1 canonicalisation, out-of-scope
+markers for binding ids and policy outcomes, SDK metadata as side-band
+provenance). Harness validates the frozen contract shape and translates
+the regression signal into reviewer output and CI exit codes.
+
+- New module `harness/src/runner_cross_runtime.ts`:
+  - Schema constants pinned to the Runner-side v0 contract
+    (`RUNNER_CROSS_RUNTIME_DIFF_SCHEMA`,
+    `RUNNER_CROSS_RUNTIME_OUT_OF_SCOPE_MARKER`,
+    `RUNNER_CROSS_RUNTIME_SDK_METADATA_MARKER`,
+    `RUNNER_CROSS_RUNTIME_RUNTIMES`,
+    `RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS`,
+    `RUNNER_CROSS_RUNTIME_REQUIRED_NOTES`).
+  - Strict v0 clean-schema validation: `status === "clean"`, runtime
+    identifiers from the v0 enum and distinct, `preconditions.*` all
+    `true`, exact const values on `scope` and `canonicalization` (A1
+    work-dir-prefix rule on filesystem_paths, `"none"` elsewhere),
+    `unbound.*` arrays empty, `ambiguities: []`, `non_claims` and
+    `notes` matching the 5-string and 3-string fixed prefixes in
+    order. Tampered out-of-scope markers fail with distinct error
+    codes. Surface category arrays have `uniqueItems` enforcement.
+  - No JSON Schema 2020-12 validation library is added; explicit
+    TypeScript guards keep the runtime dependency surface flat.
+- Two new CLI verbs (`report`, `gate`) dispatched via a new
+  `args._subfile` slot in `parseArgs` so three-level positional verbs
+  (`runner cross-runtime report` and `runner cross-runtime gate`) work
+  without breaking existing two-level verbs.
+- Exit-code routing:
+  - **report**: contract-shape valid → 0 (informational; regression
+    rendered in the report but does not affect exit code); contract
+    violation → 3; missing `--diff` or file → 2.
+  - **gate**: clean diff → 0; any added entry in
+    `surface.{filesystem_paths,network_endpoints,process_execs,
+    mcp_tools,policy_decisions}` → 6; contract violation → 3; missing
+    `--diff` or file → 2.
+- v0 cross-runtime regression policy mirrored from the Runner-side
+  schema and from within-runtime Tier-2A: added entries on any of the
+  five categories trigger the regression signal. Removed entries are
+  reported but never blocking. SDK metadata changes are side-band
+  provenance only — `gate` exits 0 when only `sdk_metadata` differs.
+- **Tier 3B** (archive-pair convenience wrapper that produces the
+  diff from two raw Runner archives) remains deferred. Per
+  `Rul1an/Assay-Harness#58` Tier 3 plan, 3B would either re-implement
+  Runner-side A1+B3+C1 semantics or vendor the Runner-side projector;
+  either keeps Harness producing cross-runtime semantics, which the
+  consumer-not-owner stance refuses. 3B is parked as a future demo
+  recipe, not as core CLI surface.
+- New tests in `harness/test/runner_cross_runtime.test.mjs` cover the
+  full strict-schema validator (schema mismatch, non-object payload,
+  missing categories, non-array added field, tampered markers,
+  status != clean, unknown runtime, runtimes_not_distinct,
+  preconditions false/missing, scope/canonicalization const
+  mismatches, non-empty unbound, non-empty ambiguities,
+  non_claims/notes wrong/missing/out-of-order, surface duplicates),
+  the `report` markdown formatter discipline (status label matches
+  outcome class, SDK metadata side-band caveat, removed-not-blocking,
+  `unchanged` omitted), and the full `gate` exit-routing matrix
+  (clean=0, added-fs/net=6, removed-only=0, sdk-only=0, invalid=3,
+  bare --diff=2, missing file=2, stdout-stays-clean).
+- No new npm dependency. No new contract. NDJSON callers and Tier 1 /
+  Tier 2A / Tier 2B paths are unchanged.
+
 ## [0.5.0] - 2026-05-23
 
 This minor release adds opt-in support for **Assay-Runner measured-run
