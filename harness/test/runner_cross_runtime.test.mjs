@@ -9,6 +9,8 @@ import {
   formatCrossRuntimeReport,
   RUNNER_CROSS_RUNTIME_DIFF_SCHEMA,
   RUNNER_CROSS_RUNTIME_OUT_OF_SCOPE_MARKER,
+  RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS,
+  RUNNER_CROSS_RUNTIME_REQUIRED_NOTES,
   RUNNER_CROSS_RUNTIME_SDK_METADATA_MARKER,
   validateCrossRuntimeDiff,
 } from "../dist/runner_cross_runtime.js";
@@ -73,15 +75,9 @@ function buildCleanDiff(overrides = {}) {
       mcp_tools: [],
       policy_decisions: [],
     },
-    non_claims: [
-      "cross_runtime_no_acceptability_judgment",
-      "cross_runtime_no_declared_capability_input",
-      "cross_runtime_no_derived_binding_identity",
-      "cross_runtime_no_filename_semantic_equivalence",
-      "cross_runtime_no_sdk_capability_equivalence",
-    ],
+    non_claims: [...RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS],
     ambiguities: [],
-    notes: ["test_fixture"],
+    notes: [...RUNNER_CROSS_RUNTIME_REQUIRED_NOTES],
   };
   return { ...base, ...overrides };
 }
@@ -372,4 +368,151 @@ test("CLI: unknown runner cross-runtime subcommand → exit 2 with usage", () =>
   const out = runCli(["runner", "cross-runtime", "gate", "--diff", "x"]);
   assert.equal(out.status, 2);
   assert.match(out.stderr, /Tier 3B.*Tier 3C.*not implemented/);
+});
+
+// ---------------------------------------------------------------------------
+// PR #64 review regression coverage — strict clean-schema invariants
+// ---------------------------------------------------------------------------
+
+test("P1 — bare `--diff` flag (no value) exits 2 cleanly, does not crash", () => {
+  // parseArgs maps `--diff` without a value to `true`; the CLI must
+  // refuse this with config_error rather than passing `true` into
+  // existsSync / readFileSync.
+  const out = runCli(["runner", "cross-runtime", "report", "--diff"]);
+  assert.equal(out.status, 2, `expected exit 2 for bare --diff, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /--diff.*required.*non-empty/);
+});
+
+test("P1 — status: 'failed' is rejected (only clean v0 supported)", () => {
+  const diff = buildCleanDiff();
+  diff.status = "failed";
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_STATUS_NOT_CLEAN"));
+});
+
+test("P1 — same-runtime diff is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.head_runtime = "s5_openai_agents"; // same as base
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_RUNTIMES_NOT_DISTINCT"));
+});
+
+test("P1 — unknown runtime identifier is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.head_runtime = "future_runtime_x";
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_RUNTIME_UNKNOWN"));
+});
+
+test("P1 — preconditions with any false key is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.preconditions.runtimes_distinct = false;
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_PRECONDITION_NOT_TRUE"));
+});
+
+test("P1 — preconditions with missing key is rejected", () => {
+  const diff = buildCleanDiff();
+  delete diff.preconditions.base_health_clean;
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_PRECONDITION_NOT_TRUE"));
+});
+
+test("P1 — scope.uses_raw_telemetry=true is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.scope.uses_raw_telemetry = true;
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_SCOPE_VALUE_INVALID"));
+});
+
+test("P1 — scope.projection != surface_set is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.scope.projection = "raw_event_stream";
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_SCOPE_VALUE_INVALID"));
+});
+
+test("P1 — canonicalization.filesystem_paths != work_dir_prefix_only is rejected (A1 invariant)", () => {
+  const diff = buildCleanDiff();
+  diff.canonicalization.filesystem_paths = "filename_role_equivalence";
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_CANONICALIZATION_INVALID"));
+});
+
+test("P1 — non-empty unbound is rejected for clean diff", () => {
+  const diff = buildCleanDiff();
+  diff.unbound.filesystem_paths = ["unresolved-path"];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_UNBOUND_NOT_EMPTY"));
+});
+
+test("P1 — non-empty ambiguities is rejected for clean diff", () => {
+  const diff = buildCleanDiff();
+  diff.ambiguities = ["one_unresolved_binding"];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_AMBIGUITIES_NOT_EMPTY"));
+});
+
+test("P2 — non_claims missing a required code is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.non_claims = diff.non_claims.slice(0, 4); // drop the last one
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_NON_CLAIMS_INVALID"));
+});
+
+test("P2 — non_claims with extra arbitrary code is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.non_claims = [...diff.non_claims, "some_arbitrary_extra_code"];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_NON_CLAIMS_INVALID"));
+});
+
+test("P2 — non_claims in wrong order is rejected", () => {
+  const diff = buildCleanDiff();
+  diff.non_claims = [
+    "cross_runtime_no_sdk_capability_equivalence",
+    "cross_runtime_no_filename_semantic_equivalence",
+    "cross_runtime_no_derived_binding_identity",
+    "cross_runtime_no_declared_capability_input",
+    "cross_runtime_no_acceptability_judgment",
+  ];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_NON_CLAIMS_INVALID"));
+});
+
+test("P2 — notes other than the 3 required strings rejected", () => {
+  const diff = buildCleanDiff();
+  diff.notes = ["test_fixture"];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_NOTES_INVALID"));
+});
+
+test("P2 — empty notes array rejected (must be exactly 3 strings)", () => {
+  const diff = buildCleanDiff();
+  diff.notes = [];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_NOTES_INVALID"));
+});
+
+test("category arrays with duplicate entries are rejected (uniqueItems invariant)", () => {
+  const diff = buildCleanDiff();
+  diff.surface.filesystem_paths.added = ["<work>/a", "<work>/a"];
+  const v = validateCrossRuntimeDiff(diff);
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_CATEGORY_DUPLICATES"));
 });

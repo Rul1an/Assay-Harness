@@ -747,18 +747,22 @@ function cmdRunnerCrossRuntime(args: Record<string, string | boolean>): void {
 }
 
 function cmdRunnerCrossRuntimeReport(args: Record<string, string | boolean>): void {
-  const diffPath = args.diff as string;
+  const diffArg = args.diff;
   const format = (args.format as string) ?? "markdown";
 
-  if (!diffPath) {
+  // Bare `--diff` without a value is parsed as `true` by parseArgs, so
+  // require an explicit non-empty string here to avoid passing `true` (or
+  // any non-string) into existsSync / readFileSync.
+  if (typeof diffArg !== "string" || diffArg.length === 0) {
     console.error(
-      "[config_error] --diff <cross-runtime-diff.json> is required",
+      "[config_error] --diff <cross-runtime-diff.json> is required (must be a non-empty path)",
     );
     console.error(
       "Usage: runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
     );
     process.exit(EXIT.CONFIG_ERROR);
   }
+  const diffPath = diffArg;
 
   const load = loadCrossRuntimeReport(diffPath);
   if (load.not_found) {

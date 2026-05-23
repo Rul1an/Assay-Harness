@@ -71,6 +71,85 @@ export const RUNNER_CROSS_RUNTIME_OUT_OF_SCOPE_MARKER =
 export const RUNNER_CROSS_RUNTIME_SDK_METADATA_MARKER =
   "side_band_provenance";
 
+/**
+ * v0 clean diff invariants — exact values mirrored from the Runner-side
+ * JSON Schema 2020-12 sidecar at
+ * `Rul1an/assay/docs/reference/runner/schema/cross-runtime-diff-v0-clean.schema.json`.
+ *
+ * The clean output shape is strictly frozen: `status` must be `"clean"`,
+ * `scope` and `canonicalization` and `preconditions` carry fixed values
+ * (not just shapes), and the diff must come from two distinct qualified
+ * runtimes. A consumer that claims A1+B3+C1 enforcement implements these
+ * invariants; otherwise it should downgrade its claim to "shape preview".
+ * Harness chooses strict enforcement.
+ */
+
+/** Allowed runtime identifiers per the v0 clean schema. */
+export const RUNNER_CROSS_RUNTIME_RUNTIMES: readonly string[] = [
+  "s5_openai_agents",
+  "gemini_google_genai",
+];
+
+/** Required status string on a clean diff. */
+const CLEAN_STATUS = "clean";
+
+/** Required `preconditions` keys, each required to be `true`. */
+const CLEAN_PRECONDITIONS_KEYS: readonly string[] = [
+  "base_health_clean",
+  "head_health_clean",
+  "base_correlation_clean",
+  "head_correlation_clean",
+  "stable_tool_call_ids_required",
+  "stable_tool_call_ids_present",
+  "runtimes_distinct",
+];
+
+/** Required `scope` exact values. */
+const CLEAN_SCOPE: Record<string, boolean | string> = {
+  projection: "surface_set",
+  uses_raw_telemetry: false,
+  uses_proof_pack: false,
+  per_binding_capability_values: false,
+  cross_runtime: true,
+};
+
+/** Required `canonicalization` exact values (A1 work-dir prefix rule). */
+const CLEAN_CANONICALIZATION: Record<string, string> = {
+  filesystem_paths: "work_dir_prefix_only",
+  network_endpoints: "none",
+  process_execs: "none",
+  mcp_tools: "none",
+  policy_decisions: "none",
+};
+
+/** Required `non_claims` codes, in this exact order. */
+export const RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS: readonly string[] = [
+  "cross_runtime_no_acceptability_judgment",
+  "cross_runtime_no_declared_capability_input",
+  "cross_runtime_no_derived_binding_identity",
+  "cross_runtime_no_filename_semantic_equivalence",
+  "cross_runtime_no_sdk_capability_equivalence",
+];
+
+/** Required `notes` strings, in this exact order. */
+export const RUNNER_CROSS_RUNTIME_REQUIRED_NOTES: readonly string[] = [
+  "cross_runtime_diff_binding_ids_out_of_scope: binding ids are not cross-runtime comparable in v0; required only for within-runtime correlation",
+  "cross_runtime_diff_sdk_metadata_side_band: sdk metadata reported as side-band runtime provenance, not capability surface",
+  "cross_runtime_diff_work_dir_prefix_canonicalized: filesystem_paths normalized via the A1 work-dir prefix rule",
+];
+
+/**
+ * The five surface and `unbound` categories. Used by both the clean
+ * shape check and the empty-unbound-arrays invariant.
+ */
+const SURFACE_CATEGORIES: readonly string[] = [
+  "filesystem_paths",
+  "network_endpoints",
+  "process_execs",
+  "mcp_tools",
+  "policy_decisions",
+];
+
 // ---------------------------------------------------------------------------
 // Types — mirror the cross-runtime diff v0 shape exactly
 // ---------------------------------------------------------------------------
@@ -167,14 +246,6 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((x) => typeof x === "string");
 }
 
-function isCategoryDiff(value: unknown): value is CrossRuntimeCategoryDiff {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    isStringArray(v.added) && isStringArray(v.removed) && isStringArray(v.unchanged)
-  );
-}
-
 function categoryShapeError(
   path: string,
   value: unknown,
@@ -188,10 +259,19 @@ function categoryShapeError(
   }
   const v = value as Record<string, unknown>;
   for (const k of ["added", "removed", "unchanged"] as const) {
-    if (!isStringArray(v[k])) {
+    const arr = v[k];
+    if (!isStringArray(arr)) {
       return {
         code: "CROSS_RUNTIME_CATEGORY_SHAPE_INVALID",
         message: `${path}.${k} must be an array of strings`,
+        path: `${path}.${k}`,
+      };
+    }
+    // v0 clean schema requires `uniqueItems` within each list.
+    if (new Set(arr).size !== arr.length) {
+      return {
+        code: "CROSS_RUNTIME_CATEGORY_DUPLICATES",
+        message: `${path}.${k} must not contain duplicate entries (v0 clean schema: uniqueItems)`,
         path: `${path}.${k}`,
       };
     }
@@ -268,13 +348,134 @@ export function validateCrossRuntimeDiff(
       });
     }
   }
-  for (const k of ["preconditions", "scope", "canonicalization", "unbound"] as const) {
-    if (!d[k] || typeof d[k] !== "object" || Array.isArray(d[k])) {
-      errors.push({
-        code: "CROSS_RUNTIME_FIELD_INVALID",
-        message: `${k} must be an object`,
-        path: k,
-      });
+  // status: v0 clean output is strictly "clean". Partial/failed shapes are
+  // out of scope for this consumer; the Runner-side schema sidecar covers
+  // only the clean variant.
+  if (typeof d.status === "string" && d.status !== CLEAN_STATUS) {
+    errors.push({
+      code: "CROSS_RUNTIME_STATUS_NOT_CLEAN",
+      message: `status must equal ${JSON.stringify(CLEAN_STATUS)} for v0 clean diff (partial/failed shapes are out of scope); got ${JSON.stringify(d.status)}`,
+      path: "status",
+    });
+  }
+  // runtime identifiers: enum + must be distinct (the schema's `not.anyOf`
+  // clause forbids same-runtime diffs).
+  if (typeof d.base_runtime === "string" && !RUNNER_CROSS_RUNTIME_RUNTIMES.includes(d.base_runtime)) {
+    errors.push({
+      code: "CROSS_RUNTIME_RUNTIME_UNKNOWN",
+      message: `base_runtime must be one of ${JSON.stringify(RUNNER_CROSS_RUNTIME_RUNTIMES)} for v0; got ${JSON.stringify(d.base_runtime)}`,
+      path: "base_runtime",
+    });
+  }
+  if (typeof d.head_runtime === "string" && !RUNNER_CROSS_RUNTIME_RUNTIMES.includes(d.head_runtime)) {
+    errors.push({
+      code: "CROSS_RUNTIME_RUNTIME_UNKNOWN",
+      message: `head_runtime must be one of ${JSON.stringify(RUNNER_CROSS_RUNTIME_RUNTIMES)} for v0; got ${JSON.stringify(d.head_runtime)}`,
+      path: "head_runtime",
+    });
+  }
+  if (
+    typeof d.base_runtime === "string" &&
+    typeof d.head_runtime === "string" &&
+    d.base_runtime === d.head_runtime
+  ) {
+    errors.push({
+      code: "CROSS_RUNTIME_RUNTIMES_NOT_DISTINCT",
+      message: `base_runtime and head_runtime must differ (v0 contract forbids same-runtime diffs); both are ${JSON.stringify(d.base_runtime)}`,
+      path: "base_runtime",
+    });
+  }
+  // preconditions: object with all 7 keys strictly === true.
+  if (!d.preconditions || typeof d.preconditions !== "object" || Array.isArray(d.preconditions)) {
+    errors.push({
+      code: "CROSS_RUNTIME_FIELD_INVALID",
+      message: "preconditions must be an object",
+      path: "preconditions",
+    });
+  } else {
+    const pc = d.preconditions as Record<string, unknown>;
+    for (const k of CLEAN_PRECONDITIONS_KEYS) {
+      if (pc[k] !== true) {
+        errors.push({
+          code: "CROSS_RUNTIME_PRECONDITION_NOT_TRUE",
+          message: `preconditions.${k} must be \`true\` for v0 clean diff; got ${
+            k in pc ? JSON.stringify(pc[k]) : "(missing)"
+          }`,
+          path: `preconditions.${k}`,
+        });
+      }
+    }
+  }
+  // scope: each of the 5 keys must equal its v0-clean const.
+  if (!d.scope || typeof d.scope !== "object" || Array.isArray(d.scope)) {
+    errors.push({
+      code: "CROSS_RUNTIME_FIELD_INVALID",
+      message: "scope must be an object",
+      path: "scope",
+    });
+  } else {
+    const sc = d.scope as Record<string, unknown>;
+    for (const [k, expected] of Object.entries(CLEAN_SCOPE)) {
+      if (sc[k] !== expected) {
+        errors.push({
+          code: "CROSS_RUNTIME_SCOPE_VALUE_INVALID",
+          message: `scope.${k} must equal ${JSON.stringify(expected)} for v0 clean diff; got ${
+            k in sc ? JSON.stringify(sc[k]) : "(missing)"
+          }`,
+          path: `scope.${k}`,
+        });
+      }
+    }
+  }
+  // canonicalization: A1 work-dir prefix rule on filesystem_paths, "none"
+  // elsewhere. Anything else means the diff is not v0-clean (e.g.
+  // a tampered or future-format archive comparison).
+  if (
+    !d.canonicalization ||
+    typeof d.canonicalization !== "object" ||
+    Array.isArray(d.canonicalization)
+  ) {
+    errors.push({
+      code: "CROSS_RUNTIME_FIELD_INVALID",
+      message: "canonicalization must be an object",
+      path: "canonicalization",
+    });
+  } else {
+    const cn = d.canonicalization as Record<string, unknown>;
+    for (const [k, expected] of Object.entries(CLEAN_CANONICALIZATION)) {
+      if (cn[k] !== expected) {
+        errors.push({
+          code: "CROSS_RUNTIME_CANONICALIZATION_INVALID",
+          message: `canonicalization.${k} must equal ${JSON.stringify(expected)} for v0 clean diff (A1 work-dir prefix rule); got ${
+            k in cn ? JSON.stringify(cn[k]) : "(missing)"
+          }`,
+          path: `canonicalization.${k}`,
+        });
+      }
+    }
+  }
+  // unbound: v0 clean requires empty arrays per category (the projector
+  // resolves all bound surfaces and unbound items are only emitted in
+  // non-clean variants, which are not v0 clean and not supported here).
+  if (!d.unbound || typeof d.unbound !== "object" || Array.isArray(d.unbound)) {
+    errors.push({
+      code: "CROSS_RUNTIME_FIELD_INVALID",
+      message: "unbound must be an object",
+      path: "unbound",
+    });
+  } else {
+    const ub = d.unbound as Record<string, unknown>;
+    for (const cat of SURFACE_CATEGORIES) {
+      const val = ub[cat];
+      if (!Array.isArray(val) || val.length !== 0) {
+        errors.push({
+          code: "CROSS_RUNTIME_UNBOUND_NOT_EMPTY",
+          message: `unbound.${cat} must be an empty array for v0 clean diff; got ${
+            cat in ub ? JSON.stringify(val) : "(missing)"
+          }`,
+          path: `unbound.${cat}`,
+        });
+      }
     }
   }
   if (!d.surface || typeof d.surface !== "object" || Array.isArray(d.surface)) {
@@ -370,14 +571,61 @@ export function validateCrossRuntimeDiff(
       }
     }
   }
-  for (const k of ["non_claims", "ambiguities", "notes"] as const) {
-    if (!isStringArray(d[k])) {
-      errors.push({
-        code: "CROSS_RUNTIME_FIELD_INVALID",
-        message: `${k} must be an array of strings`,
-        path: k,
-      });
-    }
+  // ambiguities: v0 clean schema requires the literal empty array.
+  if (!Array.isArray(d.ambiguities) || d.ambiguities.length !== 0) {
+    errors.push({
+      code: "CROSS_RUNTIME_AMBIGUITIES_NOT_EMPTY",
+      message: `ambiguities must be an empty array for v0 clean diff; got ${
+        "ambiguities" in d ? JSON.stringify(d.ambiguities) : "(missing)"
+      }`,
+      path: "ambiguities",
+    });
+  }
+  // non_claims: 5 exact codes in fixed order. A consumer that does not
+  // enforce this would silently allow Runner-side overclaiming (e.g.
+  // dropping "cross_runtime_no_sdk_capability_equivalence" would invite
+  // downstream callers to read the diff as SDK-capability-equivalent).
+  const ncRaw = d.non_claims;
+  if (!isStringArray(ncRaw)) {
+    errors.push({
+      code: "CROSS_RUNTIME_NON_CLAIMS_INVALID",
+      message: "non_claims must be an array of strings",
+      path: "non_claims",
+    });
+  } else if (
+    ncRaw.length !== RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS.length ||
+    RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS.some((c, i) => ncRaw[i] !== c)
+  ) {
+    errors.push({
+      code: "CROSS_RUNTIME_NON_CLAIMS_INVALID",
+      message: `non_claims must equal the v0 clean schema's fixed 5-string array in order: ${JSON.stringify(
+        RUNNER_CROSS_RUNTIME_REQUIRED_NON_CLAIMS,
+      )}; got ${JSON.stringify(ncRaw)}`,
+      path: "non_claims",
+    });
+  }
+  // notes: 3 exact strings in fixed order. The notes describe the
+  // contract's invariants (out-of-scope binding ids, side-band SDK
+  // metadata, A1 work-dir-prefix canonicalisation). Accepting other
+  // notes weakens the v0 boundary.
+  const nRaw = d.notes;
+  if (!isStringArray(nRaw)) {
+    errors.push({
+      code: "CROSS_RUNTIME_NOTES_INVALID",
+      message: "notes must be an array of strings",
+      path: "notes",
+    });
+  } else if (
+    nRaw.length !== RUNNER_CROSS_RUNTIME_REQUIRED_NOTES.length ||
+    RUNNER_CROSS_RUNTIME_REQUIRED_NOTES.some((n, i) => nRaw[i] !== n)
+  ) {
+    errors.push({
+      code: "CROSS_RUNTIME_NOTES_INVALID",
+      message: `notes must equal the v0 clean schema's fixed 3-string array in order; got ${JSON.stringify(
+        nRaw,
+      )}`,
+      path: "notes",
+    });
   }
 
   if (errors.length > 0) {
@@ -389,10 +637,6 @@ export function validateCrossRuntimeDiff(
 // ---------------------------------------------------------------------------
 // Report construction
 // ---------------------------------------------------------------------------
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
 
 /**
  * Read a cross-runtime-diff JSON file from disk, validate it, and
@@ -626,5 +870,3 @@ export function loadCrossRuntimeReport(diffPath: string): CrossRuntimeReportLoad
   }
   return { ok: true, report: buildCrossRuntimeReport(diffPath) };
 }
-
-void isObject;
