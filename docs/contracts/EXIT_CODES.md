@@ -67,6 +67,32 @@ Mode dispatch is by file extension (`.ndjson`/`.jsonl` → NDJSON path, `.tar.gz
 > invalid, or observation-health / correlation-report missing or malformed —
 > those remain failures regardless.
 
+### `assay-harness runner compare`
+
+Tier 2A — capability-surface diff over two Tier-1-clean Runner archives. Validates both archives, applies the honest-health gate, then diffs `capability-surface.json`. This verb's purpose is the Tier-2 diff; any Tier-1-not-clean input is treated as an input/contract failure, not a regression.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Both archives Tier-1 clean, no capability-surface regressions | 0 |
+| Capability-surface regression: added `filesystem_paths`, `network_endpoints`, `process_execs`, `mcp_tools`, or new `allow:*` `policy_decisions` | 6 |
+| Either archive fails strict H1 (manifest/digest invalid, archive unreadable, file not in manifest) | 3 |
+| Either archive fails honest-health (without `--allow-degraded`): degraded kernel layer, ring-buffer drops, non-clean cgroup correlation, non-clean correlation status | 3 |
+| Either archive is missing or has malformed `observation-health.json` / `correlation-report.json` | 3 |
+| Either archive is missing or has malformed `capability-surface.json` (incl. shape-invalid: non-array category fields, non-string elements) | 3 |
+| Either input is not a Runner archive by extension (`.tar.gz` / `.tgz`) | 2 |
+| Archive file missing as a config input | 2 |
+| Unknown `runner` subcommand | 2 |
+
+> **Routing rule:** `runner compare` exits **3 (artifact_contract)** for *any* Tier-1-not-clean input — including honest-health degradation and missing or malformed artifacts. This is intentionally stricter than the generic `compare` verb's Runner-mode routing (which exits 6 for honest-health). The verb is explicitly the Tier-2 diff path; if Tier 1 is not clean, the precondition for the verb is not met and there is no Tier-2 result to report. Callers that want softer routing should use `compare` or `verify-runner` instead.
+
+> v0 regression policy:
+> - added `filesystem_paths`, `network_endpoints`, `process_execs`, `mcp_tools` → regression
+> - added `policy_decisions` of the form `allow:*` → regression
+> - added `policy_decisions` of the form `deny:*` → **report-only** (recorded in the diff's `added` list, but does not trip the regression flag — typically reflects newly visible blocked behaviour rather than added capability surface)
+> - removed entries → reported but never a regression
+>
+> Tier 2A does NOT diff layer ndjson streams or reinterpret kernel telemetry. Per-layer reviewer projections are Tier 2B (separate PR, explanatory only).
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

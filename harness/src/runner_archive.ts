@@ -39,6 +39,7 @@ import { gunzipSync } from "node:zlib";
 export const RUNNER_ARCHIVE_MANIFEST_SCHEMA = "assay.runner.archive_manifest.v0";
 export const RUNNER_OBSERVATION_HEALTH_SCHEMA = "assay.runner.observation_health.v0";
 export const RUNNER_CORRELATION_REPORT_SCHEMA = "assay.runner.correlation_report.v0";
+export const RUNNER_CAPABILITY_SURFACE_SCHEMA = "assay.runner.capability_surface.v0";
 
 // Path constants for the canonical archive layout.
 export const RUNNER_MANIFEST_PATH = "manifest.json";
@@ -87,6 +88,25 @@ export interface RunnerCorrelationReport {
 }
 
 /**
+ * `assay.runner.capability_surface.v0` payload shape. All set categories
+ * are arrays of strings; values are deterministic per the v0 contract.
+ *
+ * `policy_decisions` entries follow the convention `<decision>:<key>`,
+ * e.g. `"allow:read_file"` or `"deny:write_file"`. Tier 2 capability-surface
+ * diff treats new `allow:*` decisions as regressions and new `deny:*`
+ * decisions as report-only changes (see runner_compare.ts).
+ */
+export interface RunnerCapabilitySurface {
+  schema: string;
+  run_id: string;
+  filesystem_paths: string[];
+  network_endpoints: string[];
+  process_execs: string[];
+  mcp_tools: string[];
+  policy_decisions: string[];
+}
+
+/**
  * Structured validation error from H1 (manifest/digest validation) or from
  * the secondary parse of observation-health / correlation-report payloads.
  * `code` is a stable identifier suitable for CI routing; `message` is
@@ -121,6 +141,13 @@ export interface RunnerArchiveValidation {
   manifest?: RunnerArchiveManifest;
   observation_health?: RunnerObservationHealth;
   correlation_report?: RunnerCorrelationReport;
+  /**
+   * Parsed `capability-surface.json` payload, present when the archive
+   * contains a valid `assay.runner.capability_surface.v0` file. Tier 1
+   * does not gate on this payload; Tier 2 uses it for the
+   * capability-surface diff (see `runner_compare.ts`).
+   */
+  capability_surface?: RunnerCapabilitySurface;
 }
 
 /** Caller-controlled options for the honest-health gate. */
@@ -217,6 +244,47 @@ function parseManifestDigest(value: string): string | null {
   const hex = value.slice("sha256:".length);
   if (!/^[0-9a-f]{64}$/.test(hex)) return null;
   return hex;
+}
+
+/**
+ * Verify that a parsed capability-surface payload matches the
+ * `RunnerCapabilitySurface` shape: every required category is present and
+ * is an array whose elements are all strings.
+ *
+ * Returns `null` when the shape is valid, or a short reason string when it
+ * is not. The reason is included in the corresponding
+ * `CAPABILITY_SURFACE_SHAPE_INVALID` artifact_parse_error so callers see
+ * which category failed and why. Schema-string and JSON-parse errors are
+ * NOT this helper's responsibility — they are checked separately before
+ * this function runs.
+ *
+ * This guard protects downstream Tier-2A diff code (`runner_compare.ts`)
+ * from receiving non-array values that would crash `.filter()` or
+ * non-string elements that would break set diffing.
+ */
+function capabilitySurfaceShapeError(payload: Record<string, unknown>): string | null {
+  const requiredArrays: readonly string[] = [
+    "filesystem_paths",
+    "network_endpoints",
+    "process_execs",
+    "mcp_tools",
+    "policy_decisions",
+  ];
+  for (const field of requiredArrays) {
+    const value = payload[field];
+    if (value === undefined) {
+      return `missing required array field "${field}"`;
+    }
+    if (!Array.isArray(value)) {
+      return `field "${field}" must be an array (got ${typeof value})`;
+    }
+    for (let i = 0; i < value.length; i++) {
+      if (typeof value[i] !== "string") {
+        return `field "${field}[${i}]" must be a string (got ${typeof value[i]})`;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -479,6 +547,45 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     }
   }
 
+  let capability_surface: RunnerCapabilitySurface | undefined;
+  const capBytes = files.get(RUNNER_CAPABILITY_SURFACE_PATH);
+  if (capBytes) {
+    const parsed = safeJsonParse<unknown>(capBytes);
+    if (!parsed || typeof parsed !== "object") {
+      artifact_parse_errors.push({
+        code: "CAPABILITY_SURFACE_NOT_JSON",
+        message: `${RUNNER_CAPABILITY_SURFACE_PATH} is not valid JSON`,
+        path: RUNNER_CAPABILITY_SURFACE_PATH,
+      });
+    } else {
+      const obj = parsed as Record<string, unknown>;
+      if (obj.schema !== RUNNER_CAPABILITY_SURFACE_SCHEMA) {
+        artifact_parse_errors.push({
+          code: "CAPABILITY_SURFACE_SCHEMA_MISMATCH",
+          message: `Expected schema ${RUNNER_CAPABILITY_SURFACE_SCHEMA}; got ${
+            typeof obj.schema === "string"
+              ? JSON.stringify(obj.schema)
+              : "(missing)"
+          }`,
+          path: RUNNER_CAPABILITY_SURFACE_PATH,
+        });
+      } else {
+        const shapeError = capabilitySurfaceShapeError(obj);
+        if (shapeError !== null) {
+          artifact_parse_errors.push({
+            code: "CAPABILITY_SURFACE_SHAPE_INVALID",
+            message: `${RUNNER_CAPABILITY_SURFACE_PATH} shape invalid: ${shapeError}`,
+            path: RUNNER_CAPABILITY_SURFACE_PATH,
+          });
+        } else {
+          // Shape verified: every required field is present and is a
+          // string array. Safe to expose as the typed payload.
+          capability_surface = obj as unknown as RunnerCapabilitySurface;
+        }
+      }
+    }
+  }
+
   return {
     recognised: true,
     manifest_valid: manifest_errors.length === 0,
@@ -487,6 +594,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     manifest,
     observation_health,
     correlation_report,
+    capability_surface,
   };
 }
 

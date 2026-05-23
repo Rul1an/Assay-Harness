@@ -4,6 +4,75 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner capability-surface diff (Tier 2A)
+
+Adds `assay-harness runner compare` for diffing two Tier-1-clean Assay-Runner
+measured-run archives on their `assay.runner.capability_surface.v0` payload.
+Tier-2A scope only: archive-only diff using existing v0 artifact semantics, no
+new runtime interpretation, no layer-ndjson consumption, no cross-runtime
+diff. Tier 2B (per-layer reviewer projection) and Tier 2C (cross-runtime
+consumer) remain open in `Rul1an/Assay-Harness#58`.
+
+- New CLI verb:
+  `assay-harness runner compare --baseline <archive.tar.gz>
+   --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]`.
+- Prerequisite: both archives must pass Tier 1 (recognised, manifest valid,
+  honest-health clean — `kernel_layer=complete`, `ringbuf_drops=0`,
+  `cgroup_correlation=clean`, `correlation_report.status=clean`,
+  archive manifest schema valid). If either side fails, Tier 2 is **not
+  computed**; the result reports `tier1_validation_failed` with the per-side
+  Tier-1 reasons and exits `artifact_contract` (3).
+- Diff covers the five v0 set categories: `filesystem_paths`,
+  `network_endpoints`, `process_execs`, `mcp_tools`, `policy_decisions`.
+  Each category yields `added`, `removed`, and `unchanged` lists in JSON;
+  markdown output shows `added` and `removed` only.
+- v0 regression policy:
+  - added `filesystem_paths`, `network_endpoints`, `process_execs`,
+    `mcp_tools` → regression
+  - added `policy_decisions` of the form `allow:*` → regression
+  - added `policy_decisions` of the form `deny:*` → **report-only** (the
+    diff still records the addition; the regression flag does not trip,
+    because new deny decisions typically reflect newly visible blocked
+    behaviour rather than added capability surface)
+  - removed entries → reported, never a regression
+- Exit codes (strict Tier-2 verb semantics; any Tier-1-not-clean input is
+  an `artifact_contract` failure, not a regression):
+  - clean → `success` (0)
+  - capability-surface regression → `regression` (6)
+  - any Tier-1 fail on either side (invalid archive, manifest/digest
+    invalid, honest-health degraded, observation-health /
+    correlation-report missing or malformed, `capability-surface.json`
+    missing or shape-invalid) → `artifact_contract` (3)
+  - extension-based input is not a `.tar.gz` / `.tgz` on either side →
+    `config_error` (2). `cmdRunnerCompare` calls `detectInputMode()` at
+    CLI level so a stray NDJSON or `.txt` is caught early instead of
+    being routed through the archive validator.
+  This routing is intentionally stricter than `compare`'s Runner-mode
+  routing (which exits 6 for honest-health and 6 for missing
+  capability-surface). The `runner compare` verb is explicitly the
+  Tier-2 diff path; if Tier 1 is not clean, the precondition is not met
+  and there is no Tier-2 result to report.
+- Runtime shape guard for `capability-surface.json`. The validator now
+  rejects payloads where any of `filesystem_paths`, `network_endpoints`,
+  `process_execs`, `mcp_tools`, or `policy_decisions` is missing, not
+  an array, or contains non-string elements
+  (`CAPABILITY_SURFACE_SHAPE_INVALID`). Pre-fix a malformed but
+  schema-matching payload could crash the Tier-2A differ when it called
+  `Array.prototype.filter` on a non-array.
+- New module `harness/src/runner_compare.ts` for the diff and formatter.
+  `validateRunnerArchive` in `runner_archive.ts` extended to parse
+  `capability-surface.json` into the optional `capability_surface` field on
+  `RunnerArchiveValidation` (additive; no breaking change).
+- New tests in `harness/test/runner_compare.test.mjs` cover the regression
+  policy, the deny-vs-allow split for policy decisions, removed-not-blocking
+  semantics, Tier-1-skip behaviour, the missing-capability-surface path, and
+  the markdown formatter's omit-unchanged rule.
+
+This does NOT change `assay-harness compare` behaviour for either NDJSON or
+Runner-archive inputs; the existing Tier-1 path is unchanged. `runner compare`
+is a separate, explicit verb for the Runner-aware regression-diff use case.
+
+
 ### Assay-Runner archive recognition (Tier 1)
 
 Adds Tier-1 support for reading Assay-Runner measured-run archives in
