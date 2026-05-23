@@ -4,6 +4,16 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Docs: Runner demo walkthrough + README pivot
+
+Adds an end-to-end walkthrough at `docs/DEMO_RUNNER.md` showing all five Runner-aware verbs (`verify-runner`, `compare` in Runner mode, `runner compare`, `runner cross-runtime report`, `runner cross-runtime gate`) with locally-generated synthetic fixtures. Output blocks in the demo are copied verbatim from real CLI invocations, not paraphrased.
+
+- New `examples/runner/build-fixtures.mjs` generates four artefacts on demand: `clean.tar.gz` and `regression.tar.gz` (with a forced added MCP tool / filesystem path / `allow:*` decision), and `cross-runtime-diff-clean.json` plus `cross-runtime-diff-regression.json`. The script uses the same in-file ustar+gzip writer pattern as the test suite and only depends on `node:crypto` and `node:zlib`. The generated artefacts are `.gitignore`d so the tree stays text-only.
+- New `examples/runner/README.md` explains what the fixtures are and what they are not (no real eBPF, no real measurement, just enough to exercise the Harness consumer path).
+- `README.md` "Optional input: Assay-Runner measured-run archives" section rewritten with a five-verb table, a copy-pasted mini regression output block, and a pointer to the demo walkthrough. Updated to reflect that cross-runtime diff consumption (Tier 3A/3C) is now live in v0.6.0; only Tier 3B (archive-pair convenience wrapper) remains deferred. Version badge bumped from 0.4.0 to 0.6.0 (was stale after v0.5.0 / v0.6.0 releases).
+
+Non-claims unchanged: no marketing language, no standalone-Runner positioning, no claim that two runtimes are semantically equivalent. Runner remains internal to `Rul1an/assay`; Harness consumes and gates but does not measure or compute.
+
 ## [0.6.0] - 2026-05-23
 
 This minor release adds **Assay-Runner cross-runtime diff consumption +
