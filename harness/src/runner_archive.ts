@@ -696,7 +696,7 @@ export function checkHonestHealth(
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers — tar.gz reading + JSON parsing
+// Helpers — tar.gz reading + JSON parsing
 // ---------------------------------------------------------------------------
 
 /**
@@ -708,7 +708,15 @@ export function checkHonestHealth(
  * Runner archives are produced with deterministic ustar mode and short
  * paths well below the 100-byte limit (see
  * `Rul1an/assay/crates/assay-runner-core/src/archive.rs`).
+ *
+ * Exported so the Tier-2B layer projection can read the same archive
+ * without duplicating the size-limit guarded gunzip+tar pipeline. Read
+ * path is identical to the one used by `validateRunnerArchive`.
  */
+export function readRunnerArchiveFiles(filePath: string): Map<string, Buffer> {
+  return readTarGz(filePath);
+}
+
 function readTarGz(filePath: string): Map<string, Buffer> {
   const stat = statSync(filePath);
   if (stat.size > RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES) {
