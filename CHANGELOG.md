@@ -4,6 +4,28 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-23
+
+This minor release adds opt-in support for **Assay-Runner measured-run
+archives** as an input shape for Assay-Harness, alongside the existing
+NDJSON evidence path. It introduces two new CLI verbs (`verify-runner`
+and `runner compare`), a Tier-2A capability-surface regression diff, and
+a Tier-2B per-layer reviewer projection.
+
+> Assay-Runner remains internal to `Rul1an/assay`; this is not a
+> standalone Runner release. The Runner v0 contracts referenced here
+> (archive manifest, observation-health, correlation-report,
+> capability-surface, sdk-event) are immutable Runner-side artefacts.
+> Cross-runtime diff consumption is deferred (Tier 2C / future option).
+
+The version bump from `0.4.0` to `0.5.0` is a minor bump because:
+
+- new CLI surface (`verify-runner`, `runner compare`)
+- new optional input shape (Runner archives) routed through extension-based
+  mode detection
+- existing NDJSON callers and existing exit-code contract are unchanged
+- no breaking change to any prior 0.4.x flow
+
 ### Docs: positioning of Assay-Runner archives as an optional input shape
 
 Adds one short README section under "What this is not" describing that
