@@ -26,6 +26,21 @@ See [docs/POSITIONING.md](docs/POSITIONING.md) for the full positioning and
 the `assay` / `assay-action` / Assay-Harness boundary (compiler / button /
 playbook).
 
+### Optional input: Assay-Runner measured-run archives
+
+Assay-Harness can also validate and compare Assay-Runner measured-run
+archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) as an
+optional input shape, alongside the existing NDJSON evidence path. This
+is opt-in: NDJSON callers are unaffected. The Runner-archive flow uses
+the same exit-code contract — see
+[`docs/contracts/EXIT_CODES.md`](docs/contracts/EXIT_CODES.md) for the
+`verify-runner`, `compare` (Runner-mode), and `runner compare` tables.
+
+Runner archives are defined and produced by the Runner side of
+[`Rul1an/assay`](https://github.com/Rul1an/assay); they are an internal
+measured-run subsystem of Assay, **not a standalone product**. Cross-runtime
+diff consumption is deferred (future option, not currently implemented).
+
 ---
 
 ## The PR Gate Flow
