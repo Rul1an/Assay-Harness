@@ -7,7 +7,7 @@ produces verify-before-diff comparisons of baseline vs candidate evidence.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.4.0 | **Status:** active development
+> **Version:** 0.6.0 | **Status:** active development
 
 ### What this is
 
@@ -28,18 +28,36 @@ playbook).
 
 ### Optional input: Assay-Runner measured-run archives
 
-Assay-Harness can also validate and compare Assay-Runner measured-run
-archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) as an
-optional input shape, alongside the existing NDJSON evidence path. This
-is opt-in: NDJSON callers are unaffected. The Runner-archive flow uses
-the same exit-code contract — see
-[`docs/contracts/EXIT_CODES.md`](docs/contracts/EXIT_CODES.md) for the
-`verify-runner`, `compare` (Runner-mode), and `runner compare` tables.
+Assay-Harness can read [Assay-Runner](https://github.com/Rul1an/assay) measured-run archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) and the precomputed cross-runtime diff JSON Runner produces. This is opt-in alongside the existing NDJSON evidence path; NDJSON callers are unaffected.
 
-Runner archives are defined and produced by the Runner side of
-[`Rul1an/assay`](https://github.com/Rul1an/assay); they are an internal
-measured-run subsystem of Assay, **not a standalone product**. Cross-runtime
-diff consumption is deferred (future option, not currently implemented).
+Five Runner-aware verbs are available:
+
+| Verb | What it does | CI exit on regression |
+|---|---|---|
+| `assay-harness verify-runner <archive.tar.gz>` | Validate one archive's manifest, per-file SHA-256, and honest-health | — (single archive) |
+| `assay-harness compare --baseline <a> --candidate <b>` (with `.tar.gz` inputs) | Tier-1 validation of both archives | n/a (Tier 1 only) |
+| `assay-harness runner compare --baseline <a> --candidate <b>` | Strict Tier-2A capability-surface diff over two Tier-1-clean archives | `6` |
+| `assay-harness runner cross-runtime report --diff <diff.json>` | Reviewer projection of `cross_runtime_diff.v0` (informational) | `0` (rendered only) |
+| `assay-harness runner cross-runtime gate --diff <diff.json>` | CI-blocking gate on the same cross-runtime signal | `6` |
+
+What a Tier-2A regression looks like when an agent gains a new MCP tool between baseline and candidate:
+
+```text
+# Runner Capability-Surface Diff (Tier 2A)
+
+**Status:** RUNNER CAPABILITY REGRESSION
+**Summary:** RUNNER CAPABILITY REGRESSION: filesystem_paths_added:1, mcp_tools_added:1, policy_allow_decisions_added:1
+
+## MCP Tools
+Added:
+- `write_file`
+```
+
+Exit `6`.
+
+A reproducible end-to-end walkthrough with all four verbs, using locally-generated synthetic fixtures (no live eBPF, no delegated host), lives in [`docs/DEMO_RUNNER.md`](docs/DEMO_RUNNER.md). The full per-verb exit-code contract lives in [`docs/contracts/EXIT_CODES.md`](docs/contracts/EXIT_CODES.md).
+
+Runner archives and cross-runtime diffs are defined and produced by the Runner side of [`Rul1an/assay`](https://github.com/Rul1an/assay) — an internal measured-run subsystem of Assay, **not a standalone product**. Harness consumes and gates; it does not measure and does not compute cross-runtime diffs. Producing a cross-runtime diff from a raw archive pair (Tier 3B) remains deferred as a future demo recipe.
 
 ---
 
