@@ -27,7 +27,12 @@ import { fileURLToPath } from "node:url";
 import { createHarnessAgent } from "./agent.js";
 import { PolicyEngine } from "./policy.js";
 import { runHarness } from "./harness.js";
-import { compareEvidence, formatCompareResult } from "./compare.js";
+import {
+  compareEvidence,
+  compareRunnerArchivesTier1,
+  formatCompareResult,
+  formatRunnerCompareTier1Result,
+} from "./compare.js";
 import {
   formatTrustBasisGateSummary,
   runTrustBasisGate,
@@ -36,6 +41,11 @@ import {
   runTrustBasisReport,
   TrustBasisReportError,
 } from "./trust_basis_report.js";
+import {
+  checkHonestHealth,
+  detectInputMode,
+  validateRunnerArchive,
+} from "./runner_archive.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -55,10 +65,11 @@ function usage(): never {
   console.log(`assay-harness — Approval-aware resumable harness with Assay evidence governance
 
 Commands:
-  compare  --baseline <path> --candidate <path> [--format markdown|json]
+  compare  --baseline <path> --candidate <path> [--format markdown|json] [--allow-degraded]
   trust-basis gate --baseline <path> --candidate <path> --out <path> [--assay-bin <path>]
   trust-basis report --diff <path> [--summary-out <path>] [--junit-out <path>]
   verify   <evidence-file> [--category <all|envelope|hash|type>]
+  verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -509,6 +520,7 @@ function cmdCompare(args: Record<string, string | boolean>): void {
   const baselinePath = args.baseline as string;
   const candidatePath = args.candidate as string;
   const format = (args.format as string) ?? "markdown";
+  const allowDegraded = args["allow-degraded"] === true;
 
   if (!baselinePath || !existsSync(baselinePath)) {
     console.error(`[config_error] Baseline file not found: ${baselinePath ?? "(none)"}`);
@@ -519,6 +531,53 @@ function cmdCompare(args: Record<string, string | boolean>): void {
     process.exit(EXIT.CONFIG_ERROR);
   }
 
+  // H6 — mode detection. Route NDJSON evidence to the existing comparison,
+  // and Runner archives to the Tier-1 validation path. Refuse mixed modes
+  // with a clear error rather than producing a misleading diff.
+  const baselineMode = detectInputMode(baselinePath);
+  const candidateMode = detectInputMode(candidatePath);
+
+  if (baselineMode !== candidateMode) {
+    console.error(
+      `[config_error] Input mode mismatch: baseline=${baselineMode}, candidate=${candidateMode}. ` +
+        `compare requires both inputs to be the same kind ` +
+        `(both NDJSON evidence files, or both Runner .tar.gz archives).`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
+  if (baselineMode === "unknown") {
+    console.error(
+      `[config_error] Unrecognised input shape for ${baselinePath} and ${candidatePath}. ` +
+        `Expected NDJSON evidence (.ndjson, .jsonl) or a Runner archive (.tar.gz with ` +
+        `assay.runner.archive_manifest.v0 at manifest.json).`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
+  if (baselineMode === "runner_archive") {
+    const runnerResult = compareRunnerArchivesTier1(baselinePath, candidatePath, {
+      allow_degraded: allowDegraded,
+    });
+    if (format === "json") {
+      console.log(JSON.stringify(runnerResult, null, 2));
+    } else {
+      console.log(formatRunnerCompareTier1Result(runnerResult));
+    }
+    // Routing:
+    //   - either side fails manifest/digest validation → ARTIFACT_CONTRACT
+    //   - otherwise honest-health failure (or any other Tier-1 fail) → REGRESSION
+    //   - clean → SUCCESS
+    const manifestFailure =
+      !runnerResult.baseline.manifest_valid || !runnerResult.candidate.manifest_valid ||
+      !runnerResult.baseline.recognised || !runnerResult.candidate.recognised;
+    if (manifestFailure) {
+      process.exit(EXIT.ARTIFACT_CONTRACT);
+    }
+    process.exit(runnerResult.has_regressions ? EXIT.REGRESSION : EXIT.SUCCESS);
+  }
+
+  // Legacy path: both inputs are NDJSON evidence files.
   const result = compareEvidence(baselinePath, candidatePath);
 
   if (format === "json") {
@@ -528,6 +587,93 @@ function cmdCompare(args: Record<string, string | boolean>): void {
   }
 
   process.exit(result.has_regressions ? EXIT.REGRESSION : EXIT.SUCCESS);
+}
+
+function cmdVerifyRunner(args: Record<string, string | boolean>): void {
+  const archivePath = (args._file as string | undefined) ?? (args.archive as string | undefined);
+  const format = (args.format as string) ?? "markdown";
+  const allowDegraded = args["allow-degraded"] === true;
+
+  if (!archivePath || !existsSync(archivePath)) {
+    console.error(
+      `[config_error] Runner archive not found: ${archivePath ?? "(none)"}`,
+    );
+    console.error(
+      `Usage: verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
+  const validation = validateRunnerArchive(archivePath);
+  const health = checkHonestHealth(validation, { allow_degraded: allowDegraded });
+
+  if (format === "json") {
+    console.log(
+      JSON.stringify(
+        {
+          archive: archivePath,
+          recognised: validation.recognised,
+          manifest_valid: validation.manifest_valid,
+          honest_health: {
+            passed: health.passed,
+            reasons: health.reasons,
+            allow_degraded: allowDegraded,
+          },
+          manifest_errors: validation.errors,
+          run_id: validation.manifest?.run_id,
+          observation_health: validation.observation_health,
+          correlation_report_status: validation.correlation_report?.status,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    const lines: string[] = [];
+    lines.push("# Runner Archive Verification");
+    lines.push("");
+    lines.push(`**Archive:** \`${archivePath}\``);
+    lines.push(`**Recognised:** ${validation.recognised ? "yes" : "no"}`);
+    lines.push(`**Manifest valid:** ${validation.manifest_valid ? "yes" : "no"}`);
+    if (validation.manifest?.run_id) {
+      lines.push(`**Run id:** \`${validation.manifest.run_id}\``);
+    }
+    lines.push(
+      `**Honest health:** ${health.passed ? "passed" : "failed"}${
+        allowDegraded ? " (allow_degraded enabled)" : ""
+      }`,
+    );
+    lines.push("");
+    if (validation.errors.length > 0) {
+      lines.push("## Manifest / Digest Errors");
+      lines.push("");
+      for (const e of validation.errors) {
+        lines.push(`- \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
+      }
+      lines.push("");
+    }
+    if (health.reasons.length > 0) {
+      lines.push("## Honest Health Reasons");
+      lines.push("");
+      for (const r of health.reasons) {
+        lines.push(`- \`${r}\``);
+      }
+      lines.push("");
+    }
+    console.log(lines.join("\n"));
+  }
+
+  // Exit code routing:
+  //   - manifest/digest failure → ARTIFACT_CONTRACT (3)
+  //   - honest-health failure (without --allow-degraded) → REGRESSION (6)
+  //   - otherwise → SUCCESS (0)
+  if (!validation.recognised || !validation.manifest_valid) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (!health.passed) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
 }
 
 function cmdTrustBasisGate(args: Record<string, string | boolean>): void {
@@ -732,6 +878,9 @@ const command = args._command as string;
 switch (command) {
   case "compare":
     cmdCompare(args);
+    break;
+  case "verify-runner":
+    cmdVerifyRunner(args);
     break;
   case "trust-basis":
     cmdTrustBasis(args);

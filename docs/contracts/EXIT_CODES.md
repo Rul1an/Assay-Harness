@@ -43,9 +43,29 @@ classification.
 
 | Outcome | Exit Code |
 |---------|-----------|
-| No regressions | 0 |
-| Regressions found | 6 |
+| No regressions (NDJSON mode) | 0 |
+| Regressions found (NDJSON mode) | 6 |
+| Both inputs are Runner archives, Tier-1 validation clean | 0 |
+| Either Runner archive fails manifest/digest validation (Tier 1) | 3 |
+| Either Runner archive fails honest-health gate without `--allow-degraded` | 6 |
+| Input mode mismatch (one NDJSON, one Runner archive) | 2 |
+| Unrecognised input shape | 2 |
 | Config error (file missing) | 2 |
+
+> Runner-archive mode in `compare` is Tier 1 only (recognise + manifest/digest
+> verification + honest-health gate). Structural diff across the two archives
+> is Tier 2 and is not implemented in this version. See
+> `Rul1an/Assay-Harness#58` and the design references in
+> `Rul1an/assay/docs/reference/runner/`.
+
+### `assay-harness verify-runner`
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Archive recognised, manifest + digests valid, honest-health clean | 0 |
+| Manifest schema mismatch, digest mismatch, missing manifest, or unreadable archive | 3 |
+| Honest-health degraded and `--allow-degraded` is not set | 6 |
+| Archive file missing or unreadable as a config input | 2 |
 
 ### `assay-harness policy`
 

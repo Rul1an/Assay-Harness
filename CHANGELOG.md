@@ -4,6 +4,55 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner archive recognition (Tier 1)
+
+Adds Tier-1 support for reading Assay-Runner measured-run archives in
+`assay-harness compare` and a dedicated `assay-harness verify-runner`
+command. Tier-1 scope is **recognition + validation + honest-health gate
+only**; structural diff across two Runner archives is Tier 2 and is not
+implemented in this version. See `Rul1an/Assay-Harness#58`.
+
+- New module `harness/src/runner_archive.ts` with:
+  - Schema-string constants pinned to `Rul1an/assay@cd242666`
+    (`assay.runner.archive_manifest.v0`,
+    `assay.runner.observation_health.v0`,
+    `assay.runner.correlation_report.v0`)
+  - `detectInputMode(path)` (H6): classify a file as
+    `ndjson_evidence`, `runner_archive`, or `unknown` without taking any
+    other action
+  - `validateRunnerArchive(path)` (H1): parse `.tar.gz`, verify manifest
+    schema, verify every manifest entry's presence, byte count, and
+    SHA-256 digest; surface errors as structured `RunnerValidationError`s
+  - `checkHonestHealth(validation, options)` (H2): gate on
+    `kernel_layer === "complete"`, `ringbuf_drops === 0`,
+    `cgroup_correlation === "clean"`, `correlation_report.status ===
+    "clean"`; opt-in `allow_degraded` keeps reasons recorded but passes
+    the gate
+- `assay-harness compare` now detects input mode and dispatches:
+  - both inputs NDJSON: existing comparison, unchanged
+  - both inputs Runner archives: new Tier-1 validation path
+    (`compareRunnerArchivesTier1`) returning a
+    `RunnerCompareTier1Result` with explicit `tier2_diff_implemented:
+    false`
+  - mixed modes or unrecognised inputs: clear `config_error`
+- New `assay-harness verify-runner <archive.tar.gz>
+  [--format markdown|json] [--allow-degraded]` for single-archive
+  verification
+- Exit code routing (see `docs/contracts/EXIT_CODES.md`):
+  - manifest/digest failure → `artifact_contract` (3)
+  - honest-health degraded without `--allow-degraded` → `regression` (6)
+  - clean → `success` (0)
+- No new npm dependency; `.tar.gz` reading uses `node:zlib` for gunzip
+  and an in-file minimal ustar parser (Runner archives use deterministic
+  ustar headers with short paths)
+- 18 new tests in `harness/test/runner_archive.test.mjs` covering H6
+  detection, H1 manifest/digest validation, H2 honest-health gating, and
+  the `compareRunnerArchivesTier1` integration
+
+This does **not** imply Assay-Harness now depends on Assay-Runner. It
+adds opt-in recognition for callers that produce Runner archives. NDJSON
+evidence callers are unaffected.
+
 ## [0.4.0] - 2026-05-11
 
 This minor release rolls up two audit cycles (audit baseline `c2c869c` and
