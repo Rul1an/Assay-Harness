@@ -4,6 +4,25 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Docs: positioning of Assay-Runner archives as an optional input shape
+
+Adds one short README section under "What this is not" describing that
+Assay-Harness can also validate and compare Assay-Runner measured-run
+archives as an opt-in input shape, with a pointer to
+`docs/contracts/EXIT_CODES.md` for the per-command exit-code routing.
+Explicit about non-claims:
+
+- Runner archives are defined and produced by the Runner side of
+  `Rul1an/assay`; they are an **internal** measured-run subsystem of
+  Assay, not a standalone product
+- Cross-runtime diff consumption is deferred (future option, not
+  currently implemented)
+- NDJSON evidence callers are unaffected
+- No new CLI surface, no new exit codes, no release commitment, no
+  badges, no marketing language
+
+Closes Tier-2A/2B positioning (H7) in `Rul1an/Assay-Harness#58`.
+
 ### Assay-Runner per-layer reviewer projection (Tier 2B)
 
 Adds an explanatory per-layer reviewer projection to
