@@ -4,6 +4,34 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-23
+
+This minor release adds **Assay-Runner cross-runtime diff consumption +
+gating** to Assay-Harness. Two new CLI verbs:
+
+- `assay-harness runner cross-runtime report --diff <path>` — reviewer
+  projection of a precomputed `assay.runner.cross_runtime_diff.v0` JSON
+  artefact.
+- `assay-harness runner cross-runtime gate --diff <path>` — CI-blocking
+  translation of the same signal (exit 6 on added capability surface,
+  3 on contract violation, 0 otherwise).
+
+> Assay-Runner remains internal to `Rul1an/assay`; this is not a
+> standalone Runner release. The Runner side owns cross-runtime
+> semantics (A1+B3+C1 canonicalisation, out-of-scope markers, side-band
+> SDK metadata); Harness consumes the frozen v0 artefact and translates
+> the regression signal into reviewer output and CI exit codes.
+
+The version bump from `0.5.0` to `0.6.0` is a minor bump because:
+
+- new CLI surface (`runner cross-runtime report`, `runner cross-runtime gate`)
+- new exit-routing for cross-runtime regressions (exit 6 mirrored from
+  the within-runtime `runner compare` policy onto the cross-runtime
+  artefact)
+- existing NDJSON / Tier-1 / Tier-2A / Tier-2B / `runner compare` /
+  `verify-runner` paths are unchanged
+- no breaking change to any prior 0.5.x flow
+
 ### Assay-Runner cross-runtime diff consumer + gate (Tier 3A + Tier 3C)
 
 Adds two new CLI verbs for reading and gating on a precomputed
