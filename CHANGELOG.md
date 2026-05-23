@@ -4,6 +4,155 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner capability-surface diff (Tier 2A)
+
+Adds `assay-harness runner compare` for diffing two Tier-1-clean Assay-Runner
+measured-run archives on their `assay.runner.capability_surface.v0` payload.
+Tier-2A scope only: archive-only diff using existing v0 artifact semantics, no
+new runtime interpretation, no layer-ndjson consumption, no cross-runtime
+diff. Tier 2B (per-layer reviewer projection) and Tier 2C (cross-runtime
+consumer) remain open in `Rul1an/Assay-Harness#58`.
+
+- New CLI verb:
+  `assay-harness runner compare --baseline <archive.tar.gz>
+   --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]`.
+- Prerequisite: both archives must pass Tier 1 (recognised, manifest valid,
+  honest-health clean — `kernel_layer=complete`, `ringbuf_drops=0`,
+  `cgroup_correlation=clean`, `correlation_report.status=clean`,
+  archive manifest schema valid). If either side fails, Tier 2 is **not
+  computed**; the result reports `tier1_validation_failed` with the per-side
+  Tier-1 reasons and exits `artifact_contract` (3).
+- Diff covers the five v0 set categories: `filesystem_paths`,
+  `network_endpoints`, `process_execs`, `mcp_tools`, `policy_decisions`.
+  Each category yields `added`, `removed`, and `unchanged` lists in JSON;
+  markdown output shows `added` and `removed` only.
+- v0 regression policy:
+  - added `filesystem_paths`, `network_endpoints`, `process_execs`,
+    `mcp_tools` → regression
+  - added `policy_decisions` of the form `allow:*` → regression
+  - added `policy_decisions` of the form `deny:*` → **report-only** (the
+    diff still records the addition; the regression flag does not trip,
+    because new deny decisions typically reflect newly visible blocked
+    behaviour rather than added capability surface)
+  - removed entries → reported, never a regression
+- Exit codes (strict Tier-2 verb semantics; any Tier-1-not-clean input is
+  an `artifact_contract` failure, not a regression):
+  - clean → `success` (0)
+  - capability-surface regression → `regression` (6)
+  - any Tier-1 fail on either side (invalid archive, manifest/digest
+    invalid, honest-health degraded, observation-health /
+    correlation-report missing or malformed, `capability-surface.json`
+    missing or shape-invalid) → `artifact_contract` (3)
+  - extension-based input is not a `.tar.gz` / `.tgz` on either side →
+    `config_error` (2). `cmdRunnerCompare` calls `detectInputMode()` at
+    CLI level so a stray NDJSON or `.txt` is caught early instead of
+    being routed through the archive validator.
+  This routing is intentionally stricter than `compare`'s Runner-mode
+  routing (which exits 6 for honest-health and 6 for missing
+  capability-surface). The `runner compare` verb is explicitly the
+  Tier-2 diff path; if Tier 1 is not clean, the precondition is not met
+  and there is no Tier-2 result to report.
+- Runtime shape guard for `capability-surface.json`. The validator now
+  rejects payloads where any of `filesystem_paths`, `network_endpoints`,
+  `process_execs`, `mcp_tools`, or `policy_decisions` is missing, not
+  an array, or contains non-string elements
+  (`CAPABILITY_SURFACE_SHAPE_INVALID`). Pre-fix a malformed but
+  schema-matching payload could crash the Tier-2A differ when it called
+  `Array.prototype.filter` on a non-array.
+- New module `harness/src/runner_compare.ts` for the diff and formatter.
+  `validateRunnerArchive` in `runner_archive.ts` extended to parse
+  `capability-surface.json` into the optional `capability_surface` field on
+  `RunnerArchiveValidation` (additive; no breaking change).
+- New tests in `harness/test/runner_compare.test.mjs` cover the regression
+  policy, the deny-vs-allow split for policy decisions, removed-not-blocking
+  semantics, Tier-1-skip behaviour, the missing-capability-surface path, and
+  the markdown formatter's omit-unchanged rule.
+
+This does NOT change `assay-harness compare` behaviour for either NDJSON or
+Runner-archive inputs; the existing Tier-1 path is unchanged. `runner compare`
+is a separate, explicit verb for the Runner-aware regression-diff use case.
+
+
+### Assay-Runner archive recognition (Tier 1)
+
+Adds Tier-1 support for reading Assay-Runner measured-run archives in
+`assay-harness compare` and a dedicated `assay-harness verify-runner`
+command. Tier-1 scope is **recognition + validation + honest-health gate
+only**; structural diff across two Runner archives is Tier 2 and is not
+implemented in this version. See `Rul1an/Assay-Harness#58`.
+
+- New module `harness/src/runner_archive.ts` with:
+  - Schema-string constants pinned to `Rul1an/assay@cd242666`
+    (`assay.runner.archive_manifest.v0`,
+    `assay.runner.observation_health.v0`,
+    `assay.runner.correlation_report.v0`)
+  - `detectInputMode(path)` (H6): classify a file purely by extension as
+    `ndjson_evidence`, `runner_archive`, or `unknown`. Content validation
+    is left to `validateRunnerArchive` so that a corrupted or non-Runner
+    `.tar.gz` surfaces as `artifact_contract` (3), not `config_error` (2)
+  - `validateRunnerArchive(path)` (H1): parse `.tar.gz`, verify manifest
+    schema, verify every manifest entry's presence, byte count, and
+    SHA-256 digest. Digests are validated in the `sha256:<64-hex>` form
+    written by the Rust runner core
+    (`crates/assay-runner-core/src/archive.rs::sha256_prefixed`); raw-hex
+    digests are rejected as `MANIFEST_ENTRY_DIGEST_FORMAT_INVALID`. Also
+    rejects archive entries not listed in `manifest.files` (except
+    `manifest.json` itself, which the Rust writer does not list in its
+    own files map) as `FILE_NOT_IN_MANIFEST`. Compressed and decompressed
+    size are bounded
+    (`RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES`,
+    `RUNNER_ARCHIVE_MAX_DECOMPRESSED_BYTES`) so a crafted gzip cannot
+    cause unbounded memory consumption
+  - The validation result separates strict H1 issues (`manifest_errors`)
+    from secondary `observation-health.json` / `correlation-report.json`
+    parse failures (`artifact_parse_errors`). `manifest_valid` is
+    controlled by `manifest_errors` only, so a wrong observation-health
+    schema string never makes the manifest itself appear invalid
+  - `checkHonestHealth(validation, options)` (H2): gate on
+    `kernel_layer === "complete"`, `ringbuf_drops === 0`,
+    `cgroup_correlation === "clean"`, `correlation_report.status ===
+    "clean"`. Failure reasons are split into
+    `measurement_health_reasons` (bypassable by `allow_degraded`) and
+    `structural_reasons` (archive not recognised, manifest invalid,
+    observation-health or correlation-report missing or malformed —
+    never bypassable). `allow_degraded` therefore cannot produce a
+    state where `manifest_valid: false` co-exists with
+    `honest_health.passed: true`
+- `assay-harness compare` now dispatches by file extension:
+  - both inputs `.ndjson` / `.jsonl`: existing comparison, unchanged
+  - both inputs `.tar.gz` / `.tgz`: Tier-1 validation path
+    (`compareRunnerArchivesTier1`) returning a
+    `RunnerCompareTier1Result` with explicit `tier2_diff_implemented:
+    false`. A corrupted or non-Runner `.tar.gz` exits with
+    `artifact_contract` (3) because the validator surfaces the
+    structural failure, not `config_error` (2)
+  - mixed extensions or unknown extensions: clear `config_error`
+- New `assay-harness verify-runner <archive.tar.gz>
+  [--format markdown|json] [--allow-degraded]` for single-archive
+  verification. JSON output now exposes
+  `manifest_errors`, `artifact_parse_errors`,
+  `honest_health.structural_reasons`, and
+  `honest_health.measurement_health_reasons` separately
+- Exit code routing (see `docs/contracts/EXIT_CODES.md`):
+  - strict H1 failure → `artifact_contract` (3)
+  - honest-health failure (whether measurement-degraded or structural,
+    such as observation-health missing) without `--allow-degraded` →
+    `regression` (6). `--allow-degraded` bypasses only measurement
+    reasons, not structural ones
+  - clean → `success` (0)
+- No new npm dependency; `.tar.gz` reading uses `node:zlib` for gunzip
+  and an in-file minimal ustar parser (Runner archives use deterministic
+  ustar headers with short paths)
+- New tests in `harness/test/runner_archive.test.mjs` covering H6
+  detection (now extension-based), H1 manifest/digest validation
+  including `sha256:` prefix enforcement and extra-file detection, H2
+  honest-health gating including the structural / measurement-health
+  reason split, and the `compareRunnerArchivesTier1` integration
+
+This does **not** imply Assay-Harness now depends on Assay-Runner. It
+adds opt-in recognition for callers that produce Runner archives. NDJSON
+evidence callers are unaffected.
+
 ## [0.4.0] - 2026-05-11
 
 This minor release rolls up two audit cycles (audit baseline `c2c869c` and
