@@ -41,15 +41,17 @@ classification.
 
 ### `assay-harness compare`
 
+Mode dispatch is by file extension (`.ndjson`/`.jsonl` → NDJSON path, `.tar.gz`/`.tgz` → Runner-archive Tier-1 path). A corrupted or non-Runner `.tar.gz` is still routed through the Runner-archive validator so the structural failure surfaces as `artifact_contract (3)` rather than being misclassified as `config_error (2)`.
+
 | Outcome | Exit Code |
 |---------|-----------|
 | No regressions (NDJSON mode) | 0 |
 | Regressions found (NDJSON mode) | 6 |
 | Both inputs are Runner archives, Tier-1 validation clean | 0 |
-| Either Runner archive fails manifest/digest validation (Tier 1) | 3 |
-| Either Runner archive fails honest-health gate without `--allow-degraded` | 6 |
-| Input mode mismatch (one NDJSON, one Runner archive) | 2 |
-| Unrecognised input shape | 2 |
+| Either Runner archive fails strict H1 validation: archive unreadable, manifest missing/malformed, manifest schema mismatch, manifest run_id invalid, manifest entry malformed, manifest digest format invalid, file missing, file bytes mismatch, file digest mismatch, or archive contains a file not listed in the manifest | 3 |
+| Either Runner archive fails the honest-health gate (without `--allow-degraded`): kernel layer degraded, ring-buffer drops non-zero, cgroup correlation not clean, correlation status not clean, observation-health missing or malformed, correlation-report missing or malformed | 6 |
+| Input mode mismatch (one NDJSON-extension, one `.tar.gz`-extension) | 2 |
+| Unrecognised input shape (extension not recognised) | 2 |
 | Config error (file missing) | 2 |
 
 > Runner-archive mode in `compare` is Tier 1 only (recognise + manifest/digest
@@ -58,14 +60,29 @@ classification.
 > `Rul1an/Assay-Harness#58` and the design references in
 > `Rul1an/assay/docs/reference/runner/`.
 
+> `--allow-degraded` bypasses only measurement-health reasons
+> (`kernel_layer_not_complete`, `ringbuf_drops_nonzero`,
+> `cgroup_correlation_not_clean`, `correlation_status_not_clean`). It does
+> NOT bypass structural reasons such as archive-not-recognised, manifest
+> invalid, or observation-health / correlation-report missing or malformed —
+> those remain failures regardless.
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |
 |---------|-----------|
 | Archive recognised, manifest + digests valid, honest-health clean | 0 |
-| Manifest schema mismatch, digest mismatch, missing manifest, or unreadable archive | 3 |
-| Honest-health degraded and `--allow-degraded` is not set | 6 |
+| Any strict H1 manifest/digest failure: archive unreadable, manifest missing/malformed, manifest schema mismatch, manifest run_id invalid, manifest entry malformed, manifest digest format invalid (missing `sha256:` prefix), file missing, file bytes mismatch, file digest mismatch, or archive contains a file not listed in the manifest | 3 |
+| Honest-health failure (without `--allow-degraded`): kernel layer degraded, ring-buffer drops non-zero, cgroup correlation not clean, correlation status not clean, observation-health missing or malformed, correlation-report missing or malformed | 6 |
 | Archive file missing or unreadable as a config input | 2 |
+
+> Observation-health and correlation-report JSON parse / schema mismatches do
+> NOT trip `artifact_contract` (3) on their own. They leave the corresponding
+> payload undefined, which the honest-health gate then catches as a
+> structural reason that `--allow-degraded` cannot bypass. Result: exit
+> `regression` (6) without `--allow-degraded`, and still exit 6 even with
+> `--allow-degraded` because the reason is structural rather than
+> measurement-health.
 
 ### `assay-harness policy`
 

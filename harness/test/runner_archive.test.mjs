@@ -94,6 +94,12 @@ function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function sha256Prefixed(bytes) {
+  // Matches the on-the-wire format produced by Rul1an/assay's runner core,
+  // see `crates/assay-runner-core/src/archive.rs::sha256_prefixed`.
+  return `sha256:${sha256Hex(bytes)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Fixture builder — synthesises a well-formed Runner archive in memory.
 // ---------------------------------------------------------------------------
@@ -104,6 +110,8 @@ function buildCleanArchive({
   correlationReportOverride = null,
   omit = [], // array of paths to omit (to simulate missing files)
   corruptDigest = null, // string path whose digest will be flipped
+  extraFiles = null, // map of in-archive path -> bytes; not listed in manifest
+  digestFormatOverride = null, // string path -> raw-hex (no sha256: prefix)
 } = {}) {
   const observationHealth = observationHealthOverride ?? {
     schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
@@ -153,9 +161,15 @@ function buildCleanArchive({
 
   const files = {};
   for (const [path, bytes] of fileBytes) {
+    const rawHex = sha256Hex(bytes);
     files[path] = {
       path,
-      sha256: sha256Hex(bytes),
+      // Real Runner archives use `sha256:<hex>`. Tests use the same format
+      // so the validator's digest-format check exercises the production path.
+      sha256:
+        digestFormatOverride && digestFormatOverride === path
+          ? rawHex
+          : `sha256:${rawHex}`,
       bytes: bytes.byteLength,
     };
   }
@@ -180,6 +194,14 @@ function buildCleanArchive({
       entries.push([path, corrupted]);
     } else {
       entries.push([path, bytes]);
+    }
+  }
+  // Extra files NOT listed in the manifest, used to test that the validator
+  // rejects archive content that the manifest does not account for.
+  if (extraFiles) {
+    for (const [path, bytes] of Object.entries(extraFiles)) {
+      const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, "utf8");
+      entries.push([path, buf]);
     }
   }
 
@@ -209,7 +231,11 @@ test("detectInputMode returns ndjson_evidence for .ndjson files", () => {
   assert.equal(detectInputMode(path), "ndjson_evidence");
 });
 
-test("detectInputMode returns unknown for a .tar.gz with a non-Runner manifest", () => {
+test("detectInputMode classifies any .tar.gz by extension (validator surfaces content errors)", () => {
+  // detectInputMode is purely extension-based so that corrupted or non-Runner
+  // .tar.gz files still route to validateRunnerArchive (which then surfaces
+  // a structural error with the documented exit code), instead of being
+  // misclassified as 'unknown' and falling back to config_error.
   const dir = mkdtempSync(join(tmpdir(), "runner-detect-"));
   const fakeManifest = Buffer.from(
     JSON.stringify({ schema: "some.other.schema.v0", run_id: "x", files: {} }),
@@ -217,7 +243,11 @@ test("detectInputMode returns unknown for a .tar.gz with a non-Runner manifest",
   );
   const archive = buildTarGz([[RUNNER_MANIFEST_PATH, fakeManifest]]);
   const archivePath = writeArchive(dir, "fake.tar.gz", archive);
-  assert.equal(detectInputMode(archivePath), "unknown");
+  assert.equal(detectInputMode(archivePath), "runner_archive");
+  // Validator catches the content problem.
+  const v = validateRunnerArchive(archivePath);
+  assert.equal(v.recognised, false);
+  assert.equal(v.manifest_errors[0].code, "MANIFEST_SCHEMA_MISMATCH");
 });
 
 test("detectInputMode returns unknown for unrecognised extensions", () => {
@@ -237,7 +267,8 @@ test("validateRunnerArchive accepts a clean fixture", () => {
   const result = validateRunnerArchive(archivePath);
   assert.equal(result.recognised, true);
   assert.equal(result.manifest_valid, true);
-  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.manifest_errors, []);
+  assert.deepEqual(result.artifact_parse_errors, []);
   assert.equal(result.manifest?.schema, RUNNER_ARCHIVE_MANIFEST_SCHEMA);
   assert.equal(result.manifest?.run_id, "run_test_clean");
   assert.equal(result.observation_health?.kernel_layer, "complete");
@@ -254,7 +285,7 @@ test("validateRunnerArchive flags a missing file from the manifest", () => {
   const result = validateRunnerArchive(archivePath);
   assert.equal(result.recognised, true);
   assert.equal(result.manifest_valid, false);
-  const codes = result.errors.map((e) => e.code);
+  const codes = result.manifest_errors.map((e) => e.code);
   assert.ok(codes.includes("FILE_MISSING"), `expected FILE_MISSING in ${codes}`);
 });
 
@@ -271,7 +302,7 @@ test("validateRunnerArchive flags a digest mismatch", () => {
   const result = validateRunnerArchive(archivePath);
   assert.equal(result.recognised, true);
   assert.equal(result.manifest_valid, false);
-  const codes = result.errors.map((e) => e.code);
+  const codes = result.manifest_errors.map((e) => e.code);
   assert.ok(
     codes.includes("FILE_DIGEST_MISMATCH"),
     `expected FILE_DIGEST_MISMATCH in ${codes}`,
@@ -293,7 +324,7 @@ test("validateRunnerArchive rejects a manifest with the wrong schema string", ()
   const result = validateRunnerArchive(archivePath);
   assert.equal(result.recognised, false);
   assert.equal(result.manifest_valid, false);
-  assert.equal(result.errors[0].code, "MANIFEST_SCHEMA_MISMATCH");
+  assert.equal(result.manifest_errors[0].code, "MANIFEST_SCHEMA_MISMATCH");
 });
 
 test("validateRunnerArchive surfaces a non-gzip file as ARCHIVE_UNREADABLE", () => {
@@ -303,7 +334,7 @@ test("validateRunnerArchive surfaces a non-gzip file as ARCHIVE_UNREADABLE", () 
   const result = validateRunnerArchive(path);
   assert.equal(result.recognised, false);
   assert.equal(result.manifest_valid, false);
-  assert.equal(result.errors[0].code, "ARCHIVE_UNREADABLE");
+  assert.equal(result.manifest_errors[0].code, "ARCHIVE_UNREADABLE");
 });
 
 // ---------------------------------------------------------------------------
@@ -479,4 +510,169 @@ test("formatRunnerCompareTier1Result emits markdown including run ids and tier-2
   assert.match(md, /Structural diff.*Tier 2/);
   assert.match(md, /rid_b/);
   assert.match(md, /rid_c/);
+});
+
+// ---------------------------------------------------------------------------
+// Regression coverage for review findings on PR #59
+// ---------------------------------------------------------------------------
+
+test("validateRunnerArchive accepts real-style sha256: prefixed digests (PR #59 P1)", () => {
+  // Sanity check that the fixture builder uses `sha256:<hex>` and the
+  // validator accepts that format. This pins the on-the-wire format
+  // produced by Rul1an/assay's runner core
+  // (`crates/assay-runner-core/src/archive.rs::sha256_prefixed`). Pre-fix
+  // the validator compared against raw hex and would reject every real
+  // archive.
+  const dir = mkdtempSync(join(tmpdir(), "runner-prefix-"));
+  const archivePath = writeArchive(dir, "clean.tar.gz", buildCleanArchive());
+  const result = validateRunnerArchive(archivePath);
+  assert.equal(result.manifest_valid, true);
+  // Spot-check one entry's recorded digest carries the prefix.
+  const someDigest = Object.values(result.manifest.files)[0].sha256;
+  assert.ok(someDigest.startsWith("sha256:"), `expected sha256: prefix, got ${someDigest}`);
+});
+
+test("validateRunnerArchive rejects raw-hex digest (missing sha256: prefix)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "runner-prefix-"));
+  const archivePath = writeArchive(
+    dir,
+    "rawhex.tar.gz",
+    buildCleanArchive({ digestFormatOverride: RUNNER_OBSERVATION_HEALTH_PATH }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  assert.equal(result.manifest_valid, false);
+  const codes = result.manifest_errors.map((e) => e.code);
+  assert.ok(
+    codes.includes("MANIFEST_ENTRY_DIGEST_FORMAT_INVALID"),
+    `expected MANIFEST_ENTRY_DIGEST_FORMAT_INVALID in ${codes}`,
+  );
+});
+
+test("validateRunnerArchive flags an extra archive file not listed in manifest", () => {
+  const dir = mkdtempSync(join(tmpdir(), "runner-extra-"));
+  const archivePath = writeArchive(
+    dir,
+    "extra.tar.gz",
+    buildCleanArchive({ extraFiles: { "extra/secret.txt": "not in manifest" } }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  assert.equal(result.manifest_valid, false);
+  const codes = result.manifest_errors.map((e) => e.code);
+  assert.ok(
+    codes.includes("FILE_NOT_IN_MANIFEST"),
+    `expected FILE_NOT_IN_MANIFEST in ${codes}`,
+  );
+});
+
+test("validateRunnerArchive separates artifact_parse_errors from manifest_errors (PR #59 Copilot)", () => {
+  // An archive whose observation-health.json schema string is wrong: the
+  // manifest + digests are still valid (we recompute the digest after
+  // overriding the parsed JSON in-band? No — easier path: build a fixture
+  // whose observation-health body has the wrong schema string, and pin
+  // both byte count and digest against that bad body. The validator
+  // should report a non-empty artifact_parse_errors but keep
+  // manifest_valid === true because manifest + digests still line up.
+  const dir = mkdtempSync(join(tmpdir(), "runner-split-"));
+  const archivePath = writeArchive(
+    dir,
+    "wrongobsschema.tar.gz",
+    buildCleanArchive({
+      observationHealthOverride: {
+        // valid JSON, wrong schema string
+        schema: "wrong.observation_health.schema.v9",
+        run_id: "rid",
+        platform: "linux",
+        kernel_layer: "complete",
+        ringbuf_drops: 0,
+        policy_layer: "present",
+        sdk_layer: "self_reported",
+        cgroup_correlation: "clean",
+        notes: [],
+      },
+    }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  // Manifest itself is fine — the body still hashes correctly against
+  // whatever bytes we wrote.
+  assert.equal(result.manifest_valid, true);
+  assert.deepEqual(result.manifest_errors, []);
+  // The artifact parse error is captured separately.
+  const parseCodes = result.artifact_parse_errors.map((e) => e.code);
+  assert.ok(
+    parseCodes.includes("OBSERVATION_HEALTH_SCHEMA_MISMATCH"),
+    `expected OBSERVATION_HEALTH_SCHEMA_MISMATCH in ${parseCodes}`,
+  );
+  // observation_health stays undefined.
+  assert.equal(result.observation_health, undefined);
+});
+
+test("checkHonestHealth allow_degraded does NOT bypass structural failures (PR #59 P2)", () => {
+  // Force a structural failure (manifest invalid) and verify that
+  // allow_degraded leaves passed === false. Pre-fix the gate would have
+  // returned passed === true, contradicting validation.manifest_valid.
+  const dir = mkdtempSync(join(tmpdir(), "runner-struct-"));
+  const archivePath = writeArchive(
+    dir,
+    "missing.tar.gz",
+    buildCleanArchive({ omit: [RUNNER_OBSERVATION_HEALTH_PATH] }),
+  );
+  const validation = validateRunnerArchive(archivePath);
+  assert.equal(validation.manifest_valid, false);
+  const verdict = checkHonestHealth(validation, { allow_degraded: true });
+  assert.equal(verdict.passed, false);
+  assert.ok(verdict.structural_reasons.length > 0);
+});
+
+test("checkHonestHealth allow_degraded bypasses ONLY measurement-health reasons", () => {
+  const dir = mkdtempSync(join(tmpdir(), "runner-mh-"));
+  const archivePath = writeArchive(
+    dir,
+    "drops.tar.gz",
+    buildCleanArchive({
+      observationHealthOverride: {
+        schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+        run_id: "rid",
+        platform: "linux",
+        kernel_layer: "complete",
+        ringbuf_drops: 5,
+        policy_layer: "present",
+        sdk_layer: "self_reported",
+        cgroup_correlation: "clean",
+        notes: [],
+      },
+    }),
+  );
+  const validation = validateRunnerArchive(archivePath);
+  const verdict = checkHonestHealth(validation, { allow_degraded: true });
+  assert.equal(verdict.passed, true);
+  assert.equal(verdict.structural_reasons.length, 0);
+  assert.ok(verdict.measurement_health_reasons.some((r) => r.startsWith("ringbuf_drops_nonzero")));
+});
+
+test("checkHonestHealth without allow_degraded fails on measurement-health reason", () => {
+  // Sanity: same fixture as above, but without allow_degraded the gate
+  // fails because there is still a measurement_health reason.
+  const dir = mkdtempSync(join(tmpdir(), "runner-mh-"));
+  const archivePath = writeArchive(
+    dir,
+    "drops.tar.gz",
+    buildCleanArchive({
+      observationHealthOverride: {
+        schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+        run_id: "rid",
+        platform: "linux",
+        kernel_layer: "complete",
+        ringbuf_drops: 5,
+        policy_layer: "present",
+        sdk_layer: "self_reported",
+        cgroup_correlation: "clean",
+        notes: [],
+      },
+    }),
+  );
+  const validation = validateRunnerArchive(archivePath);
+  const verdict = checkHonestHealth(validation);
+  assert.equal(verdict.passed, false);
+  assert.equal(verdict.structural_reasons.length, 0);
+  assert.ok(verdict.measurement_health_reasons.length > 0);
 });

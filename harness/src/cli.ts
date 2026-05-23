@@ -617,9 +617,12 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
           honest_health: {
             passed: health.passed,
             reasons: health.reasons,
+            structural_reasons: health.structural_reasons,
+            measurement_health_reasons: health.measurement_health_reasons,
             allow_degraded: allowDegraded,
           },
-          manifest_errors: validation.errors,
+          manifest_errors: validation.manifest_errors,
+          artifact_parse_errors: validation.artifact_parse_errors,
           run_id: validation.manifest?.run_id,
           observation_health: validation.observation_health,
           correlation_report_status: validation.correlation_report?.status,
@@ -644,10 +647,18 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
       }`,
     );
     lines.push("");
-    if (validation.errors.length > 0) {
-      lines.push("## Manifest / Digest Errors");
+    if (validation.manifest_errors.length > 0) {
+      lines.push("## Manifest / Digest Errors (H1)");
       lines.push("");
-      for (const e of validation.errors) {
+      for (const e of validation.manifest_errors) {
+        lines.push(`- \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
+      }
+      lines.push("");
+    }
+    if (validation.artifact_parse_errors.length > 0) {
+      lines.push("## Artifact Parse Errors (observation-health / correlation-report)");
+      lines.push("");
+      for (const e of validation.artifact_parse_errors) {
         lines.push(`- \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
       }
       lines.push("");
@@ -655,8 +666,17 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
     if (health.reasons.length > 0) {
       lines.push("## Honest Health Reasons");
       lines.push("");
-      for (const r of health.reasons) {
-        lines.push(`- \`${r}\``);
+      if (health.structural_reasons.length > 0) {
+        lines.push("Structural (not bypassable by `--allow-degraded`):");
+        for (const r of health.structural_reasons) {
+          lines.push(`- \`${r}\``);
+        }
+      }
+      if (health.measurement_health_reasons.length > 0) {
+        lines.push("Measurement health (bypassable by `--allow-degraded`):");
+        for (const r of health.measurement_health_reasons) {
+          lines.push(`- \`${r}\``);
+        }
       }
       lines.push("");
     }

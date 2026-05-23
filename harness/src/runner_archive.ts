@@ -29,7 +29,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 
 // ---------------------------------------------------------------------------
@@ -87,9 +87,10 @@ export interface RunnerCorrelationReport {
 }
 
 /**
- * Structured validation error from H1 (manifest/digest validation) or H2
- * (honest-health gate). `code` is a stable identifier suitable for CI
- * routing; `message` is human-readable.
+ * Structured validation error from H1 (manifest/digest validation) or from
+ * the secondary parse of observation-health / correlation-report payloads.
+ * `code` is a stable identifier suitable for CI routing; `message` is
+ * human-readable.
  */
 export interface RunnerValidationError {
   code: string;
@@ -98,12 +99,25 @@ export interface RunnerValidationError {
 }
 
 export interface RunnerArchiveValidation {
-  /** Recognised as a Runner archive by mode detection and tar/gzip parse. */
+  /** Recognised as a Runner archive (extension + manifest schema match). */
   recognised: boolean;
-  /** All H1 manifest and digest checks passed. */
+  /**
+   * All strict H1 manifest, file-set, and digest checks passed. Does NOT
+   * include observation-health / correlation-report payload parse errors;
+   * those are reported in `artifact_parse_errors` and surface through the
+   * honest-health gate instead of the manifest gate.
+   */
   manifest_valid: boolean;
-  /** H1 + H2 errors. Empty array means clean. */
-  errors: RunnerValidationError[];
+  /** H1 errors only: archive read, manifest shape, file-set, digests. */
+  manifest_errors: RunnerValidationError[];
+  /**
+   * Errors from parsing the observation-health and correlation-report
+   * payloads (missing schema string, malformed JSON, wrong schema). These
+   * do NOT make the manifest invalid; they cause `observation_health` or
+   * `correlation_report` to remain undefined, which the honest-health gate
+   * then catches.
+   */
+  artifact_parse_errors: RunnerValidationError[];
   manifest?: RunnerArchiveManifest;
   observation_health?: RunnerObservationHealth;
   correlation_report?: RunnerCorrelationReport;
@@ -113,8 +127,14 @@ export interface RunnerArchiveValidation {
 export interface HonestHealthOptions {
   /**
    * Accept archives whose `observation_health` reports degraded measurement
-   * (incomplete kernel layer, ring-buffer drops, non-clean correlation, or
-   * non-clean cgroup correlation). Defaults to `false`.
+   * (incomplete kernel layer, ring-buffer drops, non-clean cgroup
+   * correlation, or non-clean correlation status). Defaults to `false`.
+   *
+   * `allow_degraded` ONLY bypasses measurement-health reasons. It does NOT
+   * bypass structural reasons such as archive-not-recognised, manifest
+   * invalid, or observation-health/correlation-report missing or
+   * malformed. Those are integrity failures, not honest measurement of
+   * degradation.
    */
   allow_degraded?: boolean;
 }
@@ -123,6 +143,18 @@ export interface HonestHealthVerdict {
   passed: boolean;
   /** Reasons for failure; empty if `passed` is true. */
   reasons: string[];
+  /**
+   * Subset of `reasons` that are structural (cannot be bypassed by
+   * `allow_degraded`). When non-empty, `passed` is always `false`
+   * regardless of `allow_degraded`.
+   */
+  structural_reasons: string[];
+  /**
+   * Subset of `reasons` that report measurement degradation (bypassable by
+   * `allow_degraded`). Recorded even when `allow_degraded` made the gate
+   * pass, so callers can log what was accepted.
+   */
+  measurement_health_reasons: string[];
 }
 
 export type InputMode = "ndjson_evidence" | "runner_archive" | "unknown";
@@ -132,16 +164,19 @@ export type InputMode = "ndjson_evidence" | "runner_archive" | "unknown";
 // ---------------------------------------------------------------------------
 
 /**
- * Classify an input file path without taking any other action.
+ * Classify an input file path purely by extension, without opening the file.
  *
- * - `.ndjson` or `.jsonl` extension                 -> `ndjson_evidence`
- * - `.tar.gz` extension with a Runner manifest      -> `runner_archive`
- * - anything else                                   -> `unknown`
+ * - `.ndjson` or `.jsonl` -> `ndjson_evidence`
+ * - `.tar.gz` or `.tgz`   -> `runner_archive`
+ * - anything else         -> `unknown`
  *
- * For `.tar.gz` candidates, the function reads only enough of the archive
- * to locate and parse `manifest.json` and confirm the manifest schema
- * string. A `.tar.gz` that is not a Runner archive returns `unknown`,
- * not `runner_archive`.
+ * Content validation is the validator's job, not the dispatcher's. A
+ * `.tar.gz` whose body is corrupted, missing a Runner manifest, or carrying
+ * a non-Runner manifest still classifies as `runner_archive` so that the
+ * caller routes it to `validateRunnerArchive`, which then surfaces the
+ * exact structural failure with a stable error code. That preserves the
+ * documented exit-code routing (corrupted/non-Runner `.tar.gz` ->
+ * artifact_contract (3), not config_error (2)).
  */
 export function detectInputMode(filePath: string): InputMode {
   const lower = filePath.toLowerCase();
@@ -149,19 +184,7 @@ export function detectInputMode(filePath: string): InputMode {
     return "ndjson_evidence";
   }
   if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-    try {
-      const files = readTarGz(filePath);
-      const manifestBytes = files.get(RUNNER_MANIFEST_PATH);
-      if (!manifestBytes) return "unknown";
-      const manifest = safeJsonParse<{ schema?: unknown }>(manifestBytes);
-      if (!manifest) return "unknown";
-      if (manifest.schema === RUNNER_ARCHIVE_MANIFEST_SCHEMA) {
-        return "runner_archive";
-      }
-      return "unknown";
-    } catch {
-      return "unknown";
-    }
+    return "runner_archive";
   }
   return "unknown";
 }
@@ -171,32 +194,70 @@ export function detectInputMode(filePath: string): InputMode {
 // ---------------------------------------------------------------------------
 
 /**
+ * Maximum compressed archive size accepted by the validator. Larger files
+ * are rejected with `ARCHIVE_TOO_LARGE` before any decompression work runs.
+ * Real Runner archives are well under this bound (see proof packs in
+ * `Rul1an/assay/docs/reference/runner/proof-packs/`).
+ */
+export const RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES = 100 * 1024 * 1024; // 100 MiB
+
+/**
+ * Maximum decompressed archive size accepted by the validator. Caps the
+ * gunzip output to prevent zip-bomb-style memory exhaustion. Real Runner
+ * archives are well under this bound.
+ */
+export const RUNNER_ARCHIVE_MAX_DECOMPRESSED_BYTES = 1024 * 1024 * 1024; // 1 GiB
+
+/**
+ * Parse a Runner manifest digest of the form `sha256:<64-hex>` into the
+ * raw hex string. Returns `null` if the format is wrong.
+ */
+function parseManifestDigest(value: string): string | null {
+  if (!value.startsWith("sha256:")) return null;
+  const hex = value.slice("sha256:".length);
+  if (!/^[0-9a-f]{64}$/.test(hex)) return null;
+  return hex;
+}
+
+/**
  * Validate a Runner archive against its own manifest.
  *
- * Checks performed:
+ * Strict H1 checks (failures recorded in `manifest_errors`, control
+ * `manifest_valid`):
  *
- * - the archive is a valid gzip-compressed ustar tar
+ * - the archive is a valid gzip-compressed ustar tar within size limits
  * - `manifest.json` is present and parses as JSON
  * - `manifest.schema` equals `assay.runner.archive_manifest.v0`
  * - `manifest.run_id` is a non-empty string
  * - every entry in `manifest.files` is present in the archive
- * - every present file's SHA-256 matches the manifest's recorded digest
- * - every present file's byte count matches the manifest's recorded bytes
+ * - every archive regular file (other than `manifest.json` itself, which
+ *   the Rust writer does NOT include in its own files map) is listed in
+ *   the manifest
+ * - every present file's byte count matches `manifest.files[*].bytes`
+ * - every present file's SHA-256 matches `manifest.files[*].sha256`,
+ *   which must be in the form `sha256:<64-hex>` per the Rust writer in
+ *   `crates/assay-runner-core/src/archive.rs`
  *
- * Does NOT check the contents of `observation-health.json` or
- * `correlation-report.json` against any policy — that is `checkHonestHealth`
- * (H2). Does NOT diff the archive against a baseline — that is Tier 2.
+ * Secondary parse checks (failures recorded in `artifact_parse_errors`,
+ * do NOT make `manifest_valid` false):
  *
- * On success, the returned validation object carries the parsed manifest
- * plus, if present, the parsed observation-health and correlation-report
- * payloads for downstream use by `checkHonestHealth`.
+ * - if `observation-health.json` is present, it parses as JSON and carries
+ *   the v0 schema string. Otherwise the archive lacks an
+ *   `observation_health` payload and the honest-health gate (H2) will fail
+ *   on `observation_health_missing_or_malformed`.
+ * - if `correlation-report.json` is present, it parses as JSON and carries
+ *   the v0 schema string. Otherwise the honest-health gate will fail on
+ *   `correlation_report_missing_or_malformed`.
+ *
+ * Tier-1 scope: does NOT diff the archive against a baseline.
  *
  * Throws only on filesystem errors (file not found, permission denied).
  * Structural errors are returned as `RunnerValidationError[]` so callers
  * can decide how to surface them.
  */
 export function validateRunnerArchive(filePath: string): RunnerArchiveValidation {
-  const errors: RunnerValidationError[] = [];
+  const manifest_errors: RunnerValidationError[] = [];
+  const artifact_parse_errors: RunnerValidationError[] = [];
 
   // Step 1: read and gunzip + untar.
   let files: Map<string, Buffer>;
@@ -206,7 +267,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     return {
       recognised: false,
       manifest_valid: false,
-      errors: [
+      manifest_errors: [
         {
           code: "ARCHIVE_UNREADABLE",
           message: `Failed to read archive as gzip-compressed tar: ${
@@ -214,6 +275,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
           }`,
         },
       ],
+      artifact_parse_errors: [],
     };
   }
 
@@ -223,12 +285,13 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     return {
       recognised: false,
       manifest_valid: false,
-      errors: [
+      manifest_errors: [
         {
           code: "MANIFEST_MISSING",
           message: `Archive is missing required file: ${RUNNER_MANIFEST_PATH}`,
         },
       ],
+      artifact_parse_errors: [],
     };
   }
   const manifest = safeJsonParse<RunnerArchiveManifest>(manifestBytes);
@@ -236,12 +299,13 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     return {
       recognised: false,
       manifest_valid: false,
-      errors: [
+      manifest_errors: [
         {
           code: "MANIFEST_NOT_JSON",
           message: `${RUNNER_MANIFEST_PATH} is not valid JSON`,
         },
       ],
+      artifact_parse_errors: [],
     };
   }
 
@@ -250,7 +314,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     return {
       recognised: false,
       manifest_valid: false,
-      errors: [
+      manifest_errors: [
         {
           code: "MANIFEST_SCHEMA_MISMATCH",
           message: `Expected schema ${RUNNER_ARCHIVE_MANIFEST_SCHEMA}; got ${
@@ -260,24 +324,26 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
           }`,
         },
       ],
+      artifact_parse_errors: [],
     };
   }
   // Past this point we recognise the archive as a Runner archive.
   if (typeof manifest.run_id !== "string" || manifest.run_id.length === 0) {
-    errors.push({
+    manifest_errors.push({
       code: "MANIFEST_RUN_ID_INVALID",
       message: "manifest.run_id must be a non-empty string",
     });
   }
   if (!manifest.files || typeof manifest.files !== "object") {
-    errors.push({
+    manifest_errors.push({
       code: "MANIFEST_FILES_MISSING",
       message: "manifest.files must be an object mapping path to entry",
     });
     return {
       recognised: true,
       manifest_valid: false,
-      errors,
+      manifest_errors,
+      artifact_parse_errors: [],
       manifest,
     };
   }
@@ -290,7 +356,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
       typeof entry.sha256 !== "string" ||
       typeof entry.bytes !== "number"
     ) {
-      errors.push({
+      manifest_errors.push({
         code: "MANIFEST_ENTRY_MALFORMED",
         message: `manifest.files[${JSON.stringify(entryPath)}] is malformed`,
         path: entryPath,
@@ -298,15 +364,25 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
       continue;
     }
     if (entry.path !== entryPath) {
-      errors.push({
+      manifest_errors.push({
         code: "MANIFEST_ENTRY_PATH_MISMATCH",
         message: `manifest.files key ${JSON.stringify(entryPath)} does not match entry.path ${JSON.stringify(entry.path)}`,
         path: entryPath,
       });
     }
+    const expectedHex = parseManifestDigest(entry.sha256);
+    if (expectedHex === null) {
+      manifest_errors.push({
+        code: "MANIFEST_ENTRY_DIGEST_FORMAT_INVALID",
+        message: `manifest.files[${JSON.stringify(entryPath)}].sha256 must be of the form 'sha256:<64-hex>'; got ${JSON.stringify(
+          entry.sha256,
+        )}`,
+        path: entryPath,
+      });
+    }
     const actualBytes = files.get(entryPath);
     if (!actualBytes) {
-      errors.push({
+      manifest_errors.push({
         code: "FILE_MISSING",
         message: `Manifest references ${entryPath}, but the archive does not contain it`,
         path: entryPath,
@@ -314,24 +390,45 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
       continue;
     }
     if (actualBytes.byteLength !== entry.bytes) {
-      errors.push({
+      manifest_errors.push({
         code: "FILE_BYTES_MISMATCH",
         message: `File ${entryPath}: manifest says ${entry.bytes} bytes, archive contains ${actualBytes.byteLength} bytes`,
         path: entryPath,
       });
     }
-    const actualSha = createHash("sha256").update(actualBytes).digest("hex");
-    if (actualSha !== entry.sha256) {
-      errors.push({
-        code: "FILE_DIGEST_MISMATCH",
-        message: `File ${entryPath}: manifest sha256=${entry.sha256}, archive sha256=${actualSha}`,
-        path: entryPath,
+    if (expectedHex !== null) {
+      const actualHex = createHash("sha256").update(actualBytes).digest("hex");
+      if (actualHex !== expectedHex) {
+        manifest_errors.push({
+          code: "FILE_DIGEST_MISMATCH",
+          message: `File ${entryPath}: manifest sha256=sha256:${expectedHex}, archive sha256=sha256:${actualHex}`,
+          path: entryPath,
+        });
+      }
+    }
+  }
+
+  // Step 4b: reject archive entries that are not listed in the manifest.
+  // The Rust writer does NOT include manifest.json in its own files map
+  // (see archive.rs: manifest_bytes is written separately before iterating
+  // the archive_files BTreeMap). So manifest.json is the one allowed
+  // unlisted entry; every other regular file must appear in manifest.files.
+  const manifestKeys = new Set(Object.keys(manifest.files));
+  for (const archivePath of files.keys()) {
+    if (archivePath === RUNNER_MANIFEST_PATH) continue;
+    if (!manifestKeys.has(archivePath)) {
+      manifest_errors.push({
+        code: "FILE_NOT_IN_MANIFEST",
+        message: `Archive contains ${archivePath} but the manifest does not list it`,
+        path: archivePath,
       });
     }
   }
 
   // Step 5: parse the two artifacts honest-health depends on, if present.
-  // It is not an H1 error if these are absent; H2 will report missingness.
+  // Failures here do NOT make the manifest invalid; they leave
+  // observation_health / correlation_report undefined and the H2 gate then
+  // reports the missing payload.
   let observation_health: RunnerObservationHealth | undefined;
   const obsBytes = files.get(RUNNER_OBSERVATION_HEALTH_PATH);
   if (obsBytes) {
@@ -339,7 +436,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     if (parsed && parsed.schema === RUNNER_OBSERVATION_HEALTH_SCHEMA) {
       observation_health = parsed;
     } else if (parsed) {
-      errors.push({
+      artifact_parse_errors.push({
         code: "OBSERVATION_HEALTH_SCHEMA_MISMATCH",
         message: `Expected schema ${RUNNER_OBSERVATION_HEALTH_SCHEMA}; got ${
           typeof parsed.schema === "string"
@@ -349,7 +446,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
         path: RUNNER_OBSERVATION_HEALTH_PATH,
       });
     } else {
-      errors.push({
+      artifact_parse_errors.push({
         code: "OBSERVATION_HEALTH_NOT_JSON",
         message: `${RUNNER_OBSERVATION_HEALTH_PATH} is not valid JSON`,
         path: RUNNER_OBSERVATION_HEALTH_PATH,
@@ -364,7 +461,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     if (parsed && parsed.schema === RUNNER_CORRELATION_REPORT_SCHEMA) {
       correlation_report = parsed;
     } else if (parsed) {
-      errors.push({
+      artifact_parse_errors.push({
         code: "CORRELATION_REPORT_SCHEMA_MISMATCH",
         message: `Expected schema ${RUNNER_CORRELATION_REPORT_SCHEMA}; got ${
           typeof parsed.schema === "string"
@@ -374,7 +471,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
         path: RUNNER_CORRELATION_REPORT_PATH,
       });
     } else {
-      errors.push({
+      artifact_parse_errors.push({
         code: "CORRELATION_REPORT_NOT_JSON",
         message: `${RUNNER_CORRELATION_REPORT_PATH} is not valid JSON`,
         path: RUNNER_CORRELATION_REPORT_PATH,
@@ -384,8 +481,9 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
 
   return {
     recognised: true,
-    manifest_valid: errors.length === 0,
-    errors,
+    manifest_valid: manifest_errors.length === 0,
+    manifest_errors,
+    artifact_parse_errors,
     manifest,
     observation_health,
     correlation_report,
@@ -397,27 +495,46 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
 // ---------------------------------------------------------------------------
 
 /**
+ * Reason-string prefixes that count as **measurement-health** reasons.
+ * `allow_degraded` only bypasses these. Any other reason is structural
+ * and must fail the gate regardless of `allow_degraded`.
+ *
+ * Exported so tests and downstream consumers can stay aligned with this
+ * classification without re-encoding the list.
+ */
+export const MEASUREMENT_HEALTH_REASON_PREFIXES: readonly string[] = [
+  "kernel_layer_not_complete:",
+  "ringbuf_drops_nonzero:",
+  "cgroup_correlation_not_clean:",
+  "correlation_status_not_clean:",
+];
+
+function isMeasurementHealthReason(reason: string): boolean {
+  return MEASUREMENT_HEALTH_REASON_PREFIXES.some((p) => reason.startsWith(p));
+}
+
+/**
  * Apply the honest-health gate to a validated Runner archive.
  *
- * Required-clean fields:
+ * Required-clean fields (measurement-health reasons):
  *
  * - `observation_health.kernel_layer === "complete"`
  * - `observation_health.ringbuf_drops === 0`
  * - `observation_health.cgroup_correlation === "clean"`
  * - `correlation_report.status === "clean"`
  *
- * If `observation-health.json` or `correlation-report.json` is absent the
- * gate fails, because honest-health cannot be confirmed.
+ * Structural reasons (cannot be bypassed by `allow_degraded`):
+ *
+ * - archive not recognised as a Runner archive
+ * - manifest or digest validation failed
+ * - `observation-health.json` missing or malformed
+ * - `correlation-report.json` missing or malformed
  *
  * The `sdk_layer` field is intentionally NOT gated: the v0 contract states
  * that SDK events are self-reported and never kernel-corroborated, so a
  * value of `self_reported` is the expected clean reading. The `policy_layer`
  * field is also not gated because `present`/`absent` is policy-dependent and
  * not a measurement-honesty concern.
- *
- * When `allow_degraded` is true, the gate returns `passed: true` regardless
- * of the values above; the reasons array still records what would have
- * failed so callers can log it.
  *
  * `checkHonestHealth` does not mutate the validation object and is safe to
  * call multiple times.
@@ -457,8 +574,17 @@ export function checkHonestHealth(
     reasons.push(`correlation_status_not_clean:${cr.status}`);
   }
 
-  const passed = options.allow_degraded === true || reasons.length === 0;
-  return { passed, reasons };
+  const measurement_health_reasons = reasons.filter(isMeasurementHealthReason);
+  const structural_reasons = reasons.filter((r) => !isMeasurementHealthReason(r));
+
+  // allow_degraded ONLY bypasses measurement-health reasons. Structural
+  // reasons (recognition failure, manifest invalid, missing artifacts) are
+  // integrity failures and always fail the gate.
+  const passed =
+    structural_reasons.length === 0 &&
+    (options.allow_degraded === true || measurement_health_reasons.length === 0);
+
+  return { passed, reasons, structural_reasons, measurement_health_reasons };
 }
 
 // ---------------------------------------------------------------------------
@@ -476,8 +602,29 @@ export function checkHonestHealth(
  * `Rul1an/assay/crates/assay-runner-core/src/archive.rs`).
  */
 function readTarGz(filePath: string): Map<string, Buffer> {
+  const stat = statSync(filePath);
+  if (stat.size > RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES) {
+    throw new Error(
+      `compressed archive size ${stat.size} bytes exceeds limit ${RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES} bytes (ARCHIVE_TOO_LARGE)`,
+    );
+  }
   const compressed = readFileSync(filePath);
-  const decompressed = gunzipSync(compressed);
+  // Node's gunzipSync accepts `maxOutputLength` as a hard cap. If the
+  // decompressed stream exceeds the cap, gunzipSync throws synchronously
+  // before allocating beyond the limit. This protects against zip-bomb-style
+  // archives that gzip to a small size but expand catastrophically.
+  let decompressed: Buffer;
+  try {
+    decompressed = gunzipSync(compressed, {
+      maxOutputLength: RUNNER_ARCHIVE_MAX_DECOMPRESSED_BYTES,
+    });
+  } catch (err) {
+    throw new Error(
+      `gunzip failed (possibly DECOMPRESSED_TOO_LARGE; limit ${RUNNER_ARCHIVE_MAX_DECOMPRESSED_BYTES} bytes): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
   return parseTar(decompressed);
 }
 

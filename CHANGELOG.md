@@ -17,37 +17,68 @@ implemented in this version. See `Rul1an/Assay-Harness#58`.
     (`assay.runner.archive_manifest.v0`,
     `assay.runner.observation_health.v0`,
     `assay.runner.correlation_report.v0`)
-  - `detectInputMode(path)` (H6): classify a file as
-    `ndjson_evidence`, `runner_archive`, or `unknown` without taking any
-    other action
+  - `detectInputMode(path)` (H6): classify a file purely by extension as
+    `ndjson_evidence`, `runner_archive`, or `unknown`. Content validation
+    is left to `validateRunnerArchive` so that a corrupted or non-Runner
+    `.tar.gz` surfaces as `artifact_contract` (3), not `config_error` (2)
   - `validateRunnerArchive(path)` (H1): parse `.tar.gz`, verify manifest
     schema, verify every manifest entry's presence, byte count, and
-    SHA-256 digest; surface errors as structured `RunnerValidationError`s
+    SHA-256 digest. Digests are validated in the `sha256:<64-hex>` form
+    written by the Rust runner core
+    (`crates/assay-runner-core/src/archive.rs::sha256_prefixed`); raw-hex
+    digests are rejected as `MANIFEST_ENTRY_DIGEST_FORMAT_INVALID`. Also
+    rejects archive entries not listed in `manifest.files` (except
+    `manifest.json` itself, which the Rust writer does not list in its
+    own files map) as `FILE_NOT_IN_MANIFEST`. Compressed and decompressed
+    size are bounded
+    (`RUNNER_ARCHIVE_MAX_COMPRESSED_BYTES`,
+    `RUNNER_ARCHIVE_MAX_DECOMPRESSED_BYTES`) so a crafted gzip cannot
+    cause unbounded memory consumption
+  - The validation result separates strict H1 issues (`manifest_errors`)
+    from secondary `observation-health.json` / `correlation-report.json`
+    parse failures (`artifact_parse_errors`). `manifest_valid` is
+    controlled by `manifest_errors` only, so a wrong observation-health
+    schema string never makes the manifest itself appear invalid
   - `checkHonestHealth(validation, options)` (H2): gate on
     `kernel_layer === "complete"`, `ringbuf_drops === 0`,
     `cgroup_correlation === "clean"`, `correlation_report.status ===
-    "clean"`; opt-in `allow_degraded` keeps reasons recorded but passes
-    the gate
-- `assay-harness compare` now detects input mode and dispatches:
-  - both inputs NDJSON: existing comparison, unchanged
-  - both inputs Runner archives: new Tier-1 validation path
+    "clean"`. Failure reasons are split into
+    `measurement_health_reasons` (bypassable by `allow_degraded`) and
+    `structural_reasons` (archive not recognised, manifest invalid,
+    observation-health or correlation-report missing or malformed —
+    never bypassable). `allow_degraded` therefore cannot produce a
+    state where `manifest_valid: false` co-exists with
+    `honest_health.passed: true`
+- `assay-harness compare` now dispatches by file extension:
+  - both inputs `.ndjson` / `.jsonl`: existing comparison, unchanged
+  - both inputs `.tar.gz` / `.tgz`: Tier-1 validation path
     (`compareRunnerArchivesTier1`) returning a
     `RunnerCompareTier1Result` with explicit `tier2_diff_implemented:
-    false`
-  - mixed modes or unrecognised inputs: clear `config_error`
+    false`. A corrupted or non-Runner `.tar.gz` exits with
+    `artifact_contract` (3) because the validator surfaces the
+    structural failure, not `config_error` (2)
+  - mixed extensions or unknown extensions: clear `config_error`
 - New `assay-harness verify-runner <archive.tar.gz>
   [--format markdown|json] [--allow-degraded]` for single-archive
-  verification
+  verification. JSON output now exposes
+  `manifest_errors`, `artifact_parse_errors`,
+  `honest_health.structural_reasons`, and
+  `honest_health.measurement_health_reasons` separately
 - Exit code routing (see `docs/contracts/EXIT_CODES.md`):
-  - manifest/digest failure → `artifact_contract` (3)
-  - honest-health degraded without `--allow-degraded` → `regression` (6)
+  - strict H1 failure → `artifact_contract` (3)
+  - honest-health failure (whether measurement-degraded or structural,
+    such as observation-health missing) without `--allow-degraded` →
+    `regression` (6). `--allow-degraded` bypasses only measurement
+    reasons, not structural ones
   - clean → `success` (0)
 - No new npm dependency; `.tar.gz` reading uses `node:zlib` for gunzip
   and an in-file minimal ustar parser (Runner archives use deterministic
   ustar headers with short paths)
-- 18 new tests in `harness/test/runner_archive.test.mjs` covering H6
-  detection, H1 manifest/digest validation, H2 honest-health gating, and
-  the `compareRunnerArchivesTier1` integration
+- New tests in `harness/test/runner_archive.test.mjs` covering H6
+  detection (now extension-based), H1 manifest/digest validation
+  including `sha256:` prefix enforcement and extra-file detection, H2
+  honest-health gating including the structural / measurement-health
+  reason split, and the `compareRunnerArchivesTier1` integration
 
 This does **not** imply Assay-Harness now depends on Assay-Runner. It
 adds opt-in recognition for callers that produce Runner archives. NDJSON

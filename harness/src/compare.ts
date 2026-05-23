@@ -480,7 +480,15 @@ export interface RunnerArchiveSideStatus {
   manifest_valid: boolean;
   honest_health_passed: boolean;
   honest_health_reasons: string[];
+  /** Strict H1 errors (archive/manifest/file-set/digest). */
   manifest_errors: RunnerValidationError[];
+  /**
+   * Secondary parse errors for `observation-health.json` and
+   * `correlation-report.json`. These do NOT make the manifest invalid;
+   * they cause the honest-health gate to fail with a missing-or-malformed
+   * reason.
+   */
+  artifact_parse_errors: RunnerValidationError[];
   run_id?: string;
 }
 
@@ -517,7 +525,8 @@ function buildSideStatus(
     manifest_valid: validation.manifest_valid,
     honest_health_passed: health.passed,
     honest_health_reasons: health.reasons,
-    manifest_errors: validation.errors,
+    manifest_errors: validation.manifest_errors,
+    artifact_parse_errors: validation.artifact_parse_errors,
     run_id: validation.manifest?.run_id,
   };
 }
@@ -595,8 +604,14 @@ export function formatRunnerCompareTier1Result(
       `- Honest health: ${side.status.honest_health_passed ? "passed" : "failed"}`,
     );
     if (side.status.manifest_errors.length > 0) {
-      lines.push("- Manifest / digest errors:");
+      lines.push("- Manifest / digest errors (H1):");
       for (const e of side.status.manifest_errors) {
+        lines.push(`  - \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
+      }
+    }
+    if (side.status.artifact_parse_errors.length > 0) {
+      lines.push("- Artifact parse errors (observation-health / correlation-report):");
+      for (const e of side.status.artifact_parse_errors) {
         lines.push(`  - \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
       }
     }
