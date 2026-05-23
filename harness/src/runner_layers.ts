@@ -118,10 +118,18 @@ export interface RunnerLayerProjection {
   policy: RunnerLayerDiff;
   sdk: RunnerLayerDiff;
   /**
-   * `true` iff all six layer ndjson streams were present and at least one
-   * line parsed successfully somewhere. `false` (and the per-layer diffs
-   * carry empty fields) when the projection could not be meaningfully
-   * computed — this is informational only; Tier 2B does not gate.
+   * `true` when, for every one of the three layers, at least one side
+   * (baseline or candidate) provides the corresponding ndjson file. The
+   * per-layer diffs are still emitted even when this is `false`; the flag
+   * is informational so consumers can quickly tell whether the projection
+   * is based on any input at all.
+   *
+   * This is intentionally lenient: Tier 2B is explanatory and surfaces
+   * what it can. Stricter checks (e.g. both sides present, at least one
+   * parseable line per layer) are not required because Tier 2B never
+   * gates. Missing files per side are still surfaced via the per-layer
+   * `notes` and the projection-level `notes` aggregate so a reviewer can
+   * see the gap.
    */
   computed: boolean;
   /** Aggregated notes (one per affected layer/side that had issues). */
