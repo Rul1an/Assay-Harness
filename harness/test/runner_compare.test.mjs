@@ -797,3 +797,146 @@ test("CLI P3 — `runner compare` exits 2 when candidate has a non-archive exten
   assert.equal(out.status, 2, `expected exit 2 (config_error) for non-archive candidate, got ${out.status}; stderr=${out.stderr}`);
   assert.match(out.stderr, /not a Runner archive/);
 });
+
+// ---------------------------------------------------------------------------
+// PR #60 review (second pass): Copilot findings 2, 3, 4, 5
+// ---------------------------------------------------------------------------
+
+test("Copilot 2 — diffStringSets deduplicates inputs and does not inflate added counts", () => {
+  // Build two surfaces with duplicate entries on each side. The diff
+  // should treat each value as a set member, not a multiset member.
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-dedupe-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb",
+    capabilitySurface: {
+      filesystem_paths: ["/tmp/work/a.txt", "/tmp/work/a.txt", "/tmp/work/b.txt"],
+    },
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchive({
+    runId: "rc",
+    capabilitySurface: {
+      filesystem_paths: ["/tmp/work/a.txt", "/tmp/work/c.txt", "/tmp/work/c.txt"],
+    },
+  }));
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  // After dedupe: base = {a,b}, cand = {a,c}. So added={c}, removed={b}, unchanged={a}.
+  assert.deepEqual(result.capability_surface.filesystem_paths.added, ["/tmp/work/c.txt"]);
+  assert.deepEqual(result.capability_surface.filesystem_paths.removed, ["/tmp/work/b.txt"]);
+  assert.deepEqual(result.capability_surface.filesystem_paths.unchanged, ["/tmp/work/a.txt"]);
+  // Regression reason reflects the unique count, not the raw input length.
+  assert.ok(result.regression_reasons.includes("filesystem_paths_added:1"));
+});
+
+test("Copilot 4 — markdown status reads TIER-2A SKIPPED for Tier-1-fail (not REGRESSION)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-status-fail-"));
+  const baseline = join(dir, "baseline.tar.gz");
+  writeFileSync(baseline, "not a gzip");
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchive({
+    runId: "rc", capabilitySurface: {},
+  }));
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  const md = formatRunnerCompareResult(result);
+  assert.match(md, /\*\*Status:\*\* TIER-2A SKIPPED/);
+  assert.doesNotMatch(md, /\*\*Status:\*\* RUNNER CAPABILITY REGRESSION/);
+});
+
+test("Copilot 4 — markdown status reads TIER-2A SKIPPED for missing capability-surface", () => {
+  // Build Tier-1-clean archives with no capability-surface in the manifest.
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-status-nocap-"));
+  function buildMinimal(runId) {
+    const obs = {
+      schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+      run_id: runId,
+      platform: "linux",
+      kernel_layer: "complete",
+      ringbuf_drops: 0,
+      policy_layer: "present",
+      sdk_layer: "self_reported",
+      cgroup_correlation: "clean",
+      notes: [],
+    };
+    const corr = {
+      schema: RUNNER_CORRELATION_REPORT_SCHEMA,
+      run_id: runId,
+      status: "clean",
+      bindings: [],
+      ambiguities: [],
+    };
+    const fb = new Map();
+    fb.set(RUNNER_OBSERVATION_HEALTH_PATH, Buffer.from(JSON.stringify(obs), "utf8"));
+    fb.set(RUNNER_CORRELATION_REPORT_PATH, Buffer.from(JSON.stringify(corr), "utf8"));
+    const files = {};
+    for (const [p, b] of fb) files[p] = { path: p, sha256: `sha256:${sha256Hex(b)}`, bytes: b.byteLength };
+    const manifest = { schema: RUNNER_ARCHIVE_MANIFEST_SCHEMA, run_id: runId, files };
+    const entries = [[RUNNER_MANIFEST_PATH, Buffer.from(JSON.stringify(manifest), "utf8")]];
+    for (const [p, b] of fb) entries.push([p, b]);
+    return buildTarGz(entries);
+  }
+  const baseline = writeArchive(dir, "b.tar.gz", buildMinimal("rb"));
+  const candidate = writeArchive(dir, "c.tar.gz", buildMinimal("rc"));
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  const md = formatRunnerCompareResult(result);
+  assert.equal(result.tier1_clean, true);
+  assert.equal(result.capability_surface, undefined);
+  assert.match(md, /\*\*Status:\*\* TIER-2A SKIPPED/);
+});
+
+test("Copilot 5 — Tier-1-fail markdown includes artifact_parse_errors when present", () => {
+  // Construct a candidate whose observation-health.json has a wrong schema
+  // string. That makes Tier 1 honest-health gate fail (observation_health
+  // is undefined) but the manifest_errors stay empty — instead the
+  // artifact_parse_errors carry the actionable detail. The Tier-1-not-clean
+  // markdown section must surface it.
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-md-parse-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: {},
+  }));
+  function buildBadObsSchema(runId) {
+    const obs = {
+      schema: "wrong.observation.schema.v9",
+      run_id: runId,
+      platform: "linux",
+      kernel_layer: "complete",
+      ringbuf_drops: 0,
+      policy_layer: "present",
+      sdk_layer: "self_reported",
+      cgroup_correlation: "clean",
+      notes: [],
+    };
+    const corr = {
+      schema: RUNNER_CORRELATION_REPORT_SCHEMA,
+      run_id: runId,
+      status: "clean",
+      bindings: [],
+      ambiguities: [],
+    };
+    const surface = {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: runId,
+      filesystem_paths: [],
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    };
+    const fb = new Map();
+    fb.set(RUNNER_OBSERVATION_HEALTH_PATH, Buffer.from(JSON.stringify(obs), "utf8"));
+    fb.set(RUNNER_CORRELATION_REPORT_PATH, Buffer.from(JSON.stringify(corr), "utf8"));
+    fb.set(RUNNER_CAPABILITY_SURFACE_PATH, Buffer.from(JSON.stringify(surface), "utf8"));
+    const files = {};
+    for (const [p, b] of fb) files[p] = { path: p, sha256: `sha256:${sha256Hex(b)}`, bytes: b.byteLength };
+    const manifest = { schema: RUNNER_ARCHIVE_MANIFEST_SCHEMA, run_id: runId, files };
+    const entries = [[RUNNER_MANIFEST_PATH, Buffer.from(JSON.stringify(manifest), "utf8")]];
+    for (const [p, b] of fb) entries.push([p, b]);
+    return buildTarGz(entries);
+  }
+  const candidate = writeArchive(dir, "c.tar.gz", buildBadObsSchema("rc"));
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  const md = formatRunnerCompareResult(result);
+  assert.equal(result.tier1_clean, false);
+  // Candidate side has at least one artifact_parse_error.
+  assert.ok(result.candidate.artifact_parse_errors.length > 0);
+  // Markdown must surface it.
+  assert.match(md, /Artifact parse errors:/);
+  assert.match(md, /OBSERVATION_HEALTH_SCHEMA_MISMATCH/);
+});

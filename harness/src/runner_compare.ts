@@ -101,12 +101,16 @@ function diffStringSets(
   baseline: string[],
   candidate: string[],
 ): CapabilityCategoryDiff {
+  // Deduplicate inputs first. The v0 capability_surface contract treats
+  // each category as a deterministic set, but the differ should not amplify
+  // duplicates from an upstream producer into false regressions. Diffs are
+  // computed against the unique values; outputs are sorted for stable JSON
+  // and reviewer markdown.
   const baseSet = new Set(baseline);
   const candSet = new Set(candidate);
-  const added = candidate.filter((x) => !baseSet.has(x));
-  const removed = baseline.filter((x) => !candSet.has(x));
-  const unchanged = baseline.filter((x) => candSet.has(x));
-  // Sort each list deterministically for stable JSON and reviewer output.
+  const added = [...candSet].filter((x) => !baseSet.has(x));
+  const removed = [...baseSet].filter((x) => !candSet.has(x));
+  const unchanged = [...baseSet].filter((x) => candSet.has(x));
   added.sort();
   removed.sort();
   unchanged.sort();
@@ -220,7 +224,7 @@ function sideTier1Clean(side: RunnerSideStatus): boolean {
  *
  * If either side passes Tier 1 but does not carry a
  * `capability-surface.json` payload, the diff cannot be computed; the
- * result reports `CAPABILITY_SURFACE_UNAVAILABLE` as a regression reason
+ * result reports `capability_surface_unavailable` as a regression reason
  * so the caller surfaces it instead of silently passing.
  */
 export function compareRunnerArchivesCapabilitySurface(
@@ -311,11 +315,18 @@ export function compareRunnerArchivesCapabilitySurface(
  */
 export function formatRunnerCompareResult(result: RunnerCompareResult): string {
   const lines: string[] = [];
+  // Status label is derived from the actual outcome class rather than
+  // `has_regressions` alone, so Tier-1 failures and missing-payload
+  // results are not mis-labelled as "RUNNER CAPABILITY REGRESSION" (they
+  // are input-validation failures that exit `artifact_contract` (3)).
+  const status = !result.tier1_clean || !result.capability_surface
+    ? "TIER-2A SKIPPED"
+    : result.has_regressions
+      ? "RUNNER CAPABILITY REGRESSION"
+      : "OK";
   lines.push("# Runner Capability-Surface Diff (Tier 2A)");
   lines.push("");
-  lines.push(
-    `**Status:** ${result.has_regressions ? "RUNNER CAPABILITY REGRESSION" : "OK"}`,
-  );
+  lines.push(`**Status:** ${status}`);
   lines.push(`**Summary:** ${result.summary}`);
   lines.push("");
   if (result.baseline_run_id) {
@@ -341,6 +352,12 @@ export function formatRunnerCompareResult(result: RunnerCompareResult): string {
       if (side.status.manifest_errors.length > 0) {
         lines.push("Manifest / digest errors:");
         for (const e of side.status.manifest_errors) {
+          lines.push(`- \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
+        }
+      }
+      if (side.status.artifact_parse_errors.length > 0) {
+        lines.push("Artifact parse errors:");
+        for (const e of side.status.artifact_parse_errors) {
           lines.push(`- \`${e.code}\`${e.path ? ` (${e.path})` : ""}: ${e.message}`);
         }
       }
