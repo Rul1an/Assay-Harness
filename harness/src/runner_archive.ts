@@ -39,6 +39,7 @@ import { gunzipSync } from "node:zlib";
 export const RUNNER_ARCHIVE_MANIFEST_SCHEMA = "assay.runner.archive_manifest.v0";
 export const RUNNER_OBSERVATION_HEALTH_SCHEMA = "assay.runner.observation_health.v0";
 export const RUNNER_CORRELATION_REPORT_SCHEMA = "assay.runner.correlation_report.v0";
+export const RUNNER_CAPABILITY_SURFACE_SCHEMA = "assay.runner.capability_surface.v0";
 
 // Path constants for the canonical archive layout.
 export const RUNNER_MANIFEST_PATH = "manifest.json";
@@ -87,6 +88,25 @@ export interface RunnerCorrelationReport {
 }
 
 /**
+ * `assay.runner.capability_surface.v0` payload shape. All set categories
+ * are arrays of strings; values are deterministic per the v0 contract.
+ *
+ * `policy_decisions` entries follow the convention `<decision>:<key>`,
+ * e.g. `"allow:read_file"` or `"deny:write_file"`. Tier 2 capability-surface
+ * diff treats new `allow:*` decisions as regressions and new `deny:*`
+ * decisions as report-only changes (see runner_compare.ts).
+ */
+export interface RunnerCapabilitySurface {
+  schema: string;
+  run_id: string;
+  filesystem_paths: string[];
+  network_endpoints: string[];
+  process_execs: string[];
+  mcp_tools: string[];
+  policy_decisions: string[];
+}
+
+/**
  * Structured validation error from H1 (manifest/digest validation) or from
  * the secondary parse of observation-health / correlation-report payloads.
  * `code` is a stable identifier suitable for CI routing; `message` is
@@ -121,6 +141,13 @@ export interface RunnerArchiveValidation {
   manifest?: RunnerArchiveManifest;
   observation_health?: RunnerObservationHealth;
   correlation_report?: RunnerCorrelationReport;
+  /**
+   * Parsed `capability-surface.json` payload, present when the archive
+   * contains a valid `assay.runner.capability_surface.v0` file. Tier 1
+   * does not gate on this payload; Tier 2 uses it for the
+   * capability-surface diff (see `runner_compare.ts`).
+   */
+  capability_surface?: RunnerCapabilitySurface;
 }
 
 /** Caller-controlled options for the honest-health gate. */
@@ -479,6 +506,31 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     }
   }
 
+  let capability_surface: RunnerCapabilitySurface | undefined;
+  const capBytes = files.get(RUNNER_CAPABILITY_SURFACE_PATH);
+  if (capBytes) {
+    const parsed = safeJsonParse<RunnerCapabilitySurface>(capBytes);
+    if (parsed && parsed.schema === RUNNER_CAPABILITY_SURFACE_SCHEMA) {
+      capability_surface = parsed;
+    } else if (parsed) {
+      artifact_parse_errors.push({
+        code: "CAPABILITY_SURFACE_SCHEMA_MISMATCH",
+        message: `Expected schema ${RUNNER_CAPABILITY_SURFACE_SCHEMA}; got ${
+          typeof parsed.schema === "string"
+            ? JSON.stringify(parsed.schema)
+            : "(missing)"
+        }`,
+        path: RUNNER_CAPABILITY_SURFACE_PATH,
+      });
+    } else {
+      artifact_parse_errors.push({
+        code: "CAPABILITY_SURFACE_NOT_JSON",
+        message: `${RUNNER_CAPABILITY_SURFACE_PATH} is not valid JSON`,
+        path: RUNNER_CAPABILITY_SURFACE_PATH,
+      });
+    }
+  }
+
   return {
     recognised: true,
     manifest_valid: manifest_errors.length === 0,
@@ -487,6 +539,7 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
     manifest,
     observation_health,
     correlation_report,
+    capability_surface,
   };
 }
 

@@ -46,6 +46,10 @@ import {
   detectInputMode,
   validateRunnerArchive,
 } from "./runner_archive.js";
+import {
+  compareRunnerArchivesCapabilitySurface,
+  formatRunnerCompareResult,
+} from "./runner_compare.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -70,6 +74,7 @@ Commands:
   trust-basis report --diff <path> [--summary-out <path>] [--junit-out <path>]
   verify   <evidence-file> [--category <all|envelope|hash|type>]
   verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]
+  runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -696,6 +701,69 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
   process.exit(EXIT.SUCCESS);
 }
 
+function cmdRunner(args: Record<string, string | boolean>): void {
+  const subcommand = args._file as string;
+  if (subcommand === "compare") {
+    cmdRunnerCompare(args);
+    return;
+  }
+  console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
+  console.error(
+    "Usage: runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCompare(args: Record<string, string | boolean>): void {
+  const baselinePath = args.baseline as string;
+  const candidatePath = args.candidate as string;
+  const format = (args.format as string) ?? "markdown";
+  const allowDegraded = args["allow-degraded"] === true;
+
+  if (!baselinePath || !existsSync(baselinePath)) {
+    console.error(
+      `[config_error] Baseline archive not found: ${baselinePath ?? "(none)"}`,
+    );
+    console.error(
+      "Usage: runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (!candidatePath || !existsSync(candidatePath)) {
+    console.error(
+      `[config_error] Candidate archive not found: ${candidatePath ?? "(none)"}`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
+  const result = compareRunnerArchivesCapabilitySurface(baselinePath, candidatePath, {
+    allow_degraded: allowDegraded,
+  });
+
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(formatRunnerCompareResult(result));
+  }
+
+  // Exit-code routing (Tier 2A refinement F):
+  //   - Tier-1 failure on either side (invalid archive, bad manifest, bad
+  //     digests, observation-health missing) → ARTIFACT_CONTRACT (3). This is
+  //     an INPUT problem, not a regression.
+  //   - Capability regression (added capability surface or new allow:*) →
+  //     REGRESSION (6).
+  //   - Clean → SUCCESS (0).
+  const tier1Failure =
+    !result.baseline.recognised ||
+    !result.candidate.recognised ||
+    !result.baseline.manifest_valid ||
+    !result.candidate.manifest_valid;
+  if (tier1Failure) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(result.has_regressions ? EXIT.REGRESSION : EXIT.SUCCESS);
+}
+
 function cmdTrustBasisGate(args: Record<string, string | boolean>): void {
   const baselinePath = args.baseline as string;
   const candidatePath = args.candidate as string;
@@ -901,6 +969,9 @@ switch (command) {
     break;
   case "verify-runner":
     cmdVerifyRunner(args);
+    break;
+  case "runner":
+    cmdRunner(args);
     break;
   case "trust-basis":
     cmdTrustBasis(args);

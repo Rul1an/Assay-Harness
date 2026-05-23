@@ -67,6 +67,29 @@ Mode dispatch is by file extension (`.ndjson`/`.jsonl` → NDJSON path, `.tar.gz
 > invalid, or observation-health / correlation-report missing or malformed —
 > those remain failures regardless.
 
+### `assay-harness runner compare`
+
+Tier 2A — capability-surface diff over two Tier-1-clean Runner archives. Validates both archives, applies the honest-health gate, then diffs `capability-surface.json`.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Both archives Tier-1 clean, no capability-surface regressions | 0 |
+| Either archive fails strict H1 (manifest/digest invalid, archive unreadable) | 3 |
+| Capability-surface regression: added `filesystem_paths`, `network_endpoints`, `process_execs`, `mcp_tools`, or new `allow:*` `policy_decisions` | 6 |
+| Either archive fails honest-health (without `--allow-degraded`) | 6 |
+| `capability-surface.json` missing or malformed on either side | 6 |
+| Mode mismatch / unknown extension (input not a `.tar.gz`) | 2 |
+| Archive file missing as a config input | 2 |
+| Unknown `runner` subcommand | 2 |
+
+> v0 regression policy:
+> - added `filesystem_paths`, `network_endpoints`, `process_execs`, `mcp_tools` → regression
+> - added `policy_decisions` of the form `allow:*` → regression
+> - added `policy_decisions` of the form `deny:*` → **report-only** (recorded in the diff's `added` list, but does not trip the regression flag — typically reflects newly visible blocked behaviour rather than added capability surface)
+> - removed entries → reported but never a regression
+>
+> Tier 2A does NOT diff layer ndjson streams or reinterpret kernel telemetry. Per-layer reviewer projections are Tier 2B (separate PR, explanatory only).
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |
