@@ -4,6 +4,27 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner cross-runtime diff consumer (Tier 3A)
+
+Adds `assay-harness runner cross-runtime report --diff <path> [--format markdown|json]` for reading a precomputed `assay.runner.cross_runtime_diff.v0` JSON artefact (produced Runner-side in `Rul1an/assay`) and projecting it into reviewer markdown or JSON.
+
+Tier 3A is **consumer**, not semantic owner. The Runner side defines the cross-runtime semantics (A1+B3+C1 canonicalisation, out-of-scope markers for binding ids and policy outcomes, SDK metadata as side-band provenance). Harness validates the frozen contract shape and renders.
+
+- New module `harness/src/runner_cross_runtime.ts`:
+  - Schema constants pinned to the Runner-side v0 contract (`RUNNER_CROSS_RUNTIME_DIFF_SCHEMA`, `RUNNER_CROSS_RUNTIME_OUT_OF_SCOPE_MARKER`, `RUNNER_CROSS_RUNTIME_SDK_METADATA_MARKER`).
+  - Strict TypeScript-side shape validation: required field presence and types, surface categories with `{added, removed, unchanged}` string arrays for all five v0 categories, mandatory `out_of_scope_cross_runtime_v0` marker on `binding_ids.comparison` and `policy_outcomes.comparison`, mandatory `side_band_provenance` marker on `sdk_metadata.comparison`, and `sdk_name`/`sdk_version` presence on both sides. Tampered markers fail validation with distinct error codes.
+  - Report status classified from outcome class: `TIER-3A INVALID DIFF` on validation failure, `RUNNER CROSS-RUNTIME REGRESSION` when any `surface.*.added` is non-empty, `OK` otherwise. SDK metadata changes are recorded as side-band only and **never** marked as a regression.
+  - No JSON Schema 2020-12 validation library is added; explicit TypeScript guards keep the runtime dependency surface flat.
+- New CLI verb: `assay-harness runner cross-runtime report --diff <path> [--format markdown|json]`. Parses nested positional syntax via a new `args._subfile` slot (also reserved for future Tier-3 sub-verbs).
+- Exit-code routing for the `report` verb (Tier 3A is **informational** — exit 6 is reserved for the deferred Tier 3C `gate` verb):
+  - diff parses and contract-shape valid → `success` (0), regardless of whether `added` is non-empty
+  - missing `--diff` or file not found → `config_error` (2)
+  - JSON parse error, schema mismatch, surface shape error, tampered out-of-scope marker, missing SDK metadata side, or any v0 contract-shape violation → `artifact_contract` (3)
+  - unknown `runner cross-runtime` subcommand → `config_error` (2)
+- **Tier 3B** (archive-pair convenience wrapper that re-uses Runner-side projection) and **Tier 3C** (`gate` verb that exits 6 on cross-runtime regression) remain deferred per `Rul1an/Assay-Harness#58` — gated on real two-runtime workflow demand.
+- New tests in `harness/test/runner_cross_runtime.test.mjs` cover the shape validator, report classification, SDK metadata side-band behaviour, removed-not-blocking semantics, markdown discipline, and CLI exit routing (0/2/3 paths).
+- No new npm dependency. No new contract. NDJSON callers and Tier 1 / Tier 2A / Tier 2B paths are unchanged.
+
 ## [0.5.0] - 2026-05-23
 
 This minor release adds opt-in support for **Assay-Runner measured-run

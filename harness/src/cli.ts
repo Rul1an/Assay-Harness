@@ -50,6 +50,10 @@ import {
   compareRunnerArchivesCapabilitySurface,
   formatRunnerCompareResult,
 } from "./runner_compare.js";
+import {
+  formatCrossRuntimeReport,
+  loadCrossRuntimeReport,
+} from "./runner_cross_runtime.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -75,6 +79,7 @@ Commands:
   verify   <evidence-file> [--category <all|envelope|hash|type>]
   verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]
+  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -131,6 +136,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 
   if (positional.length > 0) args._command = positional[0];
   if (positional.length > 1) args._file = positional[1];
+  // Third positional is used by nested namespaces such as
+  // `runner cross-runtime report` where `_command=runner`, `_file=cross-runtime`,
+  // and `_subfile=report`. Older verbs do not consume it.
+  if (positional.length > 2) args._subfile = positional[2];
   return args;
 }
 
@@ -707,11 +716,74 @@ function cmdRunner(args: Record<string, string | boolean>): void {
     cmdRunnerCompare(args);
     return;
   }
+  if (subcommand === "cross-runtime") {
+    cmdRunnerCrossRuntime(args);
+    return;
+  }
   console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
   console.error(
-    "Usage: runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]",
+    "Usage:\n" +
+      "  runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]\n" +
+      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCrossRuntime(args: Record<string, string | boolean>): void {
+  const subsubcommand = args._subfile as string | undefined;
+  if (subsubcommand !== "report") {
+    console.error(
+      `[config_error] Unknown runner cross-runtime subcommand: ${subsubcommand ?? "(none)"}`,
+    );
+    console.error(
+      "Usage: runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
+    );
+    console.error(
+      "Tier 3B (archive-pair convenience) and Tier 3C (gate) are not implemented yet.",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  cmdRunnerCrossRuntimeReport(args);
+}
+
+function cmdRunnerCrossRuntimeReport(args: Record<string, string | boolean>): void {
+  const diffPath = args.diff as string;
+  const format = (args.format as string) ?? "markdown";
+
+  if (!diffPath) {
+    console.error(
+      "[config_error] --diff <cross-runtime-diff.json> is required",
+    );
+    console.error(
+      "Usage: runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
+  const load = loadCrossRuntimeReport(diffPath);
+  if (load.not_found) {
+    console.error(`[config_error] Cross-runtime diff file not found: ${diffPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatCrossRuntimeReport(report));
+  }
+
+  // Exit routing for Tier 3A `report`:
+  //   - invalid diff (schema mismatch, JSON parse failure, contract-shape
+  //     violation, out-of-scope-marker tampering) → ARTIFACT_CONTRACT (3)
+  //   - otherwise (including a diff that contains regressions) → SUCCESS (0)
+  // The regression signal is rendered in the report status line but does
+  // NOT translate to exit 6 here. Tier 3C `gate` (future PR) will add the
+  // gating semantics on top of the same parser.
+  if (!report.validation.valid) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
 }
 
 function cmdRunnerCompare(args: Record<string, string | boolean>): void {

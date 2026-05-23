@@ -93,6 +93,21 @@ Tier 2A — capability-surface diff over two Tier-1-clean Runner archives. Valid
 >
 > Tier 2A diffs the `capability-surface.json` payload only and is what controls the regression flag. Per-layer reviewer projections (Tier 2B) live alongside the Tier-2A diff in the output, summarise per-layer event counts + event-type histograms (and SDK tool churn), and surface the `self_reported` caveat on the SDK layer per the v0 contract. Tier 2B is **explanatory only**: it does NOT change the Tier-2A regression flag, does NOT add new exit codes, and does NOT introduce new gating semantics.
 
+### `assay-harness runner cross-runtime report`
+
+Tier 3A — consumer of `assay.runner.cross_runtime_diff.v0`. Reads a precomputed diff JSON file and projects it into reviewer markdown or JSON. The Runner side (`Rul1an/assay`) owns the cross-runtime semantics; Harness validates the frozen contract shape and renders. **Informational only**: the report verb does NOT translate regressions into exit 6. The future Tier 3C `gate` verb (deferred) will add gating exit codes on top of the same parser.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Diff parses, contract-shape valid (regardless of whether `added` is non-empty) | 0 |
+| `--diff <path>` missing or file does not exist | 2 |
+| Diff JSON malformed, schema string mismatch, surface category shape invalid, tampered `binding_ids`/`policy_outcomes` out-of-scope marker, missing `sdk_metadata` sides, or other v0 contract-shape violation | 3 |
+| Unknown `runner cross-runtime` subcommand | 2 |
+
+> v0 cross-runtime regression policy (rendered in the report status line and `regression_summary` section): added entries on any of `surface.{filesystem_paths,network_endpoints,process_execs,mcp_tools,policy_decisions}` mark the report as `RUNNER CROSS-RUNTIME REGRESSION`. Removed entries are reported but never blocking. **`sdk_metadata` changes are reported as side-band runtime provenance and are NEVER treated as a capability regression.** Binding-id and policy-outcome comparison are out of scope for v0 cross-runtime diff per the Runner side contract; Harness flags any tampered marker as `artifact_contract` (3).
+
+> Tier 3B (archive-pair convenience wrapper) and Tier 3C (gate verb that exits 6 on regression) are NOT implemented yet — gated on real two-runtime workflow demand per `Rul1an/Assay-Harness#58`.
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |
