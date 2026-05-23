@@ -4,6 +4,53 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay-Runner per-layer reviewer projection (Tier 2B)
+
+Adds an explanatory per-layer reviewer projection to
+`assay-harness runner compare`. Tier 2B sits alongside the Tier-2A
+capability-surface diff in the same output; it is **explanatory only**,
+does not change the Tier-2A regression flag, does not add new exit codes,
+and does not introduce new gating semantics. The goal is reviewer UX —
+help a reviewer see *where* a Tier-2A surface diff came from, without
+inventing new contract semantics on the Harness side.
+
+- New module `harness/src/runner_layers.ts`:
+  - Parses each archive's `layers/{kernel,policy,sdk}.ndjson` streams
+    (ndjson lines that fail JSON parse are counted, not thrown — the
+    projection is supplementary and must not block on upstream emitter
+    issues).
+  - Summarises each layer with total event count, event-type histogram
+    (grouped by `event_type` with fallback to `type`), and — for the
+    SDK layer only — a deduped set of distinct `tool` values. Kernel and
+    policy layers stay at the conservative count + event-type-histogram
+    view because no Harness-side v0 event-shape contract exists for them.
+  - Diffs the per-side summaries across baseline and candidate at the
+    event-type-histogram level, plus a set-diff of SDK tool names.
+  - Carries the `sdk_layer_is_self_reported_per_v0_contract` caveat into
+    the SDK summary and diff so any consumer surfaces it without having
+    to re-read the v0 contract.
+- `harness/src/runner_archive.ts`: exports a public
+  `readRunnerArchiveFiles(filePath)` so Tier 2B can share the same
+  size-limited gunzip + tar reader as Tier 1 without duplicating the
+  pipeline.
+- `harness/src/runner_compare.ts`: `RunnerCompareResult` gains an
+  optional `layer_projection` field. It is populated when both archives
+  are Tier-1 clean and Tier 2A could compute a capability-surface diff;
+  it stays `undefined` when Tier 1 fails or the archive cannot be
+  re-read. The Tier-2A regression flag is unchanged by Tier 2B values.
+- Markdown formatter (`formatRunnerCompareResult`) now appends a
+  `## Per-Layer Projection (Tier 2B — reviewer UX, not a gate)` section
+  below the Tier-2A diff and regression-reasons sections when a
+  projection is available. JSON output exposes `layer_projection` for
+  machine consumers.
+- New tests in `harness/test/runner_layers.test.mjs` cover per-layer
+  counts and event-type histogram diffing, the SDK self-reported caveat,
+  unparseable-ndjson handling, missing-layer notes, Tier-2A regression
+  flag independence from Tier 2B values, markdown discipline including
+  the projection's position below the Tier-2A diff, and `undefined`
+  behaviour when Tier 1 fails.
+- No new npm dependency. No new exit codes. No new contract.
+
 ### Assay-Runner capability-surface diff (Tier 2A)
 
 Adds `assay-harness runner compare` for diffing two Tier-1-clean Assay-Runner

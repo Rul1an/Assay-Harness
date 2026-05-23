@@ -91,7 +91,7 @@ Tier 2A — capability-surface diff over two Tier-1-clean Runner archives. Valid
 > - added `policy_decisions` of the form `deny:*` → **report-only** (recorded in the diff's `added` list, but does not trip the regression flag — typically reflects newly visible blocked behaviour rather than added capability surface)
 > - removed entries → reported but never a regression
 >
-> Tier 2A does NOT diff layer ndjson streams or reinterpret kernel telemetry. Per-layer reviewer projections are Tier 2B (separate PR, explanatory only).
+> Tier 2A diffs the `capability-surface.json` payload only and is what controls the regression flag. Per-layer reviewer projections (Tier 2B) live alongside the Tier-2A diff in the output, summarise per-layer event counts + event-type histograms (and SDK tool churn), and surface the `self_reported` caveat on the SDK layer per the v0 contract. Tier 2B is **explanatory only**: it does NOT change the Tier-2A regression flag, does NOT add new exit codes, and does NOT introduce new gating semantics.
 
 ### `assay-harness verify-runner`
 

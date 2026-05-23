@@ -32,6 +32,11 @@ import {
   RunnerValidationError,
   validateRunnerArchive,
 } from "./runner_archive.js";
+import {
+  computeLayerProjection,
+  formatRunnerLayerProjection,
+  RunnerLayerProjection,
+} from "./runner_layers.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +96,15 @@ export interface RunnerCompareResult {
   regression_reasons: string[];
   has_regressions: boolean;
   summary: string;
+  /**
+   * Tier 2B per-layer reviewer projection. Explanatory only — does NOT
+   * affect `has_regressions` or `regression_reasons`. Present when both
+   * archives are Tier-1 clean and the layer ndjson streams could be read;
+   * absent when the projection could not be computed (e.g. Tier-1 failed).
+   * Tier 2B exists to help reviewers see *where* a Tier-2A surface diff
+   * came from, not to introduce new gating.
+   */
+  layer_projection?: RunnerLayerProjection;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +299,18 @@ export function compareRunnerArchivesCapabilitySurface(
     ? `RUNNER CAPABILITY REGRESSION: ${reasons.join(", ")}`
     : "No Runner capability regressions detected";
 
+  // Tier 2B layer projection. Explanatory only — does NOT affect the
+  // regression flag or exit code. Computed when both archives are Tier-1
+  // clean (we are here, both passed Tier 1 already). Failures inside the
+  // layer reader are swallowed because Tier 2B must not block Tier 2A; an
+  // empty projection is preferable to a thrown exception.
+  let layer_projection: RunnerLayerProjection | undefined;
+  try {
+    layer_projection = computeLayerProjection(baselinePath, candidatePath);
+  } catch {
+    layer_projection = undefined;
+  }
+
   return {
     mode: "runner_archive",
     tier: "capability_surface_diff",
@@ -297,6 +323,7 @@ export function compareRunnerArchivesCapabilitySurface(
     regression_reasons: reasons,
     has_regressions: hasRegressions,
     summary,
+    layer_projection,
   };
 }
 
@@ -417,6 +444,12 @@ export function formatRunnerCompareResult(result: RunnerCompareResult): string {
       "> v0 policy: added `filesystem_paths`, `network_endpoints`, `process_execs`, and `mcp_tools` are regressions. For `policy_decisions`, only new `allow:*` entries block; new `deny:*` entries are recorded as report-only changes (typically reflecting newly visible blocked behaviour rather than added capability surface).",
     );
     lines.push("");
+  }
+
+  // Tier 2B reviewer projection lives below the Tier-2A diff. It is
+  // explanatory only and does NOT carry its own regression flag.
+  if (result.layer_projection) {
+    lines.push(formatRunnerLayerProjection(result.layer_projection));
   }
 
   return lines.join("\n");
