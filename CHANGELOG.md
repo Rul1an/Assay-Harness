@@ -35,12 +35,30 @@ consumer) remain open in `Rul1an/Assay-Harness#58`.
     because new deny decisions typically reflect newly visible blocked
     behaviour rather than added capability surface)
   - removed entries → reported, never a regression
-- Exit codes:
+- Exit codes (strict Tier-2 verb semantics; any Tier-1-not-clean input is
+  an `artifact_contract` failure, not a regression):
   - clean → `success` (0)
   - capability-surface regression → `regression` (6)
-  - either side Tier-1 fail → `artifact_contract` (3)
-  - missing `capability-surface.json` → `regression` (6)
-  - input mode mismatch / unknown extension → `config_error` (2)
+  - any Tier-1 fail on either side (invalid archive, manifest/digest
+    invalid, honest-health degraded, observation-health /
+    correlation-report missing or malformed, `capability-surface.json`
+    missing or shape-invalid) → `artifact_contract` (3)
+  - extension-based input is not a `.tar.gz` / `.tgz` on either side →
+    `config_error` (2). `cmdRunnerCompare` calls `detectInputMode()` at
+    CLI level so a stray NDJSON or `.txt` is caught early instead of
+    being routed through the archive validator.
+  This routing is intentionally stricter than `compare`'s Runner-mode
+  routing (which exits 6 for honest-health and 6 for missing
+  capability-surface). The `runner compare` verb is explicitly the
+  Tier-2 diff path; if Tier 1 is not clean, the precondition is not met
+  and there is no Tier-2 result to report.
+- Runtime shape guard for `capability-surface.json`. The validator now
+  rejects payloads where any of `filesystem_paths`, `network_endpoints`,
+  `process_execs`, `mcp_tools`, or `policy_decisions` is missing, not
+  an array, or contains non-string elements
+  (`CAPABILITY_SURFACE_SHAPE_INVALID`). Pre-fix a malformed but
+  schema-matching payload could crash the Tier-2A differ when it called
+  `Array.prototype.filter` on a non-array.
 - New module `harness/src/runner_compare.ts` for the diff and formatter.
   `validateRunnerArchive` in `runner_archive.ts` extended to parse
   `capability-surface.json` into the optional `capability_surface` field on

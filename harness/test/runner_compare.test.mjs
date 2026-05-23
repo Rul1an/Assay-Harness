@@ -455,3 +455,345 @@ test("formatRunnerCompareResult OK status omits the regression-reasons section",
   assert.doesNotMatch(md, /## Regression Reasons/);
   assert.match(md, /\*\*Status:\*\* OK/);
 });
+
+// ---------------------------------------------------------------------------
+// PR #60 review regression coverage
+// ---------------------------------------------------------------------------
+
+import { validateRunnerArchive } from "../dist/runner_archive.js";
+
+/**
+ * Build an archive whose capability-surface.json carries the right schema
+ * string but a custom shape (the validator's runtime shape guard should
+ * reject it). The manifest still hashes the on-disk bytes correctly, so
+ * Tier 1 manifest validation stays clean.
+ */
+function buildArchiveWithRawCapabilitySurface(runId, rawSurface) {
+  const observationHealth = {
+    schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+    run_id: runId,
+    platform: "linux",
+    kernel_layer: "complete",
+    ringbuf_drops: 0,
+    policy_layer: "present",
+    sdk_layer: "self_reported",
+    cgroup_correlation: "clean",
+    notes: [],
+  };
+  const correlationReport = {
+    schema: RUNNER_CORRELATION_REPORT_SCHEMA,
+    run_id: runId,
+    status: "clean",
+    bindings: [],
+    ambiguities: [],
+  };
+  const fileBytes = new Map();
+  fileBytes.set(
+    RUNNER_OBSERVATION_HEALTH_PATH,
+    Buffer.from(JSON.stringify(observationHealth), "utf8"),
+  );
+  fileBytes.set(
+    RUNNER_CORRELATION_REPORT_PATH,
+    Buffer.from(JSON.stringify(correlationReport), "utf8"),
+  );
+  fileBytes.set(
+    RUNNER_CAPABILITY_SURFACE_PATH,
+    Buffer.from(JSON.stringify(rawSurface), "utf8"),
+  );
+  const files = {};
+  for (const [path, bytes] of fileBytes) {
+    files[path] = {
+      path,
+      sha256: `sha256:${sha256Hex(bytes)}`,
+      bytes: bytes.byteLength,
+    };
+  }
+  const manifest = {
+    schema: RUNNER_ARCHIVE_MANIFEST_SCHEMA,
+    run_id: runId,
+    files,
+  };
+  const entries = [
+    [RUNNER_MANIFEST_PATH, Buffer.from(JSON.stringify(manifest), "utf8")],
+  ];
+  for (const [p, b] of fileBytes) entries.push([p, b]);
+  return buildTarGz(entries);
+}
+
+test("P1 — capability-surface with missing required category is rejected with SHAPE_INVALID", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-p1-missing-"));
+  const archivePath = writeArchive(
+    dir,
+    "missing.tar.gz",
+    buildArchiveWithRawCapabilitySurface("rid_missing", {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rid_missing",
+      // filesystem_paths missing entirely
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  // Manifest is still valid; the shape error is an artifact_parse_error.
+  assert.equal(result.manifest_valid, true);
+  assert.equal(result.capability_surface, undefined);
+  const codes = result.artifact_parse_errors.map((e) => e.code);
+  assert.ok(
+    codes.includes("CAPABILITY_SURFACE_SHAPE_INVALID"),
+    `expected CAPABILITY_SURFACE_SHAPE_INVALID in ${codes}`,
+  );
+});
+
+test("P1 — capability-surface with non-array category is rejected with SHAPE_INVALID", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-p1-nonarray-"));
+  const archivePath = writeArchive(
+    dir,
+    "nonarray.tar.gz",
+    buildArchiveWithRawCapabilitySurface("rid_nonarray", {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rid_nonarray",
+      filesystem_paths: "not an array",
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  assert.equal(result.capability_surface, undefined);
+  const codes = result.artifact_parse_errors.map((e) => e.code);
+  assert.ok(codes.includes("CAPABILITY_SURFACE_SHAPE_INVALID"));
+});
+
+test("P1 — capability-surface with non-string elements is rejected with SHAPE_INVALID", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-p1-nonstr-"));
+  const archivePath = writeArchive(
+    dir,
+    "nonstr.tar.gz",
+    buildArchiveWithRawCapabilitySurface("rid_nonstr", {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rid_nonstr",
+      filesystem_paths: [42, "ok"],
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    }),
+  );
+  const result = validateRunnerArchive(archivePath);
+  assert.equal(result.capability_surface, undefined);
+  const codes = result.artifact_parse_errors.map((e) => e.code);
+  assert.ok(codes.includes("CAPABILITY_SURFACE_SHAPE_INVALID"));
+});
+
+test("P1 — `runner compare` against a SHAPE_INVALID candidate does not throw and reports capability_surface_unavailable", () => {
+  // End-to-end: shape-invalid capability-surface flows through Tier 2A as
+  // a structured "capability surface unavailable" result, not a crash.
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-p1-e2e-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: { filesystem_paths: ["/tmp/work/a.txt"] },
+  }));
+  const candidate = writeArchive(
+    dir,
+    "c.tar.gz",
+    buildArchiveWithRawCapabilitySurface("rc", {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rc",
+      filesystem_paths: { wrong: "type" },
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.equal(result.tier1_clean, true);
+  assert.equal(result.has_regressions, true);
+  assert.equal(result.capability_surface, undefined);
+  assert.ok(
+    result.regression_reasons.includes("capability_surface_unavailable"),
+    `expected capability_surface_unavailable in ${JSON.stringify(result.regression_reasons)}`,
+  );
+});
+
+test("P2 — honest-health degraded archive returns tier1_clean=false (CLI will exit 3)", () => {
+  // Tier-2A semantic: honest-health failure is Tier-1-not-clean, which the
+  // CLI maps to exit 3 (artifact_contract), NOT exit 6. This test pins the
+  // function-level contract; the CLI test below pins the routing.
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-p2-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: { filesystem_paths: ["/tmp/work/a.txt"] },
+  }));
+  // Build a candidate whose observation-health is degraded.
+  function buildDegradedCandidate() {
+    const observationHealth = {
+      schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+      run_id: "rc",
+      platform: "linux",
+      kernel_layer: "degraded",
+      ringbuf_drops: 0,
+      policy_layer: "present",
+      sdk_layer: "self_reported",
+      cgroup_correlation: "clean",
+      notes: [],
+    };
+    const correlationReport = {
+      schema: RUNNER_CORRELATION_REPORT_SCHEMA,
+      run_id: "rc",
+      status: "clean",
+      bindings: [],
+      ambiguities: [],
+    };
+    const surface = {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rc",
+      filesystem_paths: ["/tmp/work/a.txt"],
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    };
+    const fileBytes = new Map();
+    fileBytes.set(
+      RUNNER_OBSERVATION_HEALTH_PATH,
+      Buffer.from(JSON.stringify(observationHealth), "utf8"),
+    );
+    fileBytes.set(
+      RUNNER_CORRELATION_REPORT_PATH,
+      Buffer.from(JSON.stringify(correlationReport), "utf8"),
+    );
+    fileBytes.set(
+      RUNNER_CAPABILITY_SURFACE_PATH,
+      Buffer.from(JSON.stringify(surface), "utf8"),
+    );
+    const files = {};
+    for (const [p, b] of fileBytes) {
+      files[p] = { path: p, sha256: `sha256:${sha256Hex(b)}`, bytes: b.byteLength };
+    }
+    const manifest = {
+      schema: RUNNER_ARCHIVE_MANIFEST_SCHEMA,
+      run_id: "rc",
+      files,
+    };
+    const entries = [
+      [RUNNER_MANIFEST_PATH, Buffer.from(JSON.stringify(manifest), "utf8")],
+    ];
+    for (const [p, b] of fileBytes) entries.push([p, b]);
+    return buildTarGz(entries);
+  }
+  const candidate = writeArchive(dir, "c.tar.gz", buildDegradedCandidate());
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.equal(result.tier1_clean, false);
+  assert.equal(result.has_regressions, true);
+  assert.ok(result.regression_reasons.includes("tier1_validation_failed"));
+});
+
+// ---------------------------------------------------------------------------
+// CLI exit-code routing tests (P2 + P3)
+// ---------------------------------------------------------------------------
+
+import { spawnSync } from "node:child_process";
+import { join as pathJoin } from "node:path";
+
+const CLI_DIST = pathJoin(import.meta.dirname ?? new URL(".", import.meta.url).pathname, "..", "dist", "cli.js");
+
+function runCli(args) {
+  return spawnSync(process.execPath, [CLI_DIST, ...args], { encoding: "utf8" });
+}
+
+test("CLI P2 — `runner compare` exits 3 (artifact_contract) for honest-health degraded input", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cli-p2-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: { filesystem_paths: ["/tmp/work/a.txt"] },
+  }));
+  function buildDegraded() {
+    const observationHealth = {
+      schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
+      run_id: "rc",
+      platform: "linux",
+      kernel_layer: "complete",
+      ringbuf_drops: 9, // degraded
+      policy_layer: "present",
+      sdk_layer: "self_reported",
+      cgroup_correlation: "clean",
+      notes: [],
+    };
+    const correlationReport = {
+      schema: RUNNER_CORRELATION_REPORT_SCHEMA,
+      run_id: "rc",
+      status: "clean",
+      bindings: [],
+      ambiguities: [],
+    };
+    const surface = {
+      schema: RUNNER_CAPABILITY_SURFACE_SCHEMA,
+      run_id: "rc",
+      filesystem_paths: ["/tmp/work/a.txt"],
+      network_endpoints: [],
+      process_execs: [],
+      mcp_tools: [],
+      policy_decisions: [],
+    };
+    const fb = new Map();
+    fb.set(RUNNER_OBSERVATION_HEALTH_PATH, Buffer.from(JSON.stringify(observationHealth), "utf8"));
+    fb.set(RUNNER_CORRELATION_REPORT_PATH, Buffer.from(JSON.stringify(correlationReport), "utf8"));
+    fb.set(RUNNER_CAPABILITY_SURFACE_PATH, Buffer.from(JSON.stringify(surface), "utf8"));
+    const files = {};
+    for (const [p, b] of fb) files[p] = { path: p, sha256: `sha256:${sha256Hex(b)}`, bytes: b.byteLength };
+    const manifest = { schema: RUNNER_ARCHIVE_MANIFEST_SCHEMA, run_id: "rc", files };
+    const entries = [[RUNNER_MANIFEST_PATH, Buffer.from(JSON.stringify(manifest), "utf8")]];
+    for (const [p, b] of fb) entries.push([p, b]);
+    return buildTarGz(entries);
+  }
+  const candidate = writeArchive(dir, "c.tar.gz", buildDegraded());
+  const out = runCli(["runner", "compare", "--baseline", baseline, "--candidate", candidate, "--format", "json"]);
+  assert.equal(out.status, 3, `expected exit 3, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("CLI P2 — `runner compare` exits 0 for two clean identical archives", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cli-ok-"));
+  const surface = { filesystem_paths: ["/tmp/work/a.txt"] };
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({ runId: "rb", capabilitySurface: surface }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchive({ runId: "rc", capabilitySurface: surface }));
+  const out = runCli(["runner", "compare", "--baseline", baseline, "--candidate", candidate, "--format", "json"]);
+  assert.equal(out.status, 0, `expected exit 0, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("CLI P2 — `runner compare` exits 6 for genuine capability regression", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cli-regression-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: { filesystem_paths: ["/tmp/work/a.txt"] },
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchive({
+    runId: "rc",
+    capabilitySurface: { filesystem_paths: ["/tmp/work/a.txt", "/tmp/work/b.txt"] },
+  }));
+  const out = runCli(["runner", "compare", "--baseline", baseline, "--candidate", candidate, "--format", "json"]);
+  assert.equal(out.status, 6, `expected exit 6, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("CLI P3 — `runner compare` exits 2 when baseline has a non-archive extension", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cli-p3-"));
+  const ndjsonPath = join(dir, "baseline.ndjson");
+  writeFileSync(ndjsonPath, '{"type":"x"}\n');
+  const archivePath = writeArchive(dir, "candidate.tar.gz", buildArchive({
+    runId: "rc", capabilitySurface: {},
+  }));
+  const out = runCli(["runner", "compare", "--baseline", ndjsonPath, "--candidate", archivePath]);
+  assert.equal(out.status, 2, `expected exit 2 (config_error) for non-archive baseline, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /not a Runner archive/);
+});
+
+test("CLI P3 — `runner compare` exits 2 when candidate has a non-archive extension", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cli-p3b-"));
+  const archivePath = writeArchive(dir, "baseline.tar.gz", buildArchive({
+    runId: "rb", capabilitySurface: {},
+  }));
+  const txtPath = join(dir, "candidate.txt");
+  writeFileSync(txtPath, "not an archive");
+  const out = runCli(["runner", "compare", "--baseline", archivePath, "--candidate", txtPath]);
+  assert.equal(out.status, 2, `expected exit 2 (config_error) for non-archive candidate, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /not a Runner archive/);
+});

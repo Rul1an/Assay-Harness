@@ -247,6 +247,47 @@ function parseManifestDigest(value: string): string | null {
 }
 
 /**
+ * Verify that a parsed capability-surface payload matches the
+ * `RunnerCapabilitySurface` shape: every required category is present and
+ * is an array whose elements are all strings.
+ *
+ * Returns `null` when the shape is valid, or a short reason string when it
+ * is not. The reason is included in the corresponding
+ * `CAPABILITY_SURFACE_SHAPE_INVALID` artifact_parse_error so callers see
+ * which category failed and why. Schema-string and JSON-parse errors are
+ * NOT this helper's responsibility — they are checked separately before
+ * this function runs.
+ *
+ * This guard protects downstream Tier-2A diff code (`runner_compare.ts`)
+ * from receiving non-array values that would crash `.filter()` or
+ * non-string elements that would break set diffing.
+ */
+function capabilitySurfaceShapeError(payload: Record<string, unknown>): string | null {
+  const requiredArrays: readonly string[] = [
+    "filesystem_paths",
+    "network_endpoints",
+    "process_execs",
+    "mcp_tools",
+    "policy_decisions",
+  ];
+  for (const field of requiredArrays) {
+    const value = payload[field];
+    if (value === undefined) {
+      return `missing required array field "${field}"`;
+    }
+    if (!Array.isArray(value)) {
+      return `field "${field}" must be an array (got ${typeof value})`;
+    }
+    for (let i = 0; i < value.length; i++) {
+      if (typeof value[i] !== "string") {
+        return `field "${field}[${i}]" must be a string (got ${typeof value[i]})`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Validate a Runner archive against its own manifest.
  *
  * Strict H1 checks (failures recorded in `manifest_errors`, control
@@ -509,25 +550,39 @@ export function validateRunnerArchive(filePath: string): RunnerArchiveValidation
   let capability_surface: RunnerCapabilitySurface | undefined;
   const capBytes = files.get(RUNNER_CAPABILITY_SURFACE_PATH);
   if (capBytes) {
-    const parsed = safeJsonParse<RunnerCapabilitySurface>(capBytes);
-    if (parsed && parsed.schema === RUNNER_CAPABILITY_SURFACE_SCHEMA) {
-      capability_surface = parsed;
-    } else if (parsed) {
-      artifact_parse_errors.push({
-        code: "CAPABILITY_SURFACE_SCHEMA_MISMATCH",
-        message: `Expected schema ${RUNNER_CAPABILITY_SURFACE_SCHEMA}; got ${
-          typeof parsed.schema === "string"
-            ? JSON.stringify(parsed.schema)
-            : "(missing)"
-        }`,
-        path: RUNNER_CAPABILITY_SURFACE_PATH,
-      });
-    } else {
+    const parsed = safeJsonParse<unknown>(capBytes);
+    if (!parsed || typeof parsed !== "object") {
       artifact_parse_errors.push({
         code: "CAPABILITY_SURFACE_NOT_JSON",
         message: `${RUNNER_CAPABILITY_SURFACE_PATH} is not valid JSON`,
         path: RUNNER_CAPABILITY_SURFACE_PATH,
       });
+    } else {
+      const obj = parsed as Record<string, unknown>;
+      if (obj.schema !== RUNNER_CAPABILITY_SURFACE_SCHEMA) {
+        artifact_parse_errors.push({
+          code: "CAPABILITY_SURFACE_SCHEMA_MISMATCH",
+          message: `Expected schema ${RUNNER_CAPABILITY_SURFACE_SCHEMA}; got ${
+            typeof obj.schema === "string"
+              ? JSON.stringify(obj.schema)
+              : "(missing)"
+          }`,
+          path: RUNNER_CAPABILITY_SURFACE_PATH,
+        });
+      } else {
+        const shapeError = capabilitySurfaceShapeError(obj);
+        if (shapeError !== null) {
+          artifact_parse_errors.push({
+            code: "CAPABILITY_SURFACE_SHAPE_INVALID",
+            message: `${RUNNER_CAPABILITY_SURFACE_PATH} shape invalid: ${shapeError}`,
+            path: RUNNER_CAPABILITY_SURFACE_PATH,
+          });
+        } else {
+          // Shape verified: every required field is present and is a
+          // string array. Safe to expose as the typed payload.
+          capability_surface = obj as unknown as RunnerCapabilitySurface;
+        }
+      }
     }
   }
 

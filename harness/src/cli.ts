@@ -736,6 +736,29 @@ function cmdRunnerCompare(args: Record<string, string | boolean>): void {
     process.exit(EXIT.CONFIG_ERROR);
   }
 
+  // Refuse non-archive extensions up front. `runner compare` is the
+  // explicit Runner-aware verb; passing an NDJSON or arbitrary file here is
+  // a configuration mistake, not a Tier-1 archive failure. Surfacing this
+  // as `config_error` (2) matches the documented routing and gives a
+  // clearer error than letting the validator try to gunzip arbitrary
+  // bytes.
+  const baselineMode = detectInputMode(baselinePath);
+  const candidateMode = detectInputMode(candidatePath);
+  if (baselineMode !== "runner_archive") {
+    console.error(
+      `[config_error] Baseline is not a Runner archive (detected mode: ${baselineMode}). ` +
+        `runner compare requires .tar.gz / .tgz inputs.`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (candidateMode !== "runner_archive") {
+    console.error(
+      `[config_error] Candidate is not a Runner archive (detected mode: ${candidateMode}). ` +
+        `runner compare requires .tar.gz / .tgz inputs.`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+
   const result = compareRunnerArchivesCapabilitySurface(baselinePath, candidatePath, {
     allow_degraded: allowDegraded,
   });
@@ -746,19 +769,23 @@ function cmdRunnerCompare(args: Record<string, string | boolean>): void {
     console.log(formatRunnerCompareResult(result));
   }
 
-  // Exit-code routing (Tier 2A refinement F):
-  //   - Tier-1 failure on either side (invalid archive, bad manifest, bad
-  //     digests, observation-health missing) → ARTIFACT_CONTRACT (3). This is
-  //     an INPUT problem, not a regression.
+  // Exit-code routing (Tier 2A refinement F + PR #60 review):
+  //   - Any Tier-1-not-clean result on either side → ARTIFACT_CONTRACT (3).
+  //     This includes archive/manifest/digest failures AND honest-health
+  //     failures AND missing observation-health / correlation-report /
+  //     capability-surface. The verb's purpose is "Tier-2 diff over Tier-1
+  //     clean archives"; if the precondition isn't met, the input is the
+  //     problem, not the diff outcome.
   //   - Capability regression (added capability surface or new allow:*) →
   //     REGRESSION (6).
   //   - Clean → SUCCESS (0).
-  const tier1Failure =
-    !result.baseline.recognised ||
-    !result.candidate.recognised ||
-    !result.baseline.manifest_valid ||
-    !result.candidate.manifest_valid;
-  if (tier1Failure) {
+  if (!result.tier1_clean) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  // `tier1_clean` is true but capability_surface may still be unavailable
+  // (the archive lacked the payload). Treat that as a Tier-1-incomplete
+  // input failure for the same reason: there is no Tier-2 result to report.
+  if (!result.capability_surface) {
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   process.exit(result.has_regressions ? EXIT.REGRESSION : EXIT.SUCCESS);
