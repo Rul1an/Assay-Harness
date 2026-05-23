@@ -365,9 +365,12 @@ test("CLI: runner cross-runtime report --diff <not-a-file> → exit 2 (config_er
 });
 
 test("CLI: unknown runner cross-runtime subcommand → exit 2 with usage", () => {
-  const out = runCli(["runner", "cross-runtime", "gate", "--diff", "x"]);
+  // `gate` is now a real subcommand (Tier 3C). Use a still-unknown one.
+  // Tier 3B (archive-pair convenience wrapper) remains deferred and is
+  // mentioned in the usage hint, but is not a CLI verb.
+  const out = runCli(["runner", "cross-runtime", "summarise"]);
   assert.equal(out.status, 2);
-  assert.match(out.stderr, /Tier 3B.*Tier 3C.*not implemented/);
+  assert.match(out.stderr, /Tier 3B.*not implemented/);
 });
 
 // ---------------------------------------------------------------------------
@@ -515,4 +518,112 @@ test("category arrays with duplicate entries are rejected (uniqueItems invariant
   const v = validateCrossRuntimeDiff(diff);
   assert.equal(v.valid, false);
   assert.ok(v.errors.some((e) => e.code === "CROSS_RUNTIME_CATEGORY_DUPLICATES"));
+});
+
+// ---------------------------------------------------------------------------
+// Tier 3C — `runner cross-runtime gate` CLI exit routing
+// ---------------------------------------------------------------------------
+
+test("Tier 3C gate: clean diff (no added capability) → exit 0", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-clean-"));
+  const path = writeDiff(dir, "clean.json", buildCleanDiff());
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 0, `expected 0, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /\[success\].*no added capability surface/);
+});
+
+test("Tier 3C gate: added filesystem_path → exit 6 (regression)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-fs-"));
+  const diff = buildCleanDiff();
+  diff.surface.filesystem_paths.added = ["<work>/new"];
+  const path = writeDiff(dir, "added.json", diff);
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 6, `expected 6, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /\[regression\].*filesystem_paths=1/);
+});
+
+test("Tier 3C gate: added network_endpoint → exit 6", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-net-"));
+  const diff = buildCleanDiff();
+  diff.surface.network_endpoints.added = ["api.example.com:443"];
+  const path = writeDiff(dir, "net.json", diff);
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 6, `expected 6, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("Tier 3C gate: only removed entries → exit 0 (removed is not blocking in v0)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-removed-"));
+  const diff = buildCleanDiff();
+  diff.surface.filesystem_paths.removed = ["<work>/old"];
+  const path = writeDiff(dir, "removed.json", diff);
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 0, `expected 0, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("Tier 3C gate: SDK metadata change only → exit 0 (side-band, never regression)", () => {
+  // Default fixture already has differing sdk_name/sdk_version between base
+  // and head. Without any added capability surface, the gate must exit 0.
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-sdk-"));
+  const path = writeDiff(dir, "sdk.json", buildCleanDiff());
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 0, `expected 0, got ${out.status}; stderr=${out.stderr}`);
+});
+
+test("Tier 3C gate: invalid diff (bad JSON) → exit 3 (artifact_contract)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-bad-"));
+  const path = join(dir, "bad.json");
+  writeFileSync(path, "not json");
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 3, `expected 3, got ${out.status}; stderr=${out.stderr}`);
+  assert.match(out.stderr, /\[artifact_contract\].*invalid diff/);
+});
+
+test("Tier 3C gate: tampered binding_ids marker → exit 3", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-tampered-"));
+  const diff = buildCleanDiff();
+  diff.binding_ids.comparison = "comparable_by_tool_call_id";
+  const path = writeDiff(dir, "tampered.json", diff);
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 3);
+});
+
+test("Tier 3C gate: missing --diff value → exit 2 (bare-flag guard)", () => {
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff"]);
+  assert.equal(out.status, 2);
+  assert.match(out.stderr, /--diff.*required.*non-empty/);
+});
+
+test("Tier 3C gate: missing --diff entirely → exit 2", () => {
+  const out = runCli(["runner", "cross-runtime", "gate"]);
+  assert.equal(out.status, 2);
+});
+
+test("Tier 3C gate: file not found → exit 2 (config_error)", () => {
+  const out = runCli([
+    "runner",
+    "cross-runtime",
+    "gate",
+    "--diff",
+    "/nonexistent/path/diff.json",
+  ]);
+  assert.equal(out.status, 2);
+});
+
+test("Tier 3C gate: unknown runner cross-runtime subcommand → exit 2 with usage", () => {
+  const out = runCli(["runner", "cross-runtime", "summarise", "--diff", "x"]);
+  assert.equal(out.status, 2);
+  assert.match(out.stderr, /Usage:/);
+  assert.match(out.stderr, /runner cross-runtime gate/);
+});
+
+test("Tier 3C gate: stdout stays clean (gate is exit-focused, not output-focused)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xrt-gate-stdout-"));
+  const path = writeDiff(dir, "clean.json", buildCleanDiff());
+  const out = runCli(["runner", "cross-runtime", "gate", "--diff", path]);
+  assert.equal(out.status, 0);
+  assert.equal(
+    out.stdout.trim(),
+    "",
+    `gate should not write to stdout; got: ${JSON.stringify(out.stdout)}`,
+  );
 });

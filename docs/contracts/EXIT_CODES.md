@@ -106,7 +106,23 @@ Tier 3A — consumer of `assay.runner.cross_runtime_diff.v0`. Reads a precompute
 
 > v0 cross-runtime regression policy (rendered in the report status line and `regression_summary` section): added entries on any of `surface.{filesystem_paths,network_endpoints,process_execs,mcp_tools,policy_decisions}` mark the report as `RUNNER CROSS-RUNTIME REGRESSION`. Removed entries are reported but never blocking. **`sdk_metadata` changes are reported as side-band runtime provenance and are NEVER treated as a capability regression.** Binding-id and policy-outcome comparison are out of scope for v0 cross-runtime diff per the Runner side contract; Harness flags any tampered marker as `artifact_contract` (3).
 
-> Tier 3B (archive-pair convenience wrapper) and Tier 3C (gate verb that exits 6 on regression) are NOT implemented yet — gated on real two-runtime workflow demand per `Rul1an/Assay-Harness#58`.
+> Tier 3B (archive-pair convenience wrapper) is NOT implemented yet — kept as demo recipe / future option, not as core CLI surface, to avoid Harness becoming a second producer of cross-runtime semantics.
+
+### `assay-harness runner cross-runtime gate`
+
+Tier 3C — CI-blocking gate over the same precomputed `assay.runner.cross_runtime_diff.v0` artefact that `report` consumes. No new semantic logic; only different exit translation. Reuses the strict v0 clean-schema validator from Tier 3A.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Clean diff, no added capability surface (regardless of `removed` entries, SDK metadata changes, or notes) | 0 |
+| Any added entry in `surface.{filesystem_paths,network_endpoints,process_execs,mcp_tools,policy_decisions}` | 6 |
+| Diff JSON malformed, schema mismatch, contract-shape violation, tampered out-of-scope marker, etc. | 3 |
+| `--diff` missing or file not found | 2 |
+| Unknown `runner cross-runtime` subcommand | 2 |
+
+> The gate verb is **exit-focused**: stdout stays clean for CI logs; a one-line status (`[success]` / `[regression]` / `[artifact_contract]`) goes to stderr. Callers that want full reviewer output should use `runner cross-runtime report` instead.
+
+> Same v0 cross-runtime policy as `report`: removed entries never block, SDK metadata changes are side-band only and NEVER trigger exit 6, tampered out-of-scope markers fail validation with exit 3.
 
 ### `assay-harness verify-runner`
 

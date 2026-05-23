@@ -80,6 +80,7 @@ Commands:
   verify-runner <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]
+  runner cross-runtime gate --diff <cross-runtime-diff.json>
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -724,26 +725,34 @@ function cmdRunner(args: Record<string, string | boolean>): void {
   console.error(
     "Usage:\n" +
       "  runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]\n" +
-      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
+      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]\n" +
+      "  runner cross-runtime gate --diff <cross-runtime-diff.json>",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
 
 function cmdRunnerCrossRuntime(args: Record<string, string | boolean>): void {
   const subsubcommand = args._subfile as string | undefined;
-  if (subsubcommand !== "report") {
-    console.error(
-      `[config_error] Unknown runner cross-runtime subcommand: ${subsubcommand ?? "(none)"}`,
-    );
-    console.error(
-      "Usage: runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]",
-    );
-    console.error(
-      "Tier 3B (archive-pair convenience) and Tier 3C (gate) are not implemented yet.",
-    );
-    process.exit(EXIT.CONFIG_ERROR);
+  if (subsubcommand === "report") {
+    cmdRunnerCrossRuntimeReport(args);
+    return;
   }
-  cmdRunnerCrossRuntimeReport(args);
+  if (subsubcommand === "gate") {
+    cmdRunnerCrossRuntimeGate(args);
+    return;
+  }
+  console.error(
+    `[config_error] Unknown runner cross-runtime subcommand: ${subsubcommand ?? "(none)"}`,
+  );
+  console.error(
+    "Usage:\n" +
+      "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]\n" +
+      "  runner cross-runtime gate --diff <cross-runtime-diff.json>",
+  );
+  console.error(
+    "Tier 3B (archive-pair convenience wrapper) is not implemented yet.",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
 }
 
 function cmdRunnerCrossRuntimeReport(args: Record<string, string | boolean>): void {
@@ -782,10 +791,69 @@ function cmdRunnerCrossRuntimeReport(args: Record<string, string | boolean>): vo
   //     violation, out-of-scope-marker tampering) → ARTIFACT_CONTRACT (3)
   //   - otherwise (including a diff that contains regressions) → SUCCESS (0)
   // The regression signal is rendered in the report status line but does
-  // NOT translate to exit 6 here. Tier 3C `gate` (future PR) will add the
-  // gating semantics on top of the same parser.
+  // NOT translate to exit 6 here — that is the `gate` verb's job
+  // (cmdRunnerCrossRuntimeGate below).
   if (!report.validation.valid) {
     process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdRunnerCrossRuntimeGate(args: Record<string, string | boolean>): void {
+  // Tier 3C — same parser as `report`, different exit-code semantics.
+  // The gate verb translates the v0 capability-regression signal into a
+  // CI-blocking exit code. No new contract logic and no new validation —
+  // it consumes the exact same `CrossRuntimeReport` and applies the
+  // documented routing.
+  const diffArg = args.diff;
+
+  if (typeof diffArg !== "string" || diffArg.length === 0) {
+    console.error(
+      "[config_error] --diff <cross-runtime-diff.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: runner cross-runtime gate --diff <cross-runtime-diff.json>",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const diffPath = diffArg;
+
+  const load = loadCrossRuntimeReport(diffPath);
+  if (load.not_found) {
+    console.error(`[config_error] Cross-runtime diff file not found: ${diffPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  // The gate verb is exit-focused, so emit a one-line summary on stderr
+  // for CI logs but keep stdout clean. (Callers that want full output
+  // should use `runner cross-runtime report` instead.)
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] runner cross-runtime gate: invalid diff (${codes})`);
+  } else if (report.has_added_capability) {
+    const counts = Object.entries(report.added_counts)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(",");
+    console.error(`[regression] runner cross-runtime gate: added capability surface (${counts})`);
+  } else {
+    console.error("[success] runner cross-runtime gate: no added capability surface");
+  }
+
+  // Exit routing for Tier 3C `gate`:
+  //   - invalid diff (schema/contract violation) → ARTIFACT_CONTRACT (3)
+  //   - added capability surface on any of the five v0 categories →
+  //     REGRESSION (6). New `allow:*` policy decisions count here per the
+  //     within-runtime Tier-2A policy mirrored cross-runtime.
+  //   - removed entries / SDK metadata changes / notes / etc. → SUCCESS (0)
+  //   - missing file / bare --diff → CONFIG_ERROR (2) (handled above)
+  // No new semantic logic vs `report`; only the exit translation.
+  if (!report.validation.valid) {
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (report.has_added_capability) {
+    process.exit(EXIT.REGRESSION);
   }
   process.exit(EXIT.SUCCESS);
 }
