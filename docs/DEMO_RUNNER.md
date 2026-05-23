@@ -58,7 +58,50 @@ Output:
 
 Exit: `0`.
 
-## 2 — `runner compare` on two archives (Tier 2A capability-surface diff)
+## 2 — `compare` on two archives (Runner-mode, Tier-1 only)
+
+Pointing the generic `compare` verb at two `.tar.gz` inputs runs the Tier-1 validation on both archives and reports whether they passed; it does **not** diff their capability surfaces. This is the soft routing path — exit 0 even when the candidate carries a different surface.
+
+```bash
+node harness/dist/cli.js compare \
+  --baseline examples/runner/clean.tar.gz \
+  --candidate examples/runner/regression.tar.gz
+```
+
+Output:
+
+```
+# Runner Archive Comparison (Tier 1)
+
+**Status:** TIER-1 OK
+**Summary:** TIER-1 OK: both Runner archives validated and honest-health clean; structural diff is Tier 2 (not implemented in this version)
+
+> Tier 1 validates each archive's manifest, digests, and honest-health.
+> Structural diff (capability surface, per-layer regressions) is Tier 2 and
+> is not implemented in this version.
+
+## Baseline
+
+- Archive: `examples/runner/clean.tar.gz`
+- Recognised: yes
+- Manifest valid: yes
+- Run id: `run_demo_clean`
+- Honest health: passed
+
+## Candidate
+
+- Archive: `examples/runner/regression.tar.gz`
+- Recognised: yes
+- Manifest valid: yes
+- Run id: `run_demo_regression`
+- Honest health: passed
+```
+
+Exit: `0`.
+
+The contrast with step 3 below matters: the generic `compare` verb says "both archives are well-formed and honest" but does not look at what they contain. To diff the capability surface and gate on it, use `runner compare`.
+
+## 3 — `runner compare` on two archives (Tier 2A capability-surface diff)
 
 Compares two Tier-1-clean archives on their `capability-surface.json` payload. The `regression.tar.gz` fixture adds one filesystem path, one MCP tool, and one `allow:*` policy decision on top of the clean baseline — all three are regression triggers under the v0 policy.
 
@@ -112,7 +155,7 @@ Exit: `6` (`regression`).
 
 The Tier-2B per-layer projection appears below the diff. It is explanatory only — its content does not change the Tier-2A regression flag.
 
-## 3 — `runner cross-runtime report` (Tier 3A)
+## 4 — `runner cross-runtime report` (Tier 3A)
 
 Renders a precomputed `assay.runner.cross_runtime_diff.v0` artefact as a reviewer report. The `clean.json` fixture has no added capability surface, so the report status is `OK` even though `sdk_metadata` differs between the two runtimes (the v0 contract treats SDK metadata as side-band provenance only).
 
@@ -154,9 +197,9 @@ Output (abbreviated):
 ...
 ```
 
-Exit: `0`. `report` is **informational only** — even when the diff carries a regression signal, the verb exits 0. The regression signal becomes a CI exit code in step 4.
+Exit: `0`. `report` is **informational only** — even when the diff carries a regression signal, the verb exits 0. The regression signal becomes a CI exit code in step 5.
 
-## 4 — `runner cross-runtime gate` (Tier 3C)
+## 5 — `runner cross-runtime gate` (Tier 3C)
 
 Same parser as `report`, different exit-code translation. Stdout stays clean for CI logs; status goes to stderr.
 
