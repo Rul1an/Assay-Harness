@@ -4,6 +4,28 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Docs: cross-repo schema-consumption boundary
+
+Adds two cross-repo boundary docs that record what Assay-Harness
+consumes from `Rul1an/assay` and what it deliberately does not:
+
+- [`docs/RUNNER_SCHEMA_CONSUMPTION.md`](docs/RUNNER_SCHEMA_CONSUMPTION.md):
+  tabular inventory of every `assay.runner.*.v0` schema in the
+  Runner-side `schemas-overview.md`, mapped to the Harness module
+  that consumes it (per Tier), plus the schemas Harness sees but
+  ignores (kernel-event open metadata), the schemas it deliberately
+  does not consume (runtime drift family), and the `assay.experiment.*`
+  namespace exclusion policy.
+- [`docs/RUNTIME_DRIFT_DEFERRAL.md`](docs/RUNTIME_DRIFT_DEFERRAL.md):
+  full rationale for not building Tier 4 against
+  `assay.runner.runtime_drift.v0.2`. Four "when to revisit" triggers
+  (CI-blocking semantic emerges, real consumer asks, upstream stabilises
+  for one minor cycle, runtime drift promoted from experiment dir to
+  shipped contract).
+
+Both are reference docs, not behaviour changes. No CLI, schema, or
+test surface changes.
+
 ### Docs: Runner demo walkthrough + README pivot
 
 Adds an end-to-end walkthrough at `docs/DEMO_RUNNER.md` covering all five Runner-aware verbs (`verify-runner`, `compare` in Runner-mode, `runner compare`, `runner cross-runtime report`, `runner cross-runtime gate`) with locally-generated synthetic fixtures. Output blocks in the demo are taken from real CLI invocations against those fixtures, with some longer sections abbreviated with `...` for readability — every value shown is what the CLI actually emits.
