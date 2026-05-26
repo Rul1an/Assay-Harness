@@ -96,9 +96,14 @@ export interface RunnerLayerSummary {
    * fields added by `Rul1an/assay#1362` to `assay.runner.kernel_event.v0`
    * (`access_mode`, `operation_flags`, `status`). Always present on the
    * kernel summary; empty when the source archive predates the v0
-   * line-schema freeze or carries no `openat` events.
+   * line-schema freeze or carries no kernel events that expose these
+   * fields. In practice the v0 line schema only emits these on
+   * `openat` events; the implementation bumps a histogram whenever the
+   * field is present on a kernel event, regardless of `kind`, so a
+   * future v0.x line-schema extension that exposes the same fields on
+   * another kind would be counted without code change.
    *
-   * `kernel_operation_flags` counts each flag in the per-event array
+   * `operation_flags` counts each flag in the per-event array
    * independently, so an event with `["create", "truncate"]` contributes
    * one count to each key.
    */
