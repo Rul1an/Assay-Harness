@@ -26,6 +26,51 @@ consumes from `Rul1an/assay` and what it deliberately does not:
 Both are reference docs, not behaviour changes. No CLI, schema, or
 test surface changes.
 
+### Tier-2B: kernel-event v0 line-schema awareness
+
+Tier-2B per-layer projection now correctly buckets real kernel events
+emitted by `assay.runner.kernel_event.v0` (frozen in
+[`Rul1an/assay#1362`](https://github.com/Rul1an/assay/pull/1362)) and
+surfaces the optional open-event metadata as additional histograms.
+
+Two real changes:
+
+**1. Kernel event histogram key.** Real v0 kernel events carry an
+integer `event_type` (the internal monitor id) and a string `kind`
+(the canonical normalized identifier — `openat`, `connect`, `exec`,
+etc.). The previous Tier-2B summary keyed by string `event_type`,
+which meant every real v0 archive grouped all kernel events under the
+synthetic `(unknown)` bucket. The summary now keys the kernel layer
+by `kind` when present, falling back to a string `event_type` for
+legacy synthetic fixtures, then `type`, then `(unknown)`. SDK and
+policy layer keying is unchanged.
+
+**2. New `kernel_open_metadata` block.** When a kernel event carries
+the optional `access_mode`, `operation_flags`, or `status` fields, the
+new `RunnerLayerSummary.kernel_open_metadata` block accumulates three
+histograms (one per field). `operation_flags` counts each flag in the
+per-event array independently, so an event with
+`["create", "truncate"]` contributes one count to each key. The
+matching `RunnerLayerDiff.kernel_open_metadata` block emits per-arm
+baseline / candidate counts plus added / removed key sets per
+histogram.
+
+Backward compat:
+
+- Archives that predate v0.1 open metadata still produce an empty
+  `kernel_open_metadata` block; the diff returns empty added /
+  removed sets.
+- The new histograms are kernel-only; `RunnerLayerDiff.kernel_open_metadata`
+  is `undefined` for SDK and policy layer diffs.
+- Tier 2B is still explanatory only. Open-metadata drift never feeds
+  into the Tier-2A regression flag.
+
+Six new tests cover: bucketing by `kind` for v0 events, fallback to
+string `event_type` for legacy synthetic, histogram collection for
+each of access_mode / operation_flags / status, diff added / removed
+on each, empty-block emission when v0 fields are absent, and absence
+on non-kernel layer diffs.
+
 ### Docs: Runner demo walkthrough + README pivot
 
 Adds an end-to-end walkthrough at `docs/DEMO_RUNNER.md` covering all five Runner-aware verbs (`verify-runner`, `compare` in Runner-mode, `runner compare`, `runner cross-runtime report`, `runner cross-runtime gate`) with locally-generated synthetic fixtures. Output blocks in the demo are taken from real CLI invocations against those fixtures, with some longer sections abbreviated with `...` for readability — every value shown is what the CLI actually emits.

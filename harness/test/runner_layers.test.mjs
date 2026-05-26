@@ -394,3 +394,140 @@ test("layer projection markdown lives below the Tier-2A diff in runner compare o
   assert.ok(tier2aIdx >= 0, "expected Tier-2A heading");
   assert.ok(tier2bIdx > tier2aIdx, "expected Tier-2B projection AFTER Tier-2A heading");
 });
+
+// ---------------------------------------------------------------------------
+// Kernel-event v0 line schema awareness
+// ---------------------------------------------------------------------------
+
+test("kernel layer: v0 events bucketize by `kind`, not integer event_type", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-kind-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    kernelEvents: [
+      // v0 line-schema shape: int event_type + string kind. Older code
+      // would bucket all three under "(unknown)" because event_type is
+      // not a string; new code uses `kind`.
+      { schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 0, pid: 1, event_type: 1, kind: "openat", value: "/tmp/a" },
+      { schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 1, pid: 1, event_type: 1, kind: "openat", value: "/tmp/b" },
+      { schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 2, pid: 1, event_type: 2, kind: "connect", value: "1.2.3.4:443" },
+    ],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({ runId: "rc" }));
+  const proj = computeLayerProjection(baseline, candidate);
+  assert.deepEqual(proj.kernel.baseline_event_types, { openat: 2, connect: 1 });
+  assert.equal(proj.kernel.baseline_event_types["(unknown)"], undefined);
+});
+
+test("kernel layer: legacy synthetic string event_type still buckets correctly", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-legacy-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    kernelEvents: [
+      // Old synthetic shape with string event_type and no `kind`.
+      // Must continue to bucket by event_type to preserve back-compat.
+      { event_type: "file_open", path: "/tmp/a" },
+      { event_type: "file_open", path: "/tmp/b" },
+      { event_type: "process_exec", path: "/usr/bin/ls" },
+    ],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({ runId: "rc" }));
+  const proj = computeLayerProjection(baseline, candidate);
+  assert.deepEqual(proj.kernel.baseline_event_types, {
+    file_open: 2,
+    process_exec: 1,
+  });
+});
+
+test("kernel layer: open-metadata histograms collect access_mode + operation_flags + status", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-openmeta-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    kernelEvents: [
+      {
+        schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 0, pid: 1,
+        event_type: 1, kind: "openat", value: "/tmp/a", access_mode: "read", status: "success",
+      },
+      {
+        schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 1, pid: 1,
+        event_type: 1, kind: "openat", value: "/tmp/b", access_mode: "write",
+        operation_flags: ["create", "truncate"], status: "success",
+      },
+      {
+        schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 2, pid: 1,
+        event_type: 1, kind: "openat", value: "/tmp/c", access_mode: "read",
+        status: "error",
+      },
+    ],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({ runId: "rc" }));
+  const proj = computeLayerProjection(baseline, candidate);
+  assert.ok(proj.kernel.kernel_open_metadata, "kernel_open_metadata block expected");
+  const meta = proj.kernel.kernel_open_metadata;
+  assert.deepEqual(meta.access_modes.baseline, { read: 2, write: 1 });
+  // operation_flags counts each flag in the array independently.
+  assert.deepEqual(meta.operation_flags.baseline, { create: 1, truncate: 1 });
+  assert.deepEqual(meta.statuses.baseline, { success: 2, error: 1 });
+});
+
+test("kernel layer: open-metadata diff surfaces added + removed keys", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-openmeta-diff-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    kernelEvents: [
+      { schema: "assay.runner.kernel_event.v0", run_id: "rb", seq: 0, pid: 1,
+        event_type: 1, kind: "openat", access_mode: "read", status: "success" },
+    ],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({
+    runId: "rc",
+    kernelEvents: [
+      { schema: "assay.runner.kernel_event.v0", run_id: "rc", seq: 0, pid: 1,
+        event_type: 1, kind: "openat", access_mode: "write",
+        operation_flags: ["create"], status: "success" },
+      { schema: "assay.runner.kernel_event.v0", run_id: "rc", seq: 1, pid: 1,
+        event_type: 1, kind: "openat", access_mode: "read", status: "error" },
+    ],
+  }));
+  const proj = computeLayerProjection(baseline, candidate);
+  const meta = proj.kernel.kernel_open_metadata;
+  assert.ok(meta);
+  assert.deepEqual(meta.access_modes.added, ["write"]);
+  assert.deepEqual(meta.access_modes.removed, []);
+  assert.deepEqual(meta.operation_flags.added, ["create"]);
+  assert.deepEqual(meta.statuses.added, ["error"]);
+  assert.deepEqual(meta.statuses.removed, []);
+});
+
+test("kernel layer: open-metadata is empty when v0 fields are absent", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-no-openmeta-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    kernelEvents: [
+      // Legacy synthetic shape with no kind/access_mode/operation_flags/status.
+      { event_type: "file_open", path: "/tmp/a" },
+    ],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({ runId: "rc" }));
+  const proj = computeLayerProjection(baseline, candidate);
+  const meta = proj.kernel.kernel_open_metadata;
+  assert.ok(meta, "kernel_open_metadata block emitted even when v0 fields absent");
+  assert.deepEqual(meta.access_modes.baseline, {});
+  assert.deepEqual(meta.operation_flags.baseline, {});
+  assert.deepEqual(meta.statuses.baseline, {});
+  assert.deepEqual(meta.access_modes.added, []);
+  assert.deepEqual(meta.operation_flags.added, []);
+  assert.deepEqual(meta.statuses.added, []);
+});
+
+test("kernel layer: open-metadata is undefined on the SDK and policy diffs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2b-non-kernel-"));
+  const baseline = writeArchive(dir, "b.tar.gz", buildArchiveWithLayers({
+    runId: "rb",
+    sdkEvents: [{ event_type: "run_started", source: "x" }],
+    policyEvents: [{ event_type: "decision", decision: "allow" }],
+  }));
+  const candidate = writeArchive(dir, "c.tar.gz", buildArchiveWithLayers({ runId: "rc" }));
+  const proj = computeLayerProjection(baseline, candidate);
+  assert.equal(proj.sdk.kernel_open_metadata, undefined);
+  assert.equal(proj.policy.kernel_open_metadata, undefined);
+});
