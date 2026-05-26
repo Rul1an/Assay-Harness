@@ -71,6 +71,35 @@ each of access_mode / operation_flags / status, diff added / removed
 on each, empty-block emission when v0 fields are absent, and absence
 on non-kernel layer diffs.
 
+### Docs: ROADMAP and ASSAY_COMPATIBILITY refresh
+
+Refreshes [`docs/ROADMAP.md`](docs/ROADMAP.md) to reflect the three
+release lines that landed since the last roadmap update (2026-04-29):
+
+- **v0.4.0** — Assay-Runner archive recognition (Tier 1) +
+  capability-surface diff (Tier 2A)
+- **v0.5.0** — per-layer reviewer projection (Tier 2B)
+- **v0.6.0** — cross-runtime diff consumer + gate (Tier 3A + 3C) plus
+  the demo walkthrough + README pivot from PR #67
+
+Adds a `Next — v0.7 candidates` section covering the work surfaced by
+the latest `Rul1an/assay` gap analysis:
+
+- Runner contract drift detection via the real-archive smoke fixture
+  (#65, addressed in PR #68)
+- Compatibility-line bump to Assay `v3.12.0`
+- Optional `access_mode`-aware kernel-layer projection (Tier 2B
+  reviewer UX, no new gating)
+
+[`docs/ASSAY_COMPATIBILITY.md`](docs/ASSAY_COMPATIBILITY.md) gets an
+upstream-state note: `Rul1an/assay v3.12.0` is three minor versions
+ahead of the last proved binary, but the Trust Basis contract surface
+(diff schema v1, Trust Card schema v5, 10 frozen claims) has not
+changed in v3.10/v3.11/v3.12. The release-binary proof rail still
+needs to be re-run.
+
+Pure docs change — no CLI, schema, or test surface changes.
+
 ### Docs: Runner demo walkthrough + README pivot
 
 Adds an end-to-end walkthrough at `docs/DEMO_RUNNER.md` covering all five Runner-aware verbs (`verify-runner`, `compare` in Runner-mode, `runner compare`, `runner cross-runtime report`, `runner cross-runtime gate`) with locally-generated synthetic fixtures. Output blocks in the demo are taken from real CLI invocations against those fixtures, with some longer sections abbreviated with `...` for readability — every value shown is what the CLI actually emits.

@@ -1,6 +1,71 @@
 # Roadmap
 
-> Last updated: 2026-04-29
+> Last updated: 2026-05-26
+
+## v0.6.0 — shipped
+
+### Assay-Runner cross-runtime diff consumer + gate (Tier 3A + Tier 3C)
+- Two new CLI verbs:
+  `assay-harness runner cross-runtime report --diff <path>` (reviewer
+  projection) and `assay-harness runner cross-runtime gate --diff <path>`
+  (CI-blocking translation, exit 6 on added capability surface,
+  3 on contract violation, 0 otherwise)
+- Strict v0 clean-schema validation against
+  `assay.runner.cross_runtime_diff.v0` produced upstream by
+  `Rul1an/assay`. Harness is consumer-not-owner: the Runner side defines
+  A1+B3+C1 canonicalisation, out-of-scope markers, and side-band SDK
+  metadata semantics; Harness translates the regression signal into
+  reviewer output and CI exit codes
+- Tier 3B (archive-pair convenience wrapper that re-implements the
+  Runner-side projector) remains deferred — would conflict with the
+  consumer-not-owner stance
+
+### Demo walkthrough + README pivot
+- `docs/DEMO_RUNNER.md` end-to-end walkthrough covering all five
+  Runner-aware verbs (`verify-runner`, `compare` in Runner-mode,
+  `runner compare`, `runner cross-runtime report`, `runner cross-runtime
+  gate`) with locally-generated synthetic fixtures
+- `examples/runner/build-fixtures.mjs` generates `clean.tar.gz`,
+  `regression.tar.gz`, `cross-runtime-diff-clean.json`, and
+  `cross-runtime-diff-regression.json` on demand using the same in-file
+  ustar+gzip writer pattern as the test suite
+- README "Optional input: Assay-Runner measured-run archives" section
+  rewritten with the five-verb table and a copy-pasted mini regression
+  output block
+
+## v0.5.0 — shipped
+
+### Assay-Runner per-layer reviewer projection (Tier 2B)
+- `assay-harness runner compare` extended with per-layer projection
+  over `layers/kernel.ndjson`, `layers/policy.ndjson`, and
+  `layers/sdk.ndjson` in each Runner archive
+- Tier 2B is **explanatory only** — does not feed into the Tier 2A
+  regression flag and adds no new gating semantics
+- Per-layer summaries diff at the event-type histogram level. SDK layer
+  additionally diffs distinct `tool` values (guaranteed by
+  `assay.runner.sdk_event.v0`). SDK layer always carries the
+  `self_reported_per_v0_contract` caveat
+- `readRunnerArchiveFiles(filePath)` shared with Tier 1 so the
+  size-limited gunzip + tar reader is not duplicated
+
+## v0.4.0 — shipped
+
+### Assay-Runner archive recognition + Tier 2A capability-surface diff
+- Tier 1: `verify-runner` validates `.tar.gz` archives carrying an
+  `assay.runner.archive_manifest.v0` manifest. Recognises archive
+  shape, verifies the digest binding (`sha256:<64-hex>` per file),
+  checks the `assay.runner.{capability_surface,observation_health,
+  correlation_report}.v0` schema strings, and runs the honest-health
+  gate against `ringbuf_drops`, `kernel_layer`, and
+  `cgroup_correlation`
+- Tier 2A: `compare` in Runner-mode diffs two archives' capability
+  surfaces. Added entries on any of the five categories
+  (`filesystem_paths`, `network_endpoints`, `process_execs`,
+  `mcp_tools`, `policy_decisions`) trigger the regression signal;
+  removed entries are reported but never blocking
+- Prerequisite: both archives must pass Tier 1 (recognised, manifest
+  valid, observation-health clean). If either side fails, Tier 2 is
+  **not attempted** — the regression flag stays unset
 
 ## v0.3.2 — shipped
 
@@ -103,7 +168,37 @@ What's already built and working.
 ### Experimental
 - OTel OTLP JSON exporter (experimental, no stability guarantee)
 
-## Next — adoption polish
+## Next — v0.7 candidates
+
+### Runner contract drift detection (closes #65)
+- Real `.tar.gz` smoke fixture from `Rul1an/assay` PR #1377 (Slice 3
+  rerun, source commit `ee343650`) under
+  `harness/fixtures/runner/slice3-arm-c-kernel-event-v0.tar.gz`
+- Smoke test runs `validateRunnerArchive` + `checkHonestHealth`
+  against the real upstream archive — catches Runner-side contract
+  drift that synthetic fixtures cannot catch by construction
+  (schema bumps, manifest field renames, digest-prefix regressions,
+  new required files)
+- See [`harness/fixtures/runner/PROVENANCE.md`](../harness/fixtures/runner/PROVENANCE.md)
+  for the source commit and refresh policy
+
+### Assay compatibility-line bump to v3.12.0
+- Current target: Assay `v3.8.0` minimum / `v3.9.0` proof
+- Upstream is now `Rul1an/assay v3.12.0` (released 2026-05-25),
+  three minor versions ahead
+- Action: dispatch the `Harness CI` release-binary compatibility job
+  against the `v3.12.0` binary and update
+  [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) once it passes
+
+### Optional access_mode-aware kernel-layer projection (Tier 2B)
+- `Rul1an/assay#1362` froze `assay.runner.kernel_event.v0` with
+  optional open metadata (`access_mode`, `operation_flags`, `status`,
+  `return_value`)
+- Tier 2B currently keeps the conservative count + event_type
+  histogram view. A `read`/`write`/`create`/`truncate`/`append`
+  histogram is a reviewer-UX upgrade with no new gating semantics
+- Tier 2A regression signal stays the source of truth; this is
+  explanatory-only as Tier 2B always is
 
 ### CLI clarity
 - Better error messages for new users

@@ -5,9 +5,19 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.3.2` requires the released Assay `v3.8.0` contract line or
+Assay Harness `v0.6.0` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
+
+> **Upstream state (2026-05-26):** `Rul1an/assay` is on `v3.12.0`
+> (released 2026-05-25), three minor versions ahead of the last proved
+> compatibility binary. The Trust Basis contract surface (diff schema
+> v1, Trust Card schema v5, 10 frozen claims) has not changed in
+> v3.10 / v3.11 / v3.12; the principle compatibility line still
+> holds. The release-binary proof rail has not been re-run against
+> those tags. Dispatching the `Harness CI` compat job against
+> `v3.12.0` is tracked on the [roadmap](ROADMAP.md) as a v0.7
+> candidate.
 
 | Contract | Expected surface |
 |---|---|
