@@ -17,11 +17,17 @@
  * projection additionally diffs the set of distinct `tool` values because
  * that field is guaranteed by the `assay.runner.sdk_event.v0` contract.
  *
- * The kernel and policy layers do not have a published v0 event-shape
- * contract on the Harness side, so this projection sticks to the
- * conservative "count + event_type histogram" view for those layers. A
- * future Tier-2B follow-up can add deeper field-level projections if a
- * stable per-layer event schema is published.
+ * The kernel layer has a published line schema (`assay.runner.kernel_event.v0`,
+ * sidecar at `Rul1an/assay/docs/reference/runner/schema/kernel-event-v0.schema.json`)
+ * with optional open metadata (`access_mode`, `operation_flags`,
+ * `status`, `return_value`) since `Rul1an/assay#1362`. Tier-2B
+ * deliberately keeps the conservative "count + event_type histogram"
+ * projection for the kernel layer and ignores those optional fields; a
+ * future follow-up can add an `access_mode`-aware (read / write /
+ * create / truncate / append) projection if reviewer demand justifies
+ * the surface area expansion. The policy layer does not yet have a
+ * published v0 line schema, so the histogram view is the only option
+ * there.
  *
  * The SDK layer is explicitly labelled as `self_reported` per the v0
  * contract: SDK events come from the agent runtime itself and are not

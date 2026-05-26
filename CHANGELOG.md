@@ -14,6 +14,51 @@ Adds an end-to-end walkthrough at `docs/DEMO_RUNNER.md` covering all five Runner
 
 Non-claims unchanged: no marketing language, no standalone-Runner positioning, no claim that two runtimes are semantically equivalent. Runner remains internal to `Rul1an/assay`; Harness consumes and gates but does not measure or compute.
 
+### Real Assay-Runner archive smoke fixture (closes #65)
+
+Adds one real `.tar.gz` archive from `Rul1an/assay` PR #1377 (Slice 3
+rerun, run 26442807783, source commit `ee343650`) under
+[`harness/fixtures/runner/`](harness/fixtures/runner/) plus a
+[`PROVENANCE.md`](harness/fixtures/runner/PROVENANCE.md) recording the
+source commit and refresh policy.
+
+The new smoke test in
+[`harness/test/runner_archive_real_fixture.test.mjs`](harness/test/runner_archive_real_fixture.test.mjs)
+runs `validateRunnerArchive` and `checkHonestHealth` against the real
+upstream archive and asserts:
+
+- the archive is recognised and the manifest is valid;
+- every `manifest.files[*].sha256` matches `^sha256:[0-9a-f]{64}$`;
+- the four core schema strings equal the v0 constants the Harness pins;
+- the honest-health gate passes (no structural or measurement reasons).
+
+This catches Runner-side contract drift (schema string bumps, manifest
+field renames, digest-prefix regressions, and changes to the parsed or
+gated files Harness pins: `manifest.json`, `observation-health.json`,
+`correlation-report.json`, and `capability-surface.json`) that the
+synthetic test fixtures cannot catch by construction. The
+`sha256:<64-hex>` prefix bug surfaced in PR #59 review is exactly the
+shape of failure this fixture is designed to surface earlier.
+
+The fixture is a repack from `archive-contents/` (the upstream commit
+keeps the unpacked tree, not the raw tarball); file bytes are
+preserved so manifest digests still validate. Tar metadata
+(timestamps, uid/gid) is regenerated and is not part of the archive
+contract.
+
+### Tier-2B kernel-layer projection note refresh
+
+`runner_layers.ts` previously claimed there was no published v0
+event-shape contract for the kernel layer; that note predated
+`Rul1an/assay#1362`, which froze
+[`assay.runner.kernel_event.v0`](https://github.com/Rul1an/assay/blob/main/docs/reference/runner/schema/kernel-event-v0.schema.json)
+with optional open metadata (`access_mode`, `operation_flags`,
+`status`, `return_value`). The module comment now records that Tier-2B
+deliberately keeps the conservative "count + event_type histogram"
+projection for the kernel layer and ignores the optional fields, with
+an `access_mode`-aware projection flagged as a possible future
+follow-up.
+
 ## [0.6.0] - 2026-05-23
 
 This minor release adds **Assay-Runner cross-runtime diff consumption +
