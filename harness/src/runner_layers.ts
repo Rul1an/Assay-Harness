@@ -72,8 +72,17 @@ export interface RunnerLayerSummary {
    */
   unparseable_lines: number;
   /**
-   * Counts grouped by the event's `event_type` field if present, or by
-   * `type` as a fallback. Events without either field are counted under
+   * Counts grouped by the canonical normalized identifier for the layer.
+   *
+   * For the kernel layer this is the v0 `kind` field
+   * (`assay.runner.kernel_event.v0`); the integer `event_type` field is
+   * the internal monitor id and is not surfaced as a histogram key
+   * because reviewers would have to memorise the id table. Legacy
+   * synthetic fixtures emit a string `event_type` instead, which is
+   * still honoured as a fallback.
+   *
+   * For the SDK and policy layers the `event_type` string field is used,
+   * falling back to `type`. Events without either field are counted under
    * the synthetic key `"(unknown)"`.
    */
   event_types: Record<string, number>;
@@ -82,6 +91,27 @@ export interface RunnerLayerSummary {
    * Empty array for kernel and policy layers (not part of their summary).
    */
   sdk_tools?: string[];
+  /**
+   * Kernel-only: histograms over the optional open-event metadata
+   * fields added by `Rul1an/assay#1362` to `assay.runner.kernel_event.v0`
+   * (`access_mode`, `operation_flags`, `status`). Always present on the
+   * kernel summary; empty when the source archive predates the v0
+   * line-schema freeze or carries no kernel events that expose these
+   * fields. In practice the v0 line schema only emits these on
+   * `openat` events; the implementation bumps a histogram whenever the
+   * field is present on a kernel event, regardless of `kind`, so a
+   * future v0.x line-schema extension that exposes the same fields on
+   * another kind would be counted without code change.
+   *
+   * `operation_flags` counts each flag in the per-event array
+   * independently, so an event with `["create", "truncate"]` contributes
+   * one count to each key.
+   */
+  kernel_open_metadata?: {
+    access_modes: Record<string, number>;
+    operation_flags: Record<string, number>;
+    statuses: Record<string, number>;
+  };
   /**
    * Caveats for the reviewer. Notably: the SDK layer always carries the
    * `self_reported_per_v0_contract` note so any downstream UI surfaces it.
@@ -114,6 +144,36 @@ export interface RunnerLayerDiff {
     removed: string[];
     baseline: string[];
     candidate: string[];
+  };
+  /**
+   * Kernel-only: diffs over the optional open-event metadata histograms
+   * (`access_mode`, `operation_flags`, `status`) from
+   * `assay.runner.kernel_event.v0`. `undefined` for SDK and policy
+   * layers. Set keys are sorted; histograms preserve the baseline /
+   * candidate counts so reviewers can see absolute changes too.
+   *
+   * Tier 2B is still explanatory only. Open-metadata drift never feeds
+   * into the Tier-2A regression flag.
+   */
+  kernel_open_metadata?: {
+    access_modes: {
+      added: string[];
+      removed: string[];
+      baseline: Record<string, number>;
+      candidate: Record<string, number>;
+    };
+    operation_flags: {
+      added: string[];
+      removed: string[];
+      baseline: Record<string, number>;
+      candidate: Record<string, number>;
+    };
+    statuses: {
+      added: string[];
+      removed: string[];
+      baseline: Record<string, number>;
+      candidate: Record<string, number>;
+    };
   };
   /** Aggregated notes (e.g. self-reported caveat for SDK). */
   notes: string[];
@@ -149,6 +209,39 @@ export interface RunnerLayerProjection {
 const SDK_NOTE_SELF_REPORTED =
   "sdk_layer_is_self_reported_per_v0_contract: events come from the SDK itself and are not kernel-corroborated";
 
+/**
+ * Pick the canonical histogram key for one event in the given layer.
+ *
+ * Kernel layer: prefer the v0 `kind` field (`openat`, `connect`, etc.)
+ * because the v0 `event_type` is an integer monitor id that reviewers
+ * would have to memorise. Falls back to a string `event_type` for
+ * legacy synthetic fixtures, then to `type`, then `(unknown)`.
+ *
+ * SDK and policy layers: keep the existing `event_type` (string) → `type`
+ * → `(unknown)` chain.
+ */
+function eventTypeKey(
+  layer: RunnerLayerName,
+  obj: Record<string, unknown>,
+): string {
+  if (layer === "kernel") {
+    if (typeof obj.kind === "string" && obj.kind.length > 0) {
+      return obj.kind;
+    }
+  }
+  if (typeof obj.event_type === "string" && obj.event_type.length > 0) {
+    return obj.event_type;
+  }
+  if (typeof obj.type === "string" && obj.type.length > 0) {
+    return obj.type;
+  }
+  return "(unknown)";
+}
+
+function bumpCount(target: Record<string, number>, key: string): void {
+  target[key] = (target[key] ?? 0) + 1;
+}
+
 function summariseLayer(
   layer: RunnerLayerName,
   bytes: Buffer | undefined,
@@ -163,6 +256,13 @@ function summariseLayer(
   if (layer === "sdk") {
     summary.notes.push(SDK_NOTE_SELF_REPORTED);
     summary.sdk_tools = [];
+  }
+  if (layer === "kernel") {
+    summary.kernel_open_metadata = {
+      access_modes: {},
+      operation_flags: {},
+      statuses: {},
+    };
   }
   if (!bytes) {
     summary.notes.push(`${layer}_layer_ndjson_missing`);
@@ -187,15 +287,25 @@ function summariseLayer(
     }
     const obj = parsed as Record<string, unknown>;
     summary.total_events += 1;
-    const eventTypeRaw =
-      typeof obj.event_type === "string"
-        ? obj.event_type
-        : typeof obj.type === "string"
-          ? obj.type
-          : "(unknown)";
-    summary.event_types[eventTypeRaw] = (summary.event_types[eventTypeRaw] ?? 0) + 1;
+    bumpCount(summary.event_types, eventTypeKey(layer, obj));
     if (sdkToolSet && typeof obj.tool === "string" && obj.tool.length > 0) {
       sdkToolSet.add(obj.tool);
+    }
+    if (layer === "kernel" && summary.kernel_open_metadata) {
+      const meta = summary.kernel_open_metadata;
+      if (typeof obj.access_mode === "string" && obj.access_mode.length > 0) {
+        bumpCount(meta.access_modes, obj.access_mode);
+      }
+      if (Array.isArray(obj.operation_flags)) {
+        for (const flag of obj.operation_flags) {
+          if (typeof flag === "string" && flag.length > 0) {
+            bumpCount(meta.operation_flags, flag);
+          }
+        }
+      }
+      if (typeof obj.status === "string" && obj.status.length > 0) {
+        bumpCount(meta.statuses, obj.status);
+      }
     }
   }
   if (sdkToolSet) {
@@ -261,6 +371,41 @@ function diffLayer(
       removed: tools.removed,
       baseline: baseline.sdk_tools ?? [],
       candidate: candidate.sdk_tools ?? [],
+    };
+  }
+  if (baseline.layer === "kernel") {
+    const baseMeta = baseline.kernel_open_metadata ?? {
+      access_modes: {},
+      operation_flags: {},
+      statuses: {},
+    };
+    const candMeta = candidate.kernel_open_metadata ?? {
+      access_modes: {},
+      operation_flags: {},
+      statuses: {},
+    };
+    const am = diffEventTypeKeys(baseMeta.access_modes, candMeta.access_modes);
+    const of = diffEventTypeKeys(baseMeta.operation_flags, candMeta.operation_flags);
+    const st = diffEventTypeKeys(baseMeta.statuses, candMeta.statuses);
+    diff.kernel_open_metadata = {
+      access_modes: {
+        added: am.added,
+        removed: am.removed,
+        baseline: baseMeta.access_modes,
+        candidate: candMeta.access_modes,
+      },
+      operation_flags: {
+        added: of.added,
+        removed: of.removed,
+        baseline: baseMeta.operation_flags,
+        candidate: candMeta.operation_flags,
+      },
+      statuses: {
+        added: st.added,
+        removed: st.removed,
+        baseline: baseMeta.statuses,
+        candidate: candMeta.statuses,
+      },
     };
   }
   return diff;
