@@ -9,15 +9,14 @@ Assay Harness `v0.6.0` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
 
-> **Upstream state (2026-05-26):** `Rul1an/assay` is on `v3.12.0`
-> (released 2026-05-25), three minor versions ahead of the last proved
-> compatibility binary. The Trust Basis contract surface (diff schema
+> **Upstream state (2026-05-27):** `Rul1an/assay` is on `v3.12.0`
+> (released 2026-05-25). The Trust Basis contract surface (diff schema
 > v1, Trust Card schema v5, 10 frozen claims) has not changed in
 > v3.10 / v3.11 / v3.12; the principle compatibility line still
-> holds. The release-binary proof rail has not been re-run against
-> those tags. Dispatching the `Harness CI` compat job against
-> `v3.12.0` is tracked on the [roadmap](ROADMAP.md) as a v0.7
-> candidate.
+> holds. The release-binary proof rail has now been re-run against
+> `v3.12.0` in
+> [`Harness CI` run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840),
+> which is the new latest proved compatibility binary.
 
 | Contract | Expected surface |
 |---|---|
@@ -28,7 +27,7 @@ schema v5, and 10-claim Trust Basis surface.
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
 Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The
-latest release-binary proof for this line is Assay `v3.9.0`.
+latest release-binary proof for this line is Assay `v3.12.0`.
 
 ## Release-Binary Proof
 
@@ -39,7 +38,7 @@ the Promptfoo, OpenFeature, and CycloneDX recipes against that binary.
 The default dispatch input is:
 
 ```text
-assay_version = v3.9.0
+assay_version = v3.12.0
 ```
 
 This job is the release-binary compatibility proof rail. The proof-before-release
@@ -48,7 +47,10 @@ gate for Harness `v0.3.1` passed against Assay `v3.8.0` in
 before the `v0.3.1` tag. The same recipes were verified after the Assay
 `v3.9.0` release in
 [`Harness CI` run 25131209377](https://github.com/Rul1an/Assay-Harness/actions/runs/25131209377)
-before the `v0.3.2` tag.
+before the `v0.3.2` tag. The recipes were re-verified against Assay
+`v3.12.0` in
+[`Harness CI` run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)
+on 2026-05-27, three minor versions after the previous proof.
 
 ## Harness Boundary
 
