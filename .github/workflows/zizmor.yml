@@ -1,11 +1,12 @@
 name: Zizmor Workflow Audit
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/**"
-      - ".github/dependabot.yml"
-      - ".github/workflows/zizmor.yml"
+  # Always trigger on PRs so the required check is reported on every PR,
+  # even those that do not touch workflow files. The job below short-circuits
+  # to a no-op success when no workflow-relevant paths changed; this keeps
+  # the ruleset's required `Audit workflow security` check satisfied without
+  # widening the audit surface.
+  pull_request: {}
   push:
     branches: [main]
     paths:
@@ -29,13 +30,50 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          # Need history so the diff against the PR base resolves on
+          # forks and squash-merge bases alike.
+          fetch-depth: 0
+
+      - name: Detect workflow-relevant changes
+        id: changes
+        run: |
+          set -euo pipefail
+
+          # Schedule and manual dispatch always audit the full surface.
+          if [ "${{ github.event_name }}" = "schedule" ] || \
+             [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "audit_needed=true" >> "$GITHUB_OUTPUT"
+            echo "Trigger: ${{ github.event_name }} → full audit."
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)"
+          else
+            # push event, fall back to previous commit for safety.
+            CHANGED="$(git diff --name-only HEAD~1 HEAD || true)"
+          fi
+
+          if printf '%s\n' "$CHANGED" | grep -qE '^\.github/(workflows/|dependabot\.yml)'; then
+            echo "audit_needed=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow-relevant paths changed → running audit."
+          else
+            echo "audit_needed=false" >> "$GITHUB_OUTPUT"
+            echo "No workflow-relevant paths changed → no-op success."
+            echo "This satisfies the 'Audit workflow security' required check"
+            echo "without widening the audit surface to unrelated PRs."
+          fi
 
       - name: Install zizmor
+        if: steps.changes.outputs.audit_needed == 'true'
         run: |
           set -euo pipefail
           pipx install zizmor
 
       - name: Run zizmor (high confidence)
+        if: steps.changes.outputs.audit_needed == 'true'
         # Capture findings without failing the job here, so the threshold
         # step can fail visibly and the SARIF upload always runs.
         # zizmor exits non-zero on findings; tolerate that for the SARIF
@@ -45,7 +83,7 @@ jobs:
           zizmor --min-confidence high --format sarif .github/workflows > zizmor.sarif || true
 
       - name: Upload SARIF to GitHub Security
-        if: always()
+        if: steps.changes.outputs.audit_needed == 'true' && always()
         uses: github/codeql-action/upload-sarif@v4.36.0
         # Tolerate upload failures (e.g. fork PRs without
         # security-events: write) so the threshold-enforcement step still
@@ -56,8 +94,9 @@ jobs:
           category: zizmor
 
       - name: Enforce high-confidence threshold
-        # Always run so the gate cannot be skipped by a prior step failing.
-        if: always()
+        # Always run so the gate cannot be skipped by a prior step failing,
+        # but only when the audit was actually executed for this PR.
+        if: steps.changes.outputs.audit_needed == 'true' && always()
         run: |
           set -euo pipefail
           # Re-run, fail on any high-confidence finding.
