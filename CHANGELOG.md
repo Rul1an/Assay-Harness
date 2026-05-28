@@ -4,6 +4,24 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Assay v3.12.0 release-binary compatibility proof
+
+The `Harness CI` compat job was re-dispatched against Assay `v3.12.0`
+in [run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)
+on 2026-05-27. Promptfoo, OpenFeature, and CycloneDX recipes all
+passed against the released `v3.12.0` binary. The Trust Basis diff
+schema v1, Trust Card schema v5, and 10-claim Trust Basis surface are
+unchanged across v3.10 / v3.11 / v3.12.
+
+- `docs/ASSAY_COMPATIBILITY.md` now records `v3.12.0` as the latest
+  proved compatibility binary, with the new run as the proof anchor.
+- The `Harness CI` `workflow_dispatch` default for `assay_version` is
+  bumped from `v3.9.0` to `v3.12.0`, including the matching fallback
+  in the recipe-resolution step.
+
+This is a compatibility-proof refresh only. No Harness gate/report
+semantics changed; no Tier 1-3 schema consumption changed.
+
 ### Docs: cross-repo schema-consumption boundary
 
 Adds two cross-repo boundary docs that record what Assay-Harness

@@ -182,13 +182,15 @@ What's already built and working.
 - See [`harness/fixtures/runner/PROVENANCE.md`](../harness/fixtures/runner/PROVENANCE.md)
   for the source commit and refresh policy
 
-### Assay compatibility-line bump to v3.12.0
-- Current target: Assay `v3.8.0` minimum / `v3.9.0` proof
-- Upstream is now `Rul1an/assay v3.12.0` (released 2026-05-25),
-  three minor versions ahead
-- Action: dispatch the `Harness CI` release-binary compatibility job
-  against the `v3.12.0` binary and update
-  [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) once it passes
+### Assay compatibility-line bump to v3.12.0 — done
+- Current target: Assay `v3.8.0` minimum / `v3.12.0` proof
+- The `Harness CI` release-binary compatibility job passed against the
+  `v3.12.0` binary in
+  [run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)
+  on 2026-05-27
+- Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
+  workflow `assay_version` default were updated to record `v3.12.0` as
+  the latest proved compatibility binary
 
 ### Optional access_mode-aware kernel-layer projection (Tier 2B)
 - `Rul1an/assay#1362` froze `assay.runner.kernel_event.v0` with
