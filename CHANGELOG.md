@@ -4,6 +4,39 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-28
+
+Patch release primarily driven by the Assay `v3.12.0` release-binary
+compatibility proof
+([`Harness CI` run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)),
+which closes the v3.12.0 proof item that had been blocked by a GitHub
+Actions outage on 2026-05-26. The release also ships the accumulated
+post-`v0.6.0` documentation, real-archive smoke test fixture, and the
+Tier-2B kernel-event v0 line-schema awareness refresh. No CLI verbs
+were added or removed; no Tier 1-3 schema consumption changed.
+
+What's shipping versus `v0.6.0`:
+
+- Assay `v3.12.0` release-binary compatibility proof, with workflow
+  default and `ASSAY_COMPATIBILITY.md` both moved to `v3.12.0`.
+- Cross-repo schema-consumption boundary reference and the Tier-4
+  runtime-drift deferral rationale, recording exactly which
+  `assay.runner.*.v0` schemas Harness consumes per Tier and which it
+  deliberately ignores.
+- Tier-2B per-layer projection now correctly buckets real
+  `assay.runner.kernel_event.v0` events by `kind` (rather than the
+  internal integer `event_type`) and surfaces optional open-event
+  metadata as additive `kernel_open_metadata` histograms. Tier 2B
+  remains explanatory only; the new histograms never feed into the
+  Tier-2A regression flag.
+- Real Assay-Runner archive smoke test fixture vendored from
+  `Rul1an/assay` PR #1377, with PROVENANCE.md and refresh policy.
+  Catches Runner-side contract drift (schema string bumps, manifest
+  field renames, digest-prefix regressions) that the synthetic
+  fixtures cannot catch.
+- ROADMAP and Runner demo documentation refreshes consistent with the
+  cross-repo boundary work above.
+
 ### Assay v3.12.0 release-binary compatibility proof
 
 The `Harness CI` compat job was re-dispatched against Assay `v3.12.0`
