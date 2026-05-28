@@ -188,9 +188,9 @@ What's already built and working.
   `v3.12.0` binary in
   [run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)
   on 2026-05-27
-- [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the workflow
-  default were updated to record `v3.12.0` as the latest proved
-  compatibility binary
+- Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
+  workflow `assay_version` default were updated to record `v3.12.0` as
+  the latest proved compatibility binary
 
 ### Optional access_mode-aware kernel-layer projection (Tier 2B)
 - `Rul1an/assay#1362` froze `assay.runner.kernel_event.v0` with
