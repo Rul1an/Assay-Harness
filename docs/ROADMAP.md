@@ -1,6 +1,29 @@
 # Roadmap
 
-> Last updated: 2026-05-26
+> Last updated: 2026-06-01
+
+## Main after v0.6.1 — current
+
+### Assay compatibility-line bump to v3.13.0 — done on main
+- Current target: Assay `v3.8.0` minimum / `v3.13.0` proof
+- The `Harness CI` release-binary compatibility job passed against the
+  `v3.13.0` binary in
+  [run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781)
+  on 2026-06-01
+- Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
+  workflow `assay_version` default were updated to record `v3.13.0` as
+  the latest proved compatibility binary
+- This is proof/docs only: no Harness gate/report semantics and no
+  Runner schema-consumption tiers changed
+
+## v0.6.1 — shipped
+
+### Assay compatibility-line bump to v3.12.0
+- Patch release with the `v3.12.0` release-binary compatibility proof,
+  real Assay-Runner archive smoke fixture, and Tier-2B kernel-event v0
+  line-schema awareness refresh
+- No Harness CLI verbs were added or removed; no Tier 1-3 schema
+  consumption changed
 
 ## v0.6.0 — shipped
 
@@ -181,16 +204,6 @@ What's already built and working.
   new required files)
 - See [`harness/fixtures/runner/PROVENANCE.md`](../harness/fixtures/runner/PROVENANCE.md)
   for the source commit and refresh policy
-
-### Assay compatibility-line bump to v3.12.0 — done
-- Current target: Assay `v3.8.0` minimum / `v3.12.0` proof
-- The `Harness CI` release-binary compatibility job passed against the
-  `v3.12.0` binary in
-  [run 26543125840](https://github.com/Rul1an/Assay-Harness/actions/runs/26543125840)
-  on 2026-05-27
-- Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
-  workflow `assay_version` default were updated to record `v3.12.0` as
-  the latest proved compatibility binary
 
 ### Optional access_mode-aware kernel-layer projection (Tier 2B)
 - `Rul1an/assay#1362` froze `assay.runner.kernel_event.v0` with

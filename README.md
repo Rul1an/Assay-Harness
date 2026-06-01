@@ -7,7 +7,7 @@ produces verify-before-diff comparisons of baseline vs candidate evidence.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.6.0 | **Status:** active development
+> **Version:** 0.6.1 | **Status:** active development
 
 ### What this is
 
