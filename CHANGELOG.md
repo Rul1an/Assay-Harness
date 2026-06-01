@@ -4,6 +4,14 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Refreshed the release-binary compatibility proof to Assay `v3.13.0`.
+  [`Harness CI` run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781)
+  passed the Promptfoo, OpenFeature, and CycloneDX recipes against the
+  released `v3.13.0` binary. `docs/ASSAY_COMPATIBILITY.md` and the manual
+  compatibility workflow default now record `v3.13.0` as the latest proved
+  compatibility binary. This is a proof/docs refresh only; no Harness
+  gate/report semantics or Runner schema-consumption tiers changed.
+
 ## [0.6.1] - 2026-05-28
 
 Patch release primarily driven by the Assay `v3.12.0` release-binary
