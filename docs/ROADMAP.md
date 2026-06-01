@@ -4,14 +4,14 @@
 
 ## Main after v0.6.1 — current
 
-### Assay compatibility-line bump to v3.13.0 — done on main
-- Current target: Assay `v3.8.0` minimum / `v3.13.0` proof
+### Assay compatibility-line bump to v3.14.0 — done on main
+- Current target: Assay `v3.8.0` minimum / `v3.14.0` proof
 - The `Harness CI` release-binary compatibility job passed against the
-  `v3.13.0` binary in
-  [run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781)
+  `v3.14.0` binary in
+  [run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
   on 2026-06-01
 - Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
-  workflow `assay_version` default were updated to record `v3.13.0` as
+  workflow `assay_version` default were updated to record `v3.14.0` as
   the latest proved compatibility binary
 - This is proof/docs only: no Harness gate/report semantics and no
   Runner schema-consumption tiers changed

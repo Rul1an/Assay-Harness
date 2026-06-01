@@ -9,13 +9,13 @@ Assay Harness `v0.6.1` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
 
-> **Upstream state (2026-06-01):** `Rul1an/assay` is on `v3.13.0`
+> **Upstream state (2026-06-01):** `Rul1an/assay` is on `v3.14.0`
 > (released 2026-06-01). The Trust Basis contract surface (diff schema
 > v1, Trust Card schema v5, 10 frozen claims) has not changed in
-> v3.10 / v3.11 / v3.12 / v3.13; the principal compatibility line still
+> v3.10 / v3.11 / v3.12 / v3.13 / v3.14; the principal compatibility line still
 > holds. The release-binary proof rail has now been re-run against
-> `v3.13.0` in
-> [`Harness CI` run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781),
+> `v3.14.0` in
+> [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155),
 > which is the new latest proved compatibility binary.
 
 | Contract | Expected surface |
@@ -27,7 +27,7 @@ schema v5, and 10-claim Trust Basis surface.
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
 Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The
-latest release-binary proof for this line is Assay `v3.13.0`.
+latest release-binary proof for this line is Assay `v3.14.0`.
 
 ## Release-Binary Proof
 
@@ -38,7 +38,7 @@ the Promptfoo, OpenFeature, and CycloneDX recipes against that binary.
 The default dispatch input is:
 
 ```text
-assay_version = v3.13.0
+assay_version = v3.14.0
 ```
 
 This job is the release-binary compatibility proof rail. The proof-before-release
@@ -53,6 +53,8 @@ before the `v0.3.2` tag. The recipes were re-verified against Assay
 on 2026-05-27, three minor versions after the previous proof, and against
 Assay `v3.13.0` in
 [`Harness CI` run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781)
+on 2026-06-01. The latest re-verification passed against Assay `v3.14.0` in
+[`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
 on 2026-06-01.
 
 ## Harness Boundary
