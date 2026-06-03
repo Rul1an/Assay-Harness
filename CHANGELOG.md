@@ -4,13 +4,37 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
-- Refreshed the release-binary compatibility proof to Assay `v3.14.0`.
-  [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
-  passed the Promptfoo, OpenFeature, and CycloneDX recipes against the
-  released `v3.14.0` binary. `docs/ASSAY_COMPATIBILITY.md` and the manual
-  compatibility workflow default now record `v3.14.0` as the latest proved
-  compatibility binary. This is a proof/docs refresh only; no Harness
-  gate/report semantics or Runner schema-consumption tiers changed.
+## [0.7.0] - 2026-06-03
+
+Honors the network-endpoint claim scope that Assay `v3.15.0` now declares,
+so QUIC/datagram endpoint churn is no longer mis-read as a capability
+regression. This is the consumer half of the cross-layer honesty work:
+Assay `v3.15.0` produces `network_protocol_coverage` /
+`network_endpoint_claim_scope` on `observation_health`, and the Tier-2A
+comparator now reads it.
+
+What's shipping versus `v0.6.1`:
+
+- `runner_compare.ts` reads `observation_health.network_endpoint_claim_scope`
+  from both archives. When either side declares `diagnostic_only`, added
+  `network_endpoints` are surfaced as report-only (a new `report_only_reasons`
+  field) rather than a hard regression — the same treatment new `deny:*`
+  policy decisions already get. OR semantics: the weakest claim scope
+  dominates. Archives without the field keep the existing hard gate, so
+  legacy v0 archives are unaffected. (#80 / #81; mirrors Assay `#1477` on the
+  cross-runtime comparator.)
+- Release-binary compatibility proofs refreshed to Assay `v3.13.0` and
+  `v3.14.0`; `docs/ASSAY_COMPATIBILITY.md` and the manual compatibility
+  workflow default record `v3.14.0` as the latest proved binary. Proof/docs
+  only — no gate/report semantics changed.
+- CI: the zizmor workflow audit now always triggers with a no-op skip for
+  non-workflow PRs, keeping the required check satisfied without widening the
+  audit surface.
+- Dependency bumps (npm minor/patch group; `github/codeql-action`).
+
+No Harness CLI verbs were added or removed. Tier-1 archive validation and the
+Tier-3 cross-runtime consumer are unchanged; only the Tier-2A
+network-endpoint regression policy is refined.
 
 ## [0.6.1] - 2026-05-28
 
