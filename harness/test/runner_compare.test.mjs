@@ -83,6 +83,7 @@ function sha256Hex(bytes) {
 function buildArchive({
   runId,
   capabilitySurface,
+  networkEndpointClaimScope,
 } = {}) {
   const observationHealth = {
     schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
@@ -93,6 +94,11 @@ function buildArchive({
     policy_layer: "present",
     sdk_layer: "self_reported",
     cgroup_correlation: "clean",
+    // Optional (assay#1475). Omitted unless a test sets it, so existing
+    // fixtures exercise the backward-compat (field-absent) path.
+    ...(networkEndpointClaimScope
+      ? { network_endpoint_claim_scope: networkEndpointClaimScope }
+      : {}),
     notes: ["tier2a_test"],
   };
   const correlationReport = {
@@ -939,4 +945,112 @@ test("Copilot 5 — Tier-1-fail markdown includes artifact_parse_errors when pre
   // Markdown must surface it.
   assert.match(md, /Artifact parse errors:/);
   assert.match(md, /OBSERVATION_HEALTH_SCHEMA_MISMATCH/);
+});
+
+// ---------------------------------------------------------------------------
+// diagnostic-only network endpoints (assay#1475 / Assay-Harness#80)
+// ---------------------------------------------------------------------------
+
+test("diagnostic_only network endpoint churn is report-only, not a regression", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-diag-"));
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({
+      runId: "rb",
+      capabilitySurface: { network_endpoints: ["198.41.192.107:7844"] },
+      networkEndpointClaimScope: "diagnostic_only",
+    }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({
+      runId: "rc",
+      capabilitySurface: { network_endpoints: ["198.41.200.43:7844"] },
+      networkEndpointClaimScope: "diagnostic_only",
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.equal(result.tier1_clean, true);
+  assert.equal(result.has_regressions, false);
+  assert.ok(
+    !result.regression_reasons.some((r) => r.startsWith("network_endpoints_added")),
+  );
+  assert.ok(
+    result.report_only_reasons?.some((r) =>
+      r.startsWith("network_endpoints_added_diagnostic_only"),
+    ),
+  );
+  const md = formatRunnerCompareResult(result);
+  assert.match(md, /Report-Only Changes/);
+  assert.match(md, /diagnostic_only/);
+});
+
+test("diagnostic_only on one side alone still downgrades endpoint churn (OR semantics)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-diag-or-"));
+  // baseline carries no claim scope (field absent); candidate declares diagnostic_only.
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({
+      runId: "rb",
+      capabilitySurface: { network_endpoints: ["198.41.192.107:7844"] },
+    }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({
+      runId: "rc",
+      capabilitySurface: { network_endpoints: ["198.41.200.43:7844"] },
+      networkEndpointClaimScope: "diagnostic_only",
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.equal(result.has_regressions, false);
+  assert.ok(
+    result.report_only_reasons?.some((r) =>
+      r.startsWith("network_endpoints_added_diagnostic_only"),
+    ),
+  );
+});
+
+test("diagnostic_only does not suppress non-network regressions", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-diag-fs-"));
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({
+      runId: "rb",
+      capabilitySurface: { network_endpoints: ["198.41.192.107:7844"] },
+      networkEndpointClaimScope: "diagnostic_only",
+    }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({
+      runId: "rc",
+      capabilitySurface: {
+        network_endpoints: ["198.41.200.43:7844"],
+        filesystem_paths: ["/tmp/work/new.txt"],
+      },
+      networkEndpointClaimScope: "diagnostic_only",
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  // network churn is downgraded, but the added filesystem_path still gates.
+  assert.equal(result.has_regressions, true);
+  assert.ok(
+    result.regression_reasons.some((r) => r.startsWith("filesystem_paths_added")),
+  );
+  assert.ok(
+    !result.regression_reasons.some((r) => r.startsWith("network_endpoints_added")),
+  );
+  assert.ok(
+    result.report_only_reasons?.some((r) =>
+      r.startsWith("network_endpoints_added_diagnostic_only"),
+    ),
+  );
 });

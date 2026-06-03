@@ -29,6 +29,7 @@ import {
   HonestHealthOptions,
   RunnerArchiveValidation,
   RunnerCapabilitySurface,
+  RunnerObservationHealth,
   RunnerValidationError,
   validateRunnerArchive,
 } from "./runner_archive.js";
@@ -95,6 +96,16 @@ export interface RunnerCompareResult {
    */
   regression_reasons: string[];
   has_regressions: boolean;
+  /**
+   * Report-only markers that did NOT fire `has_regressions`. Currently used
+   * when added `network_endpoints` are downgraded because an archive declares
+   * `network_endpoint_claim_scope=diagnostic_only` (assay#1475): for
+   * datagram/QUIC traffic the `connect()` surface is a connect-attempt set,
+   * not a proven peer set, so endpoint churn is not a hard regression. Absent
+   * when there is nothing to downgrade. Mirrors the report-only treatment of
+   * new `deny:*` policy decisions.
+   */
+  report_only_reasons?: string[];
   summary: string;
   /**
    * Tier 2B per-layer reviewer projection. Explanatory only — does NOT
@@ -170,13 +181,54 @@ function policyDecisionKind(decision: string): "allow" | "deny" | "other" {
   return "other";
 }
 
-function computeRegressionReasons(diff: CapabilitySurfaceDiff): string[] {
+const NETWORK_ENDPOINT_CLAIM_SCOPE_DIAGNOSTIC_ONLY = "diagnostic_only";
+
+/**
+ * Whether added `network_endpoints` should be downgraded to report-only.
+ *
+ * OR semantics, mirroring assay#1477: if *either* archive declares its
+ * network endpoints as `diagnostic_only`, the weakest claim scope dominates
+ * and added endpoints are not a hard regression — for datagram/QUIC traffic
+ * the `connect()` surface is a connect-attempt set, not a proven peer set, so
+ * raw endpoint churn between runs is expected (assay#1475).
+ *
+ * Absent field (old v0 archives) is never `diagnostic_only`, so legacy
+ * archives keep the pre-existing hard gate. When the scope can become
+ * `peer_set` (after the sendmsg/sendto telemetry step), exact diffs become
+ * authoritative again and this returns false.
+ */
+function networkEndpointsAreDiagnosticOnly(
+  baseline: RunnerObservationHealth | undefined,
+  candidate: RunnerObservationHealth | undefined,
+): boolean {
+  return (
+    baseline?.network_endpoint_claim_scope ===
+      NETWORK_ENDPOINT_CLAIM_SCOPE_DIAGNOSTIC_ONLY ||
+    candidate?.network_endpoint_claim_scope ===
+      NETWORK_ENDPOINT_CLAIM_SCOPE_DIAGNOSTIC_ONLY
+  );
+}
+
+function computeRegressionReasons(
+  diff: CapabilitySurfaceDiff,
+  networkDiagnosticOnly: boolean,
+): { reasons: string[]; reportOnly: string[] } {
   const reasons: string[] = [];
+  const reportOnly: string[] = [];
   if (diff.filesystem_paths.added.length > 0) {
     reasons.push(`filesystem_paths_added:${diff.filesystem_paths.added.length}`);
   }
+  // network_endpoints: a hard regression by default, but report-only when an
+  // archive declares `network_endpoint_claim_scope=diagnostic_only` — the
+  // endpoint values are then a connect-attempt surface, not a proven peer set.
   if (diff.network_endpoints.added.length > 0) {
-    reasons.push(`network_endpoints_added:${diff.network_endpoints.added.length}`);
+    if (networkDiagnosticOnly) {
+      reportOnly.push(
+        `network_endpoints_added_diagnostic_only:${diff.network_endpoints.added.length}`,
+      );
+    } else {
+      reasons.push(`network_endpoints_added:${diff.network_endpoints.added.length}`);
+    }
   }
   if (diff.process_execs.added.length > 0) {
     reasons.push(`process_execs_added:${diff.process_execs.added.length}`);
@@ -194,7 +246,7 @@ function computeRegressionReasons(diff: CapabilitySurfaceDiff): string[] {
   if (allowAdded.length > 0) {
     reasons.push(`policy_allow_decisions_added:${allowAdded.length}`);
   }
-  return reasons;
+  return { reasons, reportOnly };
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +344,14 @@ export function compareRunnerArchivesCapabilitySurface(
   }
 
   const diff = diffCapabilitySurface(baseSurface, candSurface);
-  const reasons = computeRegressionReasons(diff);
+  const networkDiagnosticOnly = networkEndpointsAreDiagnosticOnly(
+    baselineValidation.observation_health,
+    candidateValidation.observation_health,
+  );
+  const { reasons, reportOnly } = computeRegressionReasons(
+    diff,
+    networkDiagnosticOnly,
+  );
   const hasRegressions = reasons.length > 0;
 
   const summary = hasRegressions
@@ -322,6 +381,7 @@ export function compareRunnerArchivesCapabilitySurface(
     capability_surface: diff,
     regression_reasons: reasons,
     has_regressions: hasRegressions,
+    report_only_reasons: reportOnly.length > 0 ? reportOnly : undefined,
     summary,
     layer_projection,
   };
@@ -442,6 +502,19 @@ export function formatRunnerCompareResult(result: RunnerCompareResult): string {
     lines.push("");
     lines.push(
       "> v0 policy: added `filesystem_paths`, `network_endpoints`, `process_execs`, and `mcp_tools` are regressions. For `policy_decisions`, only new `allow:*` entries block; new `deny:*` entries are recorded as report-only changes (typically reflecting newly visible blocked behaviour rather than added capability surface).",
+    );
+    lines.push("");
+  }
+
+  if (result.report_only_reasons && result.report_only_reasons.length > 0) {
+    lines.push("## Report-Only Changes");
+    lines.push("");
+    for (const r of result.report_only_reasons) {
+      lines.push(`- \`${r}\``);
+    }
+    lines.push("");
+    lines.push(
+      "> Added `network_endpoints` are report-only when an archive declares `network_endpoint_claim_scope=diagnostic_only`: for datagram/QUIC traffic the `connect()` surface is a connect-attempt set, not a proven peer set (assay#1475), so endpoint churn between runs is not a hard regression.",
     );
     lines.push("");
   }

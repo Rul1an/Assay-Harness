@@ -76,6 +76,14 @@ export interface RunnerObservationHealth {
   policy_layer: string;
   sdk_layer: string;
   cgroup_correlation: string;
+  /**
+   * Network-endpoint claim scope (assay#1475). Optional for backward-compat:
+   * archives written before this field keep `undefined`, which downstream
+   * comparators treat as the pre-existing hard-gate behaviour. `diagnostic_only`
+   * means `network_endpoints` is a connect-attempt surface (e.g. datagram/QUIC),
+   * not a proven peer set.
+   */
+  network_endpoint_claim_scope?: string;
   notes: string[];
 }
 
