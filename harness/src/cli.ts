@@ -21,7 +21,7 @@
  *   7 = ci_formatter
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHarnessAgent } from "./agent.js";
@@ -56,6 +56,8 @@ import {
 } from "./runner_cross_runtime.js";
 import {
   buildCoverageProjection,
+  foldCoverageFleet,
+  formatCoverageFleet,
   formatCoverageGate,
   formatCoverageReport,
   gateCoverageClaims,
@@ -90,6 +92,7 @@ Commands:
   runner cross-runtime gate --diff <cross-runtime-diff.json>
   runner coverage report --annotation <annotation.json> [--format markdown|json]
   runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]
+  runner coverage fleet (--dir <dir> | --annotations <a.json,b.json,...>) [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -756,15 +759,67 @@ function cmdRunnerCoverage(args: Record<string, string | boolean>): void {
     cmdRunnerCoverageGate(args);
     return;
   }
+  if (subsubcommand === "fleet") {
+    cmdRunnerCoverageFleet(args);
+    return;
+  }
   console.error(
     `[config_error] Unknown runner coverage subcommand: ${subsubcommand ?? "(none)"}`,
   );
   console.error(
     "Usage:\n" +
       "  runner coverage report --annotation <annotation.json> [--format markdown|json]\n" +
-      "  runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]",
+      "  runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]\n" +
+      "  runner coverage fleet (--dir <dir> | --annotations <a.json,b.json,...>) [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCoverageFleet(args: Record<string, string | boolean>): void {
+  const format = (args.format as string) ?? "markdown";
+  const paths: string[] = [];
+  const dir = args.dir;
+  if (typeof dir === "string" && dir.length > 0) {
+    let names: string[];
+    try {
+      names = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
+    } catch (err) {
+      console.error(
+        `[config_error] --dir unreadable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(EXIT.CONFIG_ERROR);
+    }
+    for (const n of names) paths.push(`${dir}/${n}`);
+  }
+  const annotations = args.annotations;
+  if (typeof annotations === "string" && annotations.length > 0) {
+    for (const part of annotations.split(",")) {
+      const t = part.trim();
+      if (t) paths.push(t);
+    }
+  }
+  if (paths.length === 0) {
+    console.error(
+      "[config_error] no annotations (use --dir <dir> and/or --annotations <a.json,b.json,...>)",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const loaded = [];
+  for (const p of paths) {
+    const load = loadCoverageAnnotation(p);
+    if (load.not_found) {
+      console.error(`[config_error] Coverage annotation file not found: ${p}`);
+      process.exit(EXIT.CONFIG_ERROR);
+    }
+    if (!load.valid || !load.annotation) {
+      const codes = load.errors.map((e) => e.code).join(",");
+      console.error(`[artifact_contract] runner coverage fleet: invalid annotation ${p} (${codes})`);
+      process.exit(EXIT.ARTIFACT_CONTRACT);
+    }
+    loaded.push(load.annotation);
+  }
+  console.log(formatCoverageFleet(foldCoverageFleet(loaded), format));
+  process.exit(EXIT.SUCCESS);
 }
 
 function loadCoverageOrExit(annotationArg: string | boolean | undefined): {

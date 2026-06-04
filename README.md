@@ -30,7 +30,7 @@ playbook).
 
 Assay-Harness can read [Assay-Runner](https://github.com/Rul1an/assay) measured-run archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) and the precomputed cross-runtime diff JSON Runner produces. This is opt-in alongside the existing NDJSON evidence path; NDJSON callers are unaffected.
 
-Seven Runner-aware verbs are available:
+Eight Runner-aware verbs are available:
 
 | Verb | What it does | CI exit on regression |
 |---|---|---|
@@ -41,6 +41,7 @@ Seven Runner-aware verbs are available:
 | `assay-harness runner cross-runtime gate --diff <diff.json>` | CI-blocking gate on the same cross-runtime signal | `6` |
 | `assay-harness runner coverage report --annotation <annotation.json>` | Reviewer projection of an `assay.coverage_aware_drift.annotation.v0` sidecar — per-dimension claim cells (strength × basis) and blocked claims | `0` (rendered only) |
 | `assay-harness runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,...]` | CI-blocking gate that permits an asserted coverage claim only when the annotation supports it (`--format text\|json\|sarif`) | `6` |
+| `assay-harness runner coverage fleet --dir <dir>` | Fold many annotation sidecars into one fleet summary: per-dimension strength distribution + the fleet floor (strongest positive supportable across *every* run) | `0` (rendered only) |
 
 ### Coverage claims (the honesty model)
 
