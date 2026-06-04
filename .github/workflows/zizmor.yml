@@ -27,7 +27,7 @@ jobs:
       contents: read
       security-events: write  # SARIF upload to Code Scanning
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
           # Need history so the diff against the PR base resolves on
