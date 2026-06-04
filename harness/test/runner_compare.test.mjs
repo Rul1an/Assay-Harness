@@ -84,6 +84,7 @@ function buildArchive({
   runId,
   capabilitySurface,
   networkEndpointClaimScope,
+  networkProtocolCoverage,
 } = {}) {
   const observationHealth = {
     schema: RUNNER_OBSERVATION_HEALTH_SCHEMA,
@@ -98,6 +99,10 @@ function buildArchive({
     // fixtures exercise the backward-compat (field-absent) path.
     ...(networkEndpointClaimScope
       ? { network_endpoint_claim_scope: networkEndpointClaimScope }
+      : {}),
+    // Optional (assay#1494). Omitted unless a test sets it.
+    ...(networkProtocolCoverage
+      ? { network_protocol_coverage: networkProtocolCoverage }
       : {}),
     notes: ["tier2a_test"],
   };
@@ -1051,6 +1056,109 @@ test("diagnostic_only does not suppress non-network regressions", () => {
   assert.ok(
     result.report_only_reasons?.some((r) =>
       r.startsWith("network_endpoints_added_diagnostic_only"),
+    ),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// H4 — network coverage degrade reported distinctly from a regression
+// ---------------------------------------------------------------------------
+
+test("network coverage degrade is report-only, not a regression", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-degrade-"));
+  const surface = {
+    filesystem_paths: ["/tmp/work/a.txt"],
+    network_endpoints: [],
+    process_execs: [],
+    mcp_tools: [],
+    policy_decisions: [],
+  };
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({
+      runId: "rb",
+      capabilitySurface: surface,
+      networkProtocolCoverage: "connect_and_datagram_peer_observed",
+    }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({
+      runId: "rc",
+      capabilitySurface: surface,
+      networkProtocolCoverage: "connect_only",
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  // Identical surfaces + weaker candidate coverage => no regression, just a
+  // report-only degrade marker.
+  assert.equal(result.has_regressions, false);
+  assert.ok(
+    result.report_only_reasons?.some((r) =>
+      r.startsWith(
+        "network_coverage_degraded:connect_and_datagram_peer_observed->connect_only",
+      ),
+    ),
+  );
+});
+
+test("no degrade marker when candidate coverage is equal or stronger", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-nodegrade-"));
+  const surface = {
+    filesystem_paths: [],
+    network_endpoints: [],
+    process_execs: [],
+    mcp_tools: [],
+    policy_decisions: [],
+  };
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({ runId: "rb", capabilitySurface: surface, networkProtocolCoverage: "connect_only" }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({
+      runId: "rc",
+      capabilitySurface: surface,
+      networkProtocolCoverage: "connect_and_datagram_peer_observed",
+    }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.equal(result.has_regressions, false);
+  assert.ok(
+    !(result.report_only_reasons ?? []).some((r) =>
+      r.startsWith("network_coverage_degraded"),
+    ),
+  );
+});
+
+test("no degrade marker when the field is absent on either side (backward-compat)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tier2a-compat-"));
+  const surface = {
+    filesystem_paths: [],
+    network_endpoints: [],
+    process_execs: [],
+    mcp_tools: [],
+    policy_decisions: [],
+  };
+  const baseline = writeArchive(
+    dir,
+    "baseline.tar.gz",
+    buildArchive({ runId: "rb", capabilitySurface: surface }),
+  );
+  const candidate = writeArchive(
+    dir,
+    "candidate.tar.gz",
+    buildArchive({ runId: "rc", capabilitySurface: surface, networkProtocolCoverage: "connect_only" }),
+  );
+  const result = compareRunnerArchivesCapabilitySurface(baseline, candidate);
+  assert.ok(
+    !(result.report_only_reasons ?? []).some((r) =>
+      r.startsWith("network_coverage_degraded"),
     ),
   );
 });

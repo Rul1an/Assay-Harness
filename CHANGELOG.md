@@ -4,6 +4,16 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- `runner compare` (Tier-2A) now distinguishes a network coverage *degrade* from
+  a regression. When the candidate archive's `network_protocol_coverage` is
+  strictly weaker than the baseline's (e.g. `connect_and_datagram_peer_observed`
+  → `connect_only`), it is reported as `network_coverage_degraded:<from>-><to>`
+  in `report_only_reasons` — a weaker capture is not a behavioural regression, so
+  it never fires `has_regressions` or changes the exit code. Requires both
+  archives to declare the field (assay#1494); absent on either side keeps the
+  prior behaviour. Filesystem/process coverage is static in the current capture,
+  so the meaningful degrade signal is the network dimension.
+
 - `verify-runner` now surfaces the network capture signals the Runner embeds in
   its `s2_kernel_capture:` observation-health note as first-class fields: the
   `network_protocol_coverage` status, the `network_endpoint_claim_scope`, and the
