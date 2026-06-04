@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- `verify-runner` now surfaces the network capture signals the Runner embeds in
+  its `s2_kernel_capture:` observation-health note as first-class fields: the
+  `network_protocol_coverage` status, the `network_endpoint_claim_scope`, and the
+  address-less (`send_no_recoverable_peer`) and non-IP (`send_non_ip_family`)
+  send counters. JSON output gains a `network_signals` block and markdown a
+  "Network capture signals" section, both present only when the note carries
+  them. Visibility only — these never affect honest-health or any gate; existing
+  output for runs without the signals is unchanged.
+
 - Added `runner coverage fleet` — folds many `assay.coverage_aware_drift.annotation.v0`
   sidecars (`--dir <dir>` and/or `--annotations a.json,b.json,...`) into one
   fleet summary: per measured dimension, the positive-strength distribution, how
