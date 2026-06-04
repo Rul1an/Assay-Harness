@@ -63,6 +63,11 @@ import {
   gateCoverageClaims,
   loadCoverageAnnotation,
 } from "./runner_coverage.js";
+import {
+  formatKernelCaptureSignals,
+  parseKernelCaptureSignals,
+  signalsEmpty,
+} from "./runner_signals.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -633,6 +638,9 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
 
   const validation = validateRunnerArchive(archivePath);
   const health = checkHonestHealth(validation, { allow_degraded: allowDegraded });
+  const networkSignals = parseKernelCaptureSignals(
+    validation.observation_health?.notes,
+  );
 
   if (format === "json") {
     console.log(
@@ -653,6 +661,8 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
           run_id: validation.manifest?.run_id,
           observation_health: validation.observation_health,
           correlation_report_status: validation.correlation_report?.status,
+          // Additive: only present when the kernel-capture note carries signals.
+          ...(signalsEmpty(networkSignals) ? {} : { network_signals: networkSignals }),
         },
         null,
         2,
@@ -706,6 +716,9 @@ function cmdVerifyRunner(args: Record<string, string | boolean>): void {
         }
       }
       lines.push("");
+    }
+    for (const line of formatKernelCaptureSignals(networkSignals)) {
+      lines.push(line);
     }
     console.log(lines.join("\n"));
   }
