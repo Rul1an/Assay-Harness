@@ -4,6 +4,21 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `runner claims report` and `runner claims gate` — a consumer that checks
+  a claim-assertions document (`assay.harness.claim_assertions.v0`) against a
+  coverage annotation and answers, per claim, whether the observed evidence
+  supports it at the required strength: `supported`, `degraded`, `blocked`, or
+  `not_evaluable`. `report` is informational (exit 0); `gate` passes only when
+  every claim is `supported` (or `degraded` with `--allow-degraded`) and exits 6
+  otherwise (`not_evaluable` is fail-safe and cannot be allowed). Speaks the
+  open-core vocabulary directly (`positive`/`exhaustive`/`bounded_negative`,
+  open-core dimension names, `claim_strength`, `claim_basis`) — no second
+  vocabulary. A claim's `value`/`effect_class` are advisory and not
+  independently verified; support is evaluated at dimension granularity, and
+  attestation is not consulted (observed support is the ceiling). Consumer-only:
+  no new Runner capture, no attestation adapter, no state, no change to existing
+  verbs or exit codes.
+
 - `runner compare` (Tier-2A) now distinguishes a network coverage *degrade* from
   a regression. When the candidate archive's `network_protocol_coverage` is
   strictly weaker than the baseline's (e.g. `connect_and_datagram_peer_observed`

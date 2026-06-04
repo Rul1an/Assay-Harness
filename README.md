@@ -30,7 +30,7 @@ playbook).
 
 Assay-Harness can read [Assay-Runner](https://github.com/Rul1an/assay) measured-run archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) and the precomputed cross-runtime diff JSON Runner produces. This is opt-in alongside the existing NDJSON evidence path; NDJSON callers are unaffected.
 
-Eight Runner-aware verbs are available:
+Ten Runner-aware verbs are available:
 
 | Verb | What it does | CI exit on regression |
 |---|---|---|
@@ -42,6 +42,28 @@ Eight Runner-aware verbs are available:
 | `assay-harness runner coverage report --annotation <annotation.json>` | Reviewer projection of an `assay.coverage_aware_drift.annotation.v0` sidecar — per-dimension claim cells (strength × basis) and blocked claims | `0` (rendered only) |
 | `assay-harness runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,...]` | CI-blocking gate that permits an asserted coverage claim only when the annotation supports it (`--format text\|json\|sarif`) | `6` |
 | `assay-harness runner coverage fleet --dir <dir>` | Fold many annotation sidecars into one fleet summary: per-dimension strength distribution + the fleet floor (strongest positive supportable across *every* run) | `0` (rendered only) |
+| `assay-harness runner claims report --claims <claims.json> --annotation <annotation.json>` | Per asserted claim: does the observed evidence support it at the required strength? Outcomes: `supported` / `degraded` / `blocked` / `not_evaluable` | `0` (rendered only) |
+| `assay-harness runner claims gate --claims <claims.json> --annotation <annotation.json>` | CI-blocking gate: passes only when every claim is `supported` (or `degraded` with `--allow-degraded`) | `6` |
+
+### Claim support (`runner claims`)
+
+`runner claims` reads a claim-assertions document (`assay.harness.claim_assertions.v0`)
+plus a coverage annotation, and asks, per claim, whether the independently
+observed evidence supports it at the required strength — and if not, what the
+evidence does support. It speaks the open-core vocabulary directly: `claim_kind`
+∈ {`positive`, `exhaustive`, `bounded_negative`}; open-core dimension names
+(`filesystem_paths_touched`, `network_endpoints`, …); `claim_strength` ∈
+{`strong`,`partial`,`weak`,`absent`}; `claim_basis` ∈
+{`measured`,`reported`,`derived`,`inferred`}.
+
+Outcomes: `supported` (evidence meets the required strength × basis),
+`degraded` (the effect is observed but weaker than required), `blocked`
+(evidence contradicts the claim or coverage cannot justify it), `not_evaluable`
+(no observed evidence for the dimension; fail-safe — the gate blocks). A claim's
+`value`/`effect_class` are **advisory only** — support is evaluated at dimension
+granularity and these are not independently verified. Observed support is the
+ceiling; attestation is not consulted. Consumer-only: no new Runner capture, no
+attestation adapter, no state.
 
 ### Coverage claims (the honesty model)
 
