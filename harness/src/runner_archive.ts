@@ -84,6 +84,15 @@ export interface RunnerObservationHealth {
    * not a proven peer set.
    */
   network_endpoint_claim_scope?: string;
+  /**
+   * Network protocol coverage status (assay#1494). Optional for
+   * backward-compat: archives written before this field keep `undefined`.
+   * Ordered weakest→strongest: unknown < absent < connect_only <
+   * datagram_peer_observed < connect_and_datagram_peer_observed. A candidate
+   * archive that is weaker than its baseline is a coverage *degrade* (capture
+   * got weaker), which the Tier-2A compare reports distinctly from a regression.
+   */
+  network_protocol_coverage?: string;
   notes: string[];
 }
 

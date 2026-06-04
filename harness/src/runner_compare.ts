@@ -209,6 +209,46 @@ function networkEndpointsAreDiagnosticOnly(
   );
 }
 
+/**
+ * Network protocol coverage strength, weakest → strongest. A candidate ranked
+ * below its baseline means the candidate's network capture got *weaker* between
+ * runs — a coverage degrade, not a behavioural regression. Unknown / absent
+ * rank lowest; an archive that does not declare the field is treated as
+ * `unknown`.
+ */
+const NETWORK_PROTOCOL_COVERAGE_ORDER: readonly string[] = [
+  "unknown",
+  "absent",
+  "connect_only",
+  "datagram_peer_observed",
+  "connect_and_datagram_peer_observed",
+];
+
+function networkCoverageRank(value: string | undefined): number {
+  const idx = NETWORK_PROTOCOL_COVERAGE_ORDER.indexOf(value ?? "unknown");
+  return idx < 0 ? 0 : idx;
+}
+
+/**
+ * Detect a network coverage degrade: the candidate's
+ * `network_protocol_coverage` is strictly weaker than the baseline's. Returns
+ * the from→to labels when degraded, else null. Visibility only — a degrade is
+ * reported distinctly from a regression and never fires `has_regressions`.
+ * Requires both sides to declare the field.
+ */
+function networkCoverageDegrade(
+  baseline: RunnerObservationHealth | undefined,
+  candidate: RunnerObservationHealth | undefined,
+): { from: string; to: string } | null {
+  const from = baseline?.network_protocol_coverage;
+  const to = candidate?.network_protocol_coverage;
+  if (from === undefined || to === undefined) return null;
+  if (networkCoverageRank(to) < networkCoverageRank(from)) {
+    return { from, to };
+  }
+  return null;
+}
+
 function computeRegressionReasons(
   diff: CapabilitySurfaceDiff,
   networkDiagnosticOnly: boolean,
@@ -352,6 +392,20 @@ export function compareRunnerArchivesCapabilitySurface(
     diff,
     networkDiagnosticOnly,
   );
+  // Network coverage degrade: candidate captured weaker network coverage than
+  // baseline. Report-only — a weaker capture is not a behavioural regression,
+  // it means absence/exhaustive network claims are less supportable on the
+  // candidate. Surfaced distinctly so reviewers do not read it as a change in
+  // the agent's behaviour.
+  const coverageDegrade = networkCoverageDegrade(
+    baselineValidation.observation_health,
+    candidateValidation.observation_health,
+  );
+  if (coverageDegrade) {
+    reportOnly.push(
+      `network_coverage_degraded:${coverageDegrade.from}->${coverageDegrade.to}`,
+    );
+  }
   const hasRegressions = reasons.length > 0;
 
   const summary = hasRegressions
