@@ -30,7 +30,7 @@ playbook).
 
 Assay-Harness can read [Assay-Runner](https://github.com/Rul1an/assay) measured-run archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) and the precomputed cross-runtime diff JSON Runner produces. This is opt-in alongside the existing NDJSON evidence path; NDJSON callers are unaffected.
 
-Five Runner-aware verbs are available:
+Seven Runner-aware verbs are available:
 
 | Verb | What it does | CI exit on regression |
 |---|---|---|
@@ -39,6 +39,22 @@ Five Runner-aware verbs are available:
 | `assay-harness runner compare --baseline <a> --candidate <b>` | Strict Tier-2A capability-surface diff over two Tier-1-clean archives | `6` |
 | `assay-harness runner cross-runtime report --diff <diff.json>` | Reviewer projection of `cross_runtime_diff.v0` (informational) | `0` (rendered only) |
 | `assay-harness runner cross-runtime gate --diff <diff.json>` | CI-blocking gate on the same cross-runtime signal | `6` |
+| `assay-harness runner coverage report --annotation <annotation.json>` | Reviewer projection of an `assay.coverage_aware_drift.annotation.v0` sidecar — per-dimension claim cells (strength × basis) and blocked claims | `0` (rendered only) |
+| `assay-harness runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,...]` | CI-blocking gate that permits an asserted coverage claim only when the annotation supports it (`--format text\|json\|sarif`) | `6` |
+
+### Coverage claims (the honesty model)
+
+`runner coverage` consumes the coverage annotation the comparator emits with
+`--coverage-annotation-out`. It decides each asserted claim from
+`claim_strength × claim_basis`, never inventing or upgrading a claim:
+
+- `positive:DIM` — permitted only on a `measured_DIM_drift` cell with strength `strong`/`partial`.
+- `exhaustive:DIM` — permitted only when `exhaustive_DIM_equality` is allowed (`partial`); a coverage-degraded `weak` cell is not.
+- `bounded_negative:DIM` — permitted only on a measured dimension that is not in `blocked_claims`; not evaluable on a reported/unknown dimension.
+
+The gate exits `6` on any blocked asserted claim and can emit SARIF 2.1.0
+(`--format sarif`) so blocked claims surface in code-scanning UIs. Harness
+*composes* this published Assay shape; it defines no claim semantics of its own.
 
 What a Tier-2A regression looks like when an agent gains a new MCP tool between baseline and candidate:
 

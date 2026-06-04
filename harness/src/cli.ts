@@ -54,6 +54,13 @@ import {
   formatCrossRuntimeReport,
   loadCrossRuntimeReport,
 } from "./runner_cross_runtime.js";
+import {
+  buildCoverageProjection,
+  formatCoverageGate,
+  formatCoverageReport,
+  gateCoverageClaims,
+  loadCoverageAnnotation,
+} from "./runner_coverage.js";
 
 // Stable exit codes — see docs/contracts/EXIT_CODES.md
 const EXIT = {
@@ -81,6 +88,8 @@ Commands:
   runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]
   runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]
   runner cross-runtime gate --diff <cross-runtime-diff.json>
+  runner coverage report --annotation <annotation.json> [--format markdown|json]
+  runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -721,14 +730,126 @@ function cmdRunner(args: Record<string, string | boolean>): void {
     cmdRunnerCrossRuntime(args);
     return;
   }
+  if (subcommand === "coverage") {
+    cmdRunnerCoverage(args);
+    return;
+  }
   console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
       "  runner compare --baseline <archive.tar.gz> --candidate <archive.tar.gz> [--format markdown|json] [--allow-degraded]\n" +
       "  runner cross-runtime report --diff <cross-runtime-diff.json> [--format markdown|json]\n" +
-      "  runner cross-runtime gate --diff <cross-runtime-diff.json>",
+      "  runner cross-runtime gate --diff <cross-runtime-diff.json>\n" +
+      "  runner coverage report --annotation <annotation.json> [--format markdown|json]\n" +
+      "  runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]",
   );
   process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerCoverage(args: Record<string, string | boolean>): void {
+  const subsubcommand = args._subfile as string | undefined;
+  if (subsubcommand === "report") {
+    cmdRunnerCoverageReport(args);
+    return;
+  }
+  if (subsubcommand === "gate") {
+    cmdRunnerCoverageGate(args);
+    return;
+  }
+  console.error(
+    `[config_error] Unknown runner coverage subcommand: ${subsubcommand ?? "(none)"}`,
+  );
+  console.error(
+    "Usage:\n" +
+      "  runner coverage report --annotation <annotation.json> [--format markdown|json]\n" +
+      "  runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function loadCoverageOrExit(annotationArg: string | boolean | undefined): {
+  annotation: import("./runner_coverage.js").CoverageAnnotation;
+} {
+  if (typeof annotationArg !== "string" || annotationArg.length === 0) {
+    console.error(
+      "[config_error] --annotation <annotation.json> is required (must be a non-empty path)",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const load = loadCoverageAnnotation(annotationArg);
+  if (load.not_found) {
+    console.error(`[config_error] Coverage annotation file not found: ${annotationArg}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (!load.valid || !load.annotation) {
+    const codes = load.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] runner coverage: invalid annotation (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  return { annotation: load.annotation };
+}
+
+function cmdRunnerCoverageReport(args: Record<string, string | boolean>): void {
+  const format = (args.format as string) ?? "markdown";
+  const { annotation } = loadCoverageOrExit(args.annotation);
+  const projection = buildCoverageProjection(annotation);
+  console.log(formatCoverageReport(projection, format));
+  // Report is informational only.
+  process.exit(EXIT.SUCCESS);
+}
+
+function collectClaimSpecs(args: Record<string, string | boolean>): string[] {
+  const specs: string[] = [];
+  const assert = args["assert-claim"];
+  if (typeof assert === "string" && assert.length > 0) {
+    for (const part of assert.split(",")) {
+      const t = part.trim();
+      if (t) specs.push(t);
+    }
+  }
+  const policy = args.policy;
+  if (typeof policy === "string" && policy.length > 0) {
+    try {
+      const parsed = JSON.parse(readFileSync(policy, "utf8"));
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) specs.push(String(item));
+      } else {
+        console.error("[config_error] --policy file must contain a JSON array of claim strings");
+        process.exit(EXIT.CONFIG_ERROR);
+      }
+    } catch (err) {
+      console.error(
+        `[config_error] --policy file unreadable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(EXIT.CONFIG_ERROR);
+    }
+  }
+  return specs;
+}
+
+function cmdRunnerCoverageGate(args: Record<string, string | boolean>): void {
+  const format = (args.format as string) ?? "text";
+  const { annotation } = loadCoverageOrExit(args.annotation);
+  const specs = collectClaimSpecs(args);
+  if (specs.length === 0) {
+    console.error(
+      "[config_error] no claims asserted (use --assert-claim TYPE:DIM[,...] and/or --policy <file>)",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const res = gateCoverageClaims(annotation, specs);
+  if (!res.ok || !res.gate) {
+    console.error(`[config_error] ${res.error ?? "invalid claim spec"}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  console.log(formatCoverageGate(res.gate, format));
+  const blocked = res.gate.results.filter((r) => !r.permitted).map((r) => r.claim);
+  if (blocked.length > 0) {
+    console.error(`[regression] runner coverage gate: blocked claims (${blocked.join(",")})`);
+    process.exit(EXIT.REGRESSION);
+  }
+  console.error("[success] runner coverage gate: all asserted claims permitted");
+  process.exit(EXIT.SUCCESS);
 }
 
 function cmdRunnerCrossRuntime(args: Record<string, string | boolean>): void {
