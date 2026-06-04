@@ -65,6 +65,12 @@ granularity and these are not independently verified. Observed support is the
 ceiling; attestation is not consulted. Consumer-only: no new Runner capture, no
 attestation adapter, no state.
 
+Full reference, the four outcomes, the open-core vocabulary, runnable examples,
+and a CI-gate snippet: **[docs/CLAIM_SUPPORT.md](docs/CLAIM_SUPPORT.md)**. Worked
+examples: [`examples/claims-clean/`](examples/claims-clean/) (all supported) and
+[`examples/claims-eval-honesty/`](examples/claims-eval-honesty/) (over-claims
+blocked).
+
 ### Coverage claims (the honesty model)
 
 `runner coverage` consumes the coverage annotation the comparator emits with

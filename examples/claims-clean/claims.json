@@ -1,0 +1,21 @@
+{
+  "schema": "assay.harness.claim_assertions.v0",
+  "claims": [
+    {
+      "id": "wrote-output",
+      "dimension": "filesystem_paths_touched",
+      "claim_kind": "positive",
+      "effect_class": "filesystem_open",
+      "required_strength": "strong",
+      "required_basis": "measured"
+    },
+    {
+      "id": "made-connection",
+      "dimension": "network_endpoints",
+      "claim_kind": "positive",
+      "effect_class": "network_connect",
+      "required_strength": "partial",
+      "required_basis": "measured"
+    }
+  ]
+}

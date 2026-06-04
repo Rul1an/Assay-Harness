@@ -4,6 +4,12 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Made `runner claims` discoverable: added `docs/CLAIM_SUPPORT.md` (the four
+  outcomes, the open-core vocabulary, runnable examples, and a GitHub Actions
+  release-gate snippet), linked from the README, plus a second worked example
+  `examples/claims-clean/` (every claim supported; gate exits 0) to complement
+  the eval-honesty example. Docs/examples only; no code or contract change.
+
 - Added `examples/claims-eval-honesty/` — a payload-free fixture for
   `runner claims` showing why the verb exists: an agent/eval report claims it
   "used evidence file X" and "no network egress"; the gate blocks both for two
