@@ -4,6 +4,14 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `examples/claims-eval-honesty/` — a payload-free fixture for
+  `runner claims` showing why the verb exists: an agent/eval report claims it
+  "used evidence file X" and "no network egress"; the gate blocks both for two
+  different honest reasons (no filesystem effect observed vs coverage cannot
+  prove a negative) while supporting a third claim the evidence backs. One
+  screen, no safe/unsafe verdict, explains the visibility ceiling. Pinned by a
+  test so it cannot drift.
+
 - Added `runner claims report` and `runner claims gate` — a consumer that checks
   a claim-assertions document (`assay.harness.claim_assertions.v0`) against a
   coverage annotation and answers, per claim, whether the observed evidence
