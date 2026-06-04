@@ -4,6 +4,19 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `runner coverage report` and `runner coverage gate` — a consumer for the
+  `assay.coverage_aware_drift.annotation.v0` sidecar that Assay's cross-runtime
+  comparator emits with `--coverage-annotation-out`. `report` projects the
+  per-dimension claim cells (strength × basis) and blocked claims for reviewers
+  (exit 0); `gate` mechanically permits an asserted coverage claim only when the
+  annotation supports it, exiting 6 on a blocked claim, with `--format
+  text|json|sarif` (SARIF 2.1.0 so blocked claims surface in code-scanning UIs).
+  Decisions derive from `claim_strength × claim_basis`: a positive needs a
+  measured strong/partial cell, an exhaustive needs the descriptor to allow it,
+  and a bounded-negative is only evaluable on a measured, unblocked dimension.
+  Additive and opt-in; Harness composes the published Assay shape and defines no
+  claim semantics of its own. No change to existing verbs or contracts.
+
 ## [0.7.0] - 2026-06-03
 
 Honors the network-endpoint claim scope that Assay `v3.15.0` now declares,
