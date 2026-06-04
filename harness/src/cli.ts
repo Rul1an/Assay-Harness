@@ -64,6 +64,11 @@ import {
   loadCoverageAnnotation,
 } from "./runner_coverage.js";
 import {
+  buildClaimReport,
+  formatClaimReport,
+  loadClaims,
+} from "./runner_claims.js";
+import {
   formatKernelCaptureSignals,
   parseKernelCaptureSignals,
   signalsEmpty,
@@ -98,6 +103,8 @@ Commands:
   runner coverage report --annotation <annotation.json> [--format markdown|json]
   runner coverage gate --annotation <annotation.json> --assert-claim TYPE:DIM[,TYPE:DIM...] [--policy <claims.json>] [--format text|json|sarif]
   runner coverage fleet (--dir <dir> | --annotations <a.json,b.json,...>) [--format markdown|json]
+  runner claims report --claims <claims.json> --annotation <annotation.json> [--format markdown|json]
+  runner claims gate --claims <claims.json> --annotation <annotation.json> [--allow-degraded] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -750,6 +757,10 @@ function cmdRunner(args: Record<string, string | boolean>): void {
     cmdRunnerCoverage(args);
     return;
   }
+  if (subcommand === "claims") {
+    cmdRunnerClaims(args);
+    return;
+  }
   console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
@@ -833,6 +844,72 @@ function cmdRunnerCoverageFleet(args: Record<string, string | boolean>): void {
   }
   console.log(formatCoverageFleet(foldCoverageFleet(loaded), format));
   process.exit(EXIT.SUCCESS);
+}
+
+function cmdRunnerClaims(args: Record<string, string | boolean>): void {
+  const subsubcommand = args._subfile as string | undefined;
+  if (subsubcommand === "report" || subsubcommand === "gate") {
+    cmdRunnerClaimsReportOrGate(args, subsubcommand);
+    return;
+  }
+  console.error(`[config_error] Unknown runner claims subcommand: ${subsubcommand ?? "(none)"}`);
+  console.error(
+    "Usage:\n" +
+      "  runner claims report --claims <claims.json> --annotation <annotation.json> [--format markdown|json]\n" +
+      "  runner claims gate --claims <claims.json> --annotation <annotation.json> [--allow-degraded] [--format markdown|json]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerClaimsReportOrGate(
+  args: Record<string, string | boolean>,
+  mode: "report" | "gate",
+): void {
+  const format = (args.format as string) ?? "markdown";
+  const allowDegraded = args["allow-degraded"] === true;
+  const claimsArg = args.claims;
+  const annotationArg = args.annotation;
+  if (typeof claimsArg !== "string" || claimsArg.length === 0) {
+    console.error("[config_error] --claims <claims.json> is required (non-empty path)");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (typeof annotationArg !== "string" || annotationArg.length === 0) {
+    console.error("[config_error] --annotation <annotation.json> is required (non-empty path)");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const claimsLoad = loadClaims(claimsArg);
+  if (claimsLoad.not_found) {
+    console.error(`[config_error] Claims file not found: ${claimsArg}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (!claimsLoad.ok || !claimsLoad.claims) {
+    console.error(`[artifact_contract] invalid claims document: ${claimsLoad.error}`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  const annLoad = loadCoverageAnnotation(annotationArg);
+  if (annLoad.not_found) {
+    console.error(`[config_error] Coverage annotation file not found: ${annotationArg}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  if (!annLoad.valid || !annLoad.annotation) {
+    const codes = annLoad.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] invalid coverage annotation (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  const report = buildClaimReport(claimsLoad.claims, annLoad.annotation, allowDegraded);
+  console.log(formatClaimReport(report, format));
+  if (mode === "report") {
+    process.exit(EXIT.SUCCESS);
+  }
+  if (report.passed) {
+    console.error("[success] runner claims gate: all required claims supported");
+    process.exit(EXIT.SUCCESS);
+  }
+  const failing = report.results
+    .filter((r) => !(r.decision === "supported" || (r.decision === "degraded" && allowDegraded)))
+    .map((r) => `${r.id}:${r.decision}`);
+  console.error(`[regression] runner claims gate: unsupported claims (${failing.join(",")})`);
+  process.exit(EXIT.REGRESSION);
 }
 
 function loadCoverageOrExit(annotationArg: string | boolean | undefined): {
