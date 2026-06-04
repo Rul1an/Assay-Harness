@@ -9,6 +9,8 @@ import {
   buildCoverageProjection,
   COVERAGE_ANNOTATION_SCHEMA,
   evaluateClaim,
+  foldCoverageFleet,
+  formatCoverageFleet,
   formatCoverageGate,
   formatCoverageReport,
   gateCoverageClaims,
@@ -204,6 +206,73 @@ test("SARIF lists only blocked claims as error results", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fleet fold
+// ---------------------------------------------------------------------------
+
+test("foldCoverageFleet floor is the weakest level across runs", () => {
+  // run A: filesystem partial; run B: filesystem missing (no positive cell).
+  const runA = buildAnnotation({
+    claim_cells: [
+      {
+        claim_type: "measured_filesystem_paths_touched_drift",
+        claim_strength: "partial",
+        claim_basis: "measured",
+      },
+    ],
+    blocked_claims: [],
+  });
+  const runB = buildAnnotation({
+    claim_cells: [
+      {
+        claim_type: "measured_network_endpoints_drift",
+        claim_strength: "partial",
+        claim_basis: "measured",
+      },
+    ],
+    blocked_claims: [],
+  });
+  const a = validateCoverageAnnotation(runA).annotation;
+  const b = validateCoverageAnnotation(runB).annotation;
+  const summary = foldCoverageFleet([a, b]);
+  assert.equal(summary.run_count, 2);
+  // filesystem observed in one run, missing in the other -> floor missing.
+  assert.equal(
+    summary.dimensions.filesystem_paths_touched.fleet_positive_floor,
+    "missing",
+  );
+  // network observed at partial in run B only, missing in run A -> floor missing.
+  assert.equal(summary.dimensions.network_endpoints.fleet_positive_floor, "missing");
+});
+
+test("foldCoverageFleet floor is the weakest observed when all runs observe", () => {
+  const strong = validateCoverageAnnotation(
+    buildAnnotation({
+      claim_cells: [
+        { claim_type: "measured_process_execs_drift", claim_strength: "strong", claim_basis: "measured" },
+      ],
+      blocked_claims: [],
+    }),
+  ).annotation;
+  const absent = validateCoverageAnnotation(
+    buildAnnotation({
+      claim_cells: [
+        { claim_type: "measured_process_execs_drift", claim_strength: "absent", claim_basis: "measured" },
+      ],
+      blocked_claims: [],
+    }),
+  ).annotation;
+  const summary = foldCoverageFleet([strong, absent]);
+  assert.equal(summary.dimensions.process_execs.fleet_positive_floor, "absent");
+  assert.equal(summary.dimensions.process_execs.runs_observed, 2);
+});
+
+test("formatCoverageFleet markdown reports floor and blocked counts", () => {
+  const out = formatCoverageFleet(foldCoverageFleet([validAnnotation()]), "markdown");
+  assert.match(out, /Coverage fleet summary over 1 run/);
+  assert.match(out, /positive floor:/);
+});
+
+// ---------------------------------------------------------------------------
 // CLI exit-code contract
 // ---------------------------------------------------------------------------
 
@@ -271,5 +340,19 @@ test("CLI: coverage report exits 3 on invalid annotation", () => {
 
 test("CLI: coverage report exits 2 when file missing", () => {
   const r = runCli(["runner", "coverage", "report", "--annotation", "/nonexistent/x.json"]);
+  assert.equal(r.status, 2);
+});
+
+test("CLI: coverage fleet over a dir exits 0 and prints a summary", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cov-fleet-"));
+  writeFileSync(join(dir, "run-01.json"), JSON.stringify(buildAnnotation()));
+  writeFileSync(join(dir, "run-02.json"), JSON.stringify(buildAnnotation()));
+  const r = runCli(["runner", "coverage", "fleet", "--dir", dir]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /Coverage fleet summary over 2 run/);
+});
+
+test("CLI: coverage fleet exits 2 with no inputs", () => {
+  const r = runCli(["runner", "coverage", "fleet"]);
   assert.equal(r.status, 2);
 });

@@ -465,3 +465,116 @@ export function buildCoverageGateSarif(gate: CoverageGateResult): unknown {
     ],
   };
 }
+
+// ---------------------------------------------------------------------------
+// Fleet summary — fold many annotations into one honesty posture
+// ---------------------------------------------------------------------------
+
+/**
+ * Positive level ordering, weakest first. `missing` (a run with no positive
+ * cell at all) is the weakest of all: if even one run cannot support a positive
+ * claim, the fleet cannot support it everywhere, so the floor is `missing`.
+ * This is what makes the floor an honest "supportable across every run" answer.
+ */
+const FLEET_FLOOR_ORDER: readonly string[] = ["missing", "absent", "weak", "partial", "strong"];
+
+function weakerLevel(a: string, b: string): string {
+  const ia = FLEET_FLOOR_ORDER.indexOf(a);
+  const ib = FLEET_FLOOR_ORDER.indexOf(b);
+  const sa = ia < 0 ? 0 : ia;
+  const sb = ib < 0 ? 0 : ib;
+  return sa <= sb ? a : b;
+}
+
+export interface CoverageFleetDimension {
+  measured_positive: Record<string, number>;
+  exhaustive_equality: Record<string, number>;
+  bounded_negative_blocked: number;
+  runs_observed: number;
+  fleet_positive_floor: string;
+}
+
+export interface CoverageFleetSummary {
+  schema: "assay.coverage_fleet_summary.v0";
+  run_count: number;
+  dimensions: Record<string, CoverageFleetDimension>;
+}
+
+function emptyFleetDimension(): CoverageFleetDimension {
+  return {
+    measured_positive: { strong: 0, partial: 0, weak: 0, absent: 0, missing: 0 },
+    exhaustive_equality: { partial: 0, weak: 0, absent: 0, missing: 0 },
+    bounded_negative_blocked: 0,
+    runs_observed: 0,
+    fleet_positive_floor: "missing",
+  };
+}
+
+export function foldCoverageFleet(annotations: CoverageAnnotation[]): CoverageFleetSummary {
+  const dims: Record<string, CoverageFleetDimension> = {};
+  for (const d of COVERAGE_MEASURED_DIMENSIONS) dims[d] = emptyFleetDimension();
+  // Track floor separately as nullable until the first run is folded in.
+  const floor: Record<string, string | null> = {};
+  for (const d of COVERAGE_MEASURED_DIMENSIONS) floor[d] = null;
+
+  for (const annotation of annotations) {
+    const cells = cellsByType(annotation);
+    const blocked = new Set(
+      annotation.blocked_claims.map((b) => b.requested_claim).filter(Boolean),
+    );
+    for (const dim of COVERAGE_MEASURED_DIMENSIONS) {
+      const entry = dims[dim];
+      const pos = cells.get(`measured_${dim}_drift`);
+      const strength = pos?.claim_strength;
+      let runLevel: string;
+      if (strength && strength !== "missing" && strength in entry.measured_positive) {
+        entry.measured_positive[strength] += 1;
+        entry.runs_observed += 1;
+        runLevel = strength;
+      } else {
+        entry.measured_positive.missing += 1;
+        runLevel = "missing";
+      }
+      const cur = floor[dim];
+      floor[dim] = cur === null ? runLevel : weakerLevel(cur, runLevel);
+
+      const exh = cells.get(`exhaustive_${dim}_equality`);
+      const es = exh?.claim_strength;
+      if (es && es in entry.exhaustive_equality) {
+        entry.exhaustive_equality[es] += 1;
+      } else {
+        entry.exhaustive_equality.missing += 1;
+      }
+
+      if (blocked.has(`no_${dim}_effect_beyond_observed`)) {
+        entry.bounded_negative_blocked += 1;
+      }
+    }
+  }
+  for (const dim of COVERAGE_MEASURED_DIMENSIONS) {
+    dims[dim].fleet_positive_floor = floor[dim] ?? "missing";
+  }
+  return {
+    schema: "assay.coverage_fleet_summary.v0",
+    run_count: annotations.length,
+    dimensions: dims,
+  };
+}
+
+export function formatCoverageFleet(summary: CoverageFleetSummary, format: string): string {
+  if (format === "json") {
+    return JSON.stringify(summary, null, 2);
+  }
+  const lines: string[] = [`# Coverage fleet summary over ${summary.run_count} run(s)`, ""];
+  for (const dim of Object.keys(summary.dimensions).sort()) {
+    const e = summary.dimensions[dim];
+    const p = e.measured_positive;
+    const dist = ["strong", "partial", "weak", "absent", "missing"]
+      .map((k) => `${k}=${p[k]}`)
+      .join(", ");
+    lines.push(`${dim}:`);
+    lines.push(`  positive floor: ${e.fleet_positive_floor}  (${dist})`);
+    lines.push(`  bounded-negative blocked in ${e.bounded_negative_blocked} run(s)`);
+  }
+  return lines.join("\n") + "\n";
+}

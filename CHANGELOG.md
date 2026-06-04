@@ -4,6 +4,14 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `runner coverage fleet` — folds many `assay.coverage_aware_drift.annotation.v0`
+  sidecars (`--dir <dir>` and/or `--annotations a.json,b.json,...`) into one
+  fleet summary: per measured dimension, the positive-strength distribution, how
+  many runs block the bounded-negative claim, and the **fleet floor** — the
+  strongest positive claim supportable across *every* run (a single run with no
+  positive cell pulls the floor to `missing`). Rendered only (exit 0); additive
+  and opt-in.
+
 - Added `runner coverage report` and `runner coverage gate` — a consumer for the
   `assay.coverage_aware_drift.annotation.v0` sidecar that Assay's cross-runtime
   comparator emits with `--coverage-annotation-out`. `report` projects the
