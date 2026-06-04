@@ -16,9 +16,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openai/agents": "^0.11.5",
+    "@openai/agents": "^0.11.6",
     "js-yaml": "^4.1.0",
-    "openai": "^6.39.0",
+    "openai": "^6.39.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
