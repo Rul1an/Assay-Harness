@@ -29,3 +29,17 @@ test("eval-honesty fixture: gate exits 6", () => {
   const r = runCli(["runner", "claims", "gate", "--claims", CLAIMS, "--annotation", ANN]);
   assert.equal(r.status, 6);
 });
+
+const CLEAN_CLAIMS = join(HERE, "..", "..", "examples", "claims-clean", "claims.json");
+const CLEAN_ANN = join(HERE, "..", "..", "examples", "claims-clean", "annotation.json");
+
+test("clean fixture: all claims supported, gate exits 0", () => {
+  const rep = JSON.parse(
+    runCli(["runner", "claims", "report", "--claims", CLEAN_CLAIMS, "--annotation", CLEAN_ANN, "--format", "json"]).stdout,
+  );
+  assert.equal(rep.passed, true);
+  assert.equal(rep.counts.supported, 2);
+  assert.equal(rep.counts.blocked, 0);
+  const gate = runCli(["runner", "claims", "gate", "--claims", CLEAN_CLAIMS, "--annotation", CLEAN_ANN]);
+  assert.equal(gate.status, 0);
+});
