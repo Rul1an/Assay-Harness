@@ -69,6 +69,12 @@ import {
   loadClaims,
 } from "./runner_claims.js";
 import {
+  parseSandboxEvents,
+  sandboxGate,
+  sandboxReportMarkdown,
+  summarizeSandbox,
+} from "./runner_sandbox.js";
+import {
   formatKernelCaptureSignals,
   parseKernelCaptureSignals,
   signalsEmpty,
@@ -105,6 +111,8 @@ Commands:
   runner coverage fleet (--dir <dir> | --annotations <a.json,b.json,...>) [--format markdown|json]
   runner claims report --claims <claims.json> --annotation <annotation.json> [--format markdown|json]
   runner claims gate --claims <claims.json> --annotation <annotation.json> [--allow-degraded] [--format markdown|json]
+  runner sandbox report --events <events.json> [--format markdown|json]
+  runner sandbox gate --events <events.json> [--allow-degraded] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -761,6 +769,10 @@ function cmdRunner(args: Record<string, string | boolean>): void {
     cmdRunnerClaims(args);
     return;
   }
+  if (subcommand === "sandbox") {
+    cmdRunnerSandbox(args);
+    return;
+  }
   console.error(`[config_error] Unknown runner subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
@@ -909,6 +921,63 @@ function cmdRunnerClaimsReportOrGate(
     .filter((r) => !(r.decision === "supported" || (r.decision === "degraded" && allowDegraded)))
     .map((r) => `${r.id}:${r.decision}`);
   console.error(`[regression] runner claims gate: unsupported claims (${failing.join(",")})`);
+  process.exit(EXIT.REGRESSION);
+}
+
+function cmdRunnerSandbox(args: Record<string, string | boolean>): void {
+  const subsubcommand = args._subfile as string | undefined;
+  if (subsubcommand === "report" || subsubcommand === "gate") {
+    cmdRunnerSandboxReportOrGate(args, subsubcommand);
+    return;
+  }
+  console.error(`[config_error] Unknown runner sandbox subcommand: ${subsubcommand ?? "(none)"}`);
+  console.error(
+    "Usage:\n" +
+      "  runner sandbox report --events <events.json> [--format markdown|json]\n" +
+      "  runner sandbox gate --events <events.json> [--allow-degraded] [--format markdown|json]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdRunnerSandboxReportOrGate(
+  args: Record<string, string | boolean>,
+  mode: "report" | "gate",
+): void {
+  const format = (args.format as string) ?? "markdown";
+  const allowDegraded = args["allow-degraded"] === true;
+  const eventsArg = args.events;
+  if (typeof eventsArg !== "string" || eventsArg.length === 0) {
+    console.error("[config_error] --events <events.json> is required (non-empty path)");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  let raw: string;
+  try {
+    raw = readFileSync(eventsArg, "utf-8");
+  } catch {
+    console.error(`[config_error] Sandbox events file not found: ${eventsArg}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  let events;
+  try {
+    events = parseSandboxEvents(raw);
+  } catch (err) {
+    console.error(
+      `[artifact_contract] invalid sandbox events document: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (mode === "report") {
+    const summary = summarizeSandbox(events);
+    console.log(format === "json" ? JSON.stringify(summary, null, 2) : sandboxReportMarkdown(summary));
+    process.exit(EXIT.SUCCESS);
+  }
+  const gate = sandboxGate(events, { allowDegraded });
+  console.log(format === "json" ? JSON.stringify(gate, null, 2) : sandboxReportMarkdown(gate.summary));
+  if (gate.pass) {
+    console.error(`[success] runner sandbox gate: ${gate.reason}`);
+    process.exit(EXIT.SUCCESS);
+  }
+  console.error(`[regression] runner sandbox gate: ${gate.reason}`);
   process.exit(EXIT.REGRESSION);
 }
 

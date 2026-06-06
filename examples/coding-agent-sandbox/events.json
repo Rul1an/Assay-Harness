@@ -1,0 +1,5 @@
+[
+  { "type": "assay.sandbox.summary", "payload": { "command": ["echo", "hi"], "fs_count": 1, "exec_count": 1, "degradation_count": 0 } },
+  { "type": "assay.sandbox.fs", "subject": "/tmp/out.txt", "payload": { "op": "write", "path": "/tmp/out.txt", "backend": "landlock" } },
+  { "type": "assay.sandbox.exec", "subject": "sh", "payload": { "argv0": "sh", "hits": 1 } }
+]

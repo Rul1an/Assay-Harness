@@ -1,0 +1,5 @@
+[
+  { "type": "assay.sandbox.summary", "payload": { "fs_count": 1, "exec_count": 0, "degradation_count": 1 } },
+  { "type": "assay.sandbox.fs", "subject": "/etc/passwd", "payload": { "op": "read", "path": "/etc/passwd", "backend": "landlock" } },
+  { "type": "assay.sandbox.degraded", "payload": { "reason": "landlock backend unavailable (degraded to audit)" } }
+]
