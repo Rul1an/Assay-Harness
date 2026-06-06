@@ -71,6 +71,26 @@ examples: [`examples/claims-clean/`](examples/claims-clean/) (all supported) and
 [`examples/claims-eval-honesty/`](examples/claims-eval-honesty/) (over-claims
 blocked).
 
+### Coding-agent governance (`runner sandbox`)
+
+`runner sandbox` consumes the evidence-bundle events that `assay sandbox --bundle`
+emits when a coding agent runs under the sandbox (`assay.sandbox.summary` / `.fs`
+/ `.exec` / `.degraded`). It reports the observed filesystem operations, executed
+programs, and containment degradations, and gates on them:
+
+```bash
+assay-harness runner sandbox report --events events.json
+assay-harness runner sandbox gate --events events.json [--allow-degraded]
+```
+
+The gate exits `6` when a containment degradation is present (enforcement was
+weakened while the run continued) unless `--allow-degraded` is set; observed
+fs/exec effects alone never fail the gate, they are the record. Consumer-only: no
+capture, no new semantics. Worked example:
+[`examples/coding-agent-sandbox/`](examples/coding-agent-sandbox/). Honest
+boundary: this reports what the sandbox observed, not intent, and Landlock is not
+VM-level isolation.
+
 ### Coverage claims (the honesty model)
 
 `runner coverage` consumes the coverage annotation the comparator emits with
