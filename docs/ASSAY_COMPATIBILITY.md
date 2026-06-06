@@ -5,18 +5,22 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.6.1` requires the released Assay `v3.8.0` contract line or
+Assay Harness `v0.7.0` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
 
-> **Upstream state (2026-06-01):** `Rul1an/assay` is on `v3.14.0`
-> (released 2026-06-01). The Trust Basis contract surface (diff schema
-> v1, Trust Card schema v5, 10 frozen claims) has not changed in
-> v3.10 / v3.11 / v3.12 / v3.13 / v3.14; the principal compatibility line still
-> holds. The release-binary proof rail has now been re-run against
-> `v3.14.0` in
-> [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155),
-> which is the new latest proved compatibility binary.
+> **Upstream state (2026-06-06):** `Rul1an/assay` is on `v3.18.0`
+> (released 2026-06-06). The Trust Basis contract surface (diff schema
+> v1, Trust Card schema v5, 10 frozen claims) is unchanged through
+> v3.15 / v3.16 / v3.17 / v3.18; the principal compatibility line still holds.
+> v3.18.0 adds an additive interop surface that does NOT touch that contract:
+> sandbox evidence-bundle events (`assay.sandbox.*`), OTel GenAI `execute_tool`
+> emit carrying the claim-class outcome, an in-toto/DSSE evidence-bundle
+> attestation (v0), and an Inspect claim-support scorer. The Harness already
+> consumes the claim-class outcomes via `runner_claims.ts`; consuming the new
+> `assay.sandbox.*` events is tracked as a follow-up recipe. v3.18.0 is the new
+> compatibility target; a release-binary proof dispatch against `v3.18.0` is
+> pending.
 
 | Contract | Expected surface |
 |---|---|
@@ -26,8 +30,9 @@ schema v5, and 10-claim Trust Basis surface.
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
-Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The
-latest release-binary proof for this line is Assay `v3.14.0`.
+Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The new
+compatibility target is Assay `v3.18.0` (a release-binary proof dispatch against
+it is pending; the last proved binary was `v3.14.0`).
 
 ## Release-Binary Proof
 
