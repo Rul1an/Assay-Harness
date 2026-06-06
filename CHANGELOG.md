@@ -4,6 +4,24 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-06
+
+- Added `runner sandbox report` and `runner sandbox gate` — a consumer-only
+  coding-agent governance recipe over the `assay sandbox --bundle` evidence
+  events (`assay.sandbox.summary` / `.fs` / `.exec` / `.degraded`). It summarizes
+  the observed filesystem operations, executed programs, and containment
+  degradations, and gates: exit 6 on a containment degradation (unless
+  `--allow-degraded`); observed fs/exec effects alone never fail the gate. Worked
+  example `examples/coding-agent-sandbox/`. Honest boundary: reports observed
+  effects, not intent; Landlock is not VM-level isolation.
+
+- Pinned the compatibility target to Assay `v3.18.0` (`docs/ASSAY_COMPATIBILITY.md`
+  and README). The Trust Basis diff v1 / Trust Card schema v5 / 10-claim surface
+  is unchanged through v3.18; v3.18.0 adds an additive interop surface (sandbox
+  evidence events, OTel `execute_tool` emit, in-toto/DSSE attestation v0, Inspect
+  claim-support scorer) that does not touch that contract. A v3.18.0
+  release-binary proof dispatch is pending.
+
 - Made `runner claims` discoverable: added `docs/CLAIM_SUPPORT.md` (the four
   outcomes, the open-core vocabulary, runnable examples, and a GitHub Actions
   release-gate snippet), linked from the README, plus a second worked example
