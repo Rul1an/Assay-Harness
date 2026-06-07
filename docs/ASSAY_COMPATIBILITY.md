@@ -9,18 +9,17 @@ Assay Harness `v0.7.0` requires the released Assay `v3.8.0` contract line or
 later binaries that still emit the same Trust Basis diff schema v1, Trust Card
 schema v5, and 10-claim Trust Basis surface.
 
-> **Upstream state (2026-06-06):** `Rul1an/assay` is on `v3.18.0`
-> (released 2026-06-06). The Trust Basis contract surface (diff schema
+> **Upstream state (2026-06-07):** `Rul1an/assay` is on `v3.19.1`
+> (released 2026-06-07). The Trust Basis contract surface (diff schema
 > v1, Trust Card schema v5, 10 frozen claims) is unchanged through
-> v3.15 / v3.16 / v3.17 / v3.18; the principal compatibility line still holds.
+> v3.15 / v3.16 / v3.17 / v3.18 / v3.19.1; the principal compatibility line still holds.
 > v3.18.0 adds an additive interop surface that does NOT touch that contract:
 > sandbox evidence-bundle events (`assay.sandbox.*`), OTel GenAI `execute_tool`
 > emit carrying the claim-class outcome, an in-toto/DSSE evidence-bundle
 > attestation (v0), and an Inspect claim-support scorer. The Harness already
 > consumes the claim-class outcomes via `runner_claims.ts`; consuming the new
-> `assay.sandbox.*` events is tracked as a follow-up recipe. v3.18.0 is the new
-> compatibility target; a release-binary proof dispatch against `v3.18.0` is
-> pending.
+> `assay.sandbox.*` events is tracked as a follow-up recipe. v3.19.1 is the
+> current compatibility target and latest proved release-binary line.
 
 | Contract | Expected surface |
 |---|---|
@@ -31,8 +30,7 @@ schema v5, and 10-claim Trust Basis surface.
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
 Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The new
-compatibility target is Assay `v3.18.0` (a release-binary proof dispatch against
-it is pending; the last proved binary was `v3.14.0`).
+compatibility target is Assay `v3.19.1`, the latest proved release binary.
 
 ## Release-Binary Proof
 
@@ -43,7 +41,7 @@ the Promptfoo, OpenFeature, and CycloneDX recipes against that binary.
 The default dispatch input is:
 
 ```text
-assay_version = v3.14.0
+assay_version = v3.19.1
 ```
 
 This job is the release-binary compatibility proof rail. The proof-before-release
@@ -60,7 +58,9 @@ Assay `v3.13.0` in
 [`Harness CI` run 26756652781](https://github.com/Rul1an/Assay-Harness/actions/runs/26756652781)
 on 2026-06-01. The latest re-verification passed against Assay `v3.14.0` in
 [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
-on 2026-06-01.
+on 2026-06-01, and against Assay `v3.19.1` in
+[`Harness CI` run 27091183205](https://github.com/Rul1an/Assay-Harness/actions/runs/27091183205)
+on 2026-06-07.
 
 ## Harness Boundary
 

@@ -304,8 +304,8 @@ See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_
 for the artifact chain and boundary rules.
 
 These receipt recipes require the released Assay `v3.8.0` Trust Basis surface
-or a later compatible release, tracking Assay through `v3.18.0` (release-binary
-proof verified through `v3.14.0`; a `v3.18.0` proof dispatch is pending) for
+or a later compatible release, tracking Assay through `v3.19.1` (release-binary
+proof verified through `v3.19.1`) for
 `assay.trust-basis.diff.v1`, Trust Card schema v5, and the 10-claim eval /
 decision / inventory family set, with machine-readable receipt contracts owned
 by Assay. See
