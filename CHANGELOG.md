@@ -4,6 +4,12 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Updated the release-binary compatibility rail to Assay `v3.19.1`: the manual
+  `Harness CI` `assay_version` default/fallback, README, roadmap, and
+  `docs/ASSAY_COMPATIBILITY.md` now point at the latest proved Assay release
+  line. Proof/docs only; no Harness CLI, schema consumption, or gate/report
+  semantics changed.
+
 ## [0.8.0] - 2026-06-06
 
 - Added `runner sandbox report` and `runner sandbox gate` — a consumer-only
