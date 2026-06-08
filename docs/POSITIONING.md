@@ -75,6 +75,7 @@ define.
 | `assay` | The compiler. Compiles policy, produces evidence bundles, owns receipt/bundle/Trust-Basis/claim semantics. | engine |
 | `assay-action` | The button. Smallest GitHub-native entry point: make Assay available, run one stable CLI flow, upload artifacts / SARIF / PR summary. Thin wrapper, no family logic, no baseline strategy. | single-step |
 | `Assay-Harness` | The playbook. Recipes, baseline ↔ candidate chains, diff / gate / report, proof chains. Composition, no semantics. | multi-step |
+| Plimsoll | The release-review product. Consumes Assay-compatible capability surfaces, applies coverage-aware release policy, captures approve/reject decisions, and maintains audit/governance workflows. | product workflow |
 
 **Hard rule:** neither `assay-action` nor `Assay-Harness` defines new artifact
 semantics.
@@ -86,6 +87,29 @@ semantics.
 - Use `Assay-Harness` to run released recipes, compare baseline vs candidate,
   obtain raw diff JSON plus Markdown/JUnit, and keep a reproducible proof
   chain.
+- Use Plimsoll when the question is: what changed between releases, should it
+  ship, who approved it, and where is the audit record?
+
+## Boundary with Plimsoll
+
+Plimsoll is the release-review product layer built on Assay-compatible
+runtime evidence. It answers: what runtime capability changed between
+releases, should a human approve it, and what audit record proves that
+decision?
+
+Assay-Harness remains the open CI playbook for released Assay artifacts. It
+runs recipes, compatibility checks, baseline/candidate gates, reports, and
+proof chains. It may exercise capability-surface diffs and coverage-aware
+gates because those are published Assay shapes, but it does not own release
+approval state, reviewer workflow, audit retention, fleet governance, or a
+hosted control plane.
+
+In short:
+
+- Assay owns the evidence and semantics.
+- assay-action is the GitHub button.
+- Assay-Harness is the open playbook.
+- Plimsoll is the release-review product.
 
 ## Adoption shape
 

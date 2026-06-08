@@ -26,6 +26,11 @@ See [docs/POSITIONING.md](docs/POSITIONING.md) for the full positioning and
 the `assay` / `assay-action` / Assay-Harness boundary (compiler / button /
 playbook).
 
+Adjacent product boundary: Assay-Harness is the open CI playbook for released
+Assay artifacts. Plimsoll is the release-review product for capability-surface
+deltas, human approval, and audit trails. Harness can prove and gate the
+underlying shapes; Plimsoll decides whether a release ships.
+
 ### Optional input: Assay-Runner measured-run archives
 
 Assay-Harness can read [Assay-Runner](https://github.com/Rul1an/assay) measured-run archives (`.tar.gz` carrying `assay.runner.archive_manifest.v0`) and the precomputed cross-runtime diff JSON Runner produces. This is opt-in alongside the existing NDJSON evidence path; NDJSON callers are unaffected.
