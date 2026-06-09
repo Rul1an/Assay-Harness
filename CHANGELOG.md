@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Recorded `assay.enforcement_health.v0` (new in Assay v3.20.0) in the cross-repo
+  boundary doc under "deliberately does not consume". It is an enforcement-truth
+  carrier in the top-level `assay.*` namespace, separate from the `assay.runner.*`
+  archive the Harness reads, so it never appears in the runner `.tar.gz`. The
+  Harness reports observed coverage from `observation_health` and does not infer
+  enforcement from it; the consumer of enforcement truth is Plimsoll, which reads
+  the artifact and surfaces it under a dedicated `enforcement` block. Docs only;
+  no schema-consumption, gate, or report semantics changed.
+
 - Updated the release-binary compatibility rail to Assay `v3.19.1`: the manual
   `Harness CI` `assay_version` default/fallback, README, roadmap, and
   `docs/ASSAY_COMPATIBILITY.md` now point at the latest proved Assay release
