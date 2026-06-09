@@ -8,7 +8,7 @@
 > [`Rul1an/assay docs/reference/runner/schemas-overview.md`](https://github.com/Rul1an/assay/blob/main/docs/reference/runner/schemas-overview.md),
 > which is the canonical Runner-side inventory.
 >
-> Last updated: 2026-05-26.
+> Last updated: 2026-06-09.
 
 ## What Assay-Harness consumes
 
@@ -45,6 +45,7 @@ with provenance in
 | `assay.runner.drift_report_provenance.v0` | embedded in `runtime_drift` | Sub-schema inside `runtime_drift`; sees the same deferral. |
 | `assay.runner.projection_not_applied.v0` | embedded in `runtime_drift` | Sub-schema inside `runtime_drift`; sees the same deferral. |
 | `assay.experiment.overhead_sample.v0` / `overhead_summary.v0` | [`Rul1an/assay#1378`](https://github.com/Rul1an/assay/pull/1378) + [`#1379`](https://github.com/Rul1an/assay/pull/1379) | Experiment-scoped namespace explicitly *"not a Runner archive contract and not promoted to stable product surface"* per the Runner-side schemas-overview. Harness ignores the `assay.experiment.*` namespace by policy — it is reserved for time-limited measurement evidence, not stable artifacts. |
+| `assay.enforcement_health.v0` | [`Rul1an/assay#1574`](https://github.com/Rul1an/assay/pull/1574) (assay v3.20.0) | Enforcement-truth carrier in the top-level `assay.*` namespace, deliberately separate from the `assay.runner.*` archive the Harness reads, so it is not present in the runner `.tar.gz` at all. It records whether enforcement (e.g. IPv4/TCP connect egress) was actually active and blocked (`active` / `absent` / `failed` / `not_applicable`), which is a different question from how complete the observation was. The Harness reports observed coverage from `observation_health` and must never let observed coverage be read as enforcement; the consumer of enforcement truth is Plimsoll, which reads the artifact via `--enforcement-health` and surfaces it under a dedicated `enforcement` block. Keeping it out of the Harness preserves the separation: `observation_health` = observation completeness, `enforcement_health` = enforcement outcome, neither inferred from the other. |
 
 ## Cross-repo boundary
 
@@ -82,6 +83,7 @@ Both repos follow the same dotted-namespace pattern:
 | `assay.runner.*` | v0 contract surface; minor refinements within v0 are common, breaking changes require an explicit v1 |
 | `assay.experiment.*` | experiment-scoped, time-limited, not promoted to stable surface (Harness ignores by policy) |
 | `assay.trust-basis.*` | Assay-core contract surface; see [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) |
+| `assay.enforcement_health.*` | Enforcement-truth carrier, producer-agnostic, outside the `assay.runner.*` archive (Harness does not consume; Plimsoll does) |
 | `assay.harness.*` | Harness-internal envelope (NDJSON evidence shape); Runner side does not consume |
 
 The Runner side started introducing `vX.Y` dotted-minor versions in
