@@ -47,6 +47,9 @@ with provenance in
 | `assay.experiment.overhead_sample.v0` / `overhead_summary.v0` | [`Rul1an/assay#1378`](https://github.com/Rul1an/assay/pull/1378) + [`#1379`](https://github.com/Rul1an/assay/pull/1379) | Experiment-scoped namespace explicitly *"not a Runner archive contract and not promoted to stable product surface"* per the Runner-side schemas-overview. Harness ignores the `assay.experiment.*` namespace by policy — it is reserved for time-limited measurement evidence, not stable artifacts. |
 | `assay.enforcement_health.v0` | [`Rul1an/assay#1574`](https://github.com/Rul1an/assay/pull/1574) (assay v3.20.0) | Enforcement-truth carrier in the top-level `assay.*` namespace, deliberately separate from the `assay.runner.*` archive the Harness reads, so it is not present in the runner `.tar.gz` at all. It records whether enforcement (e.g. IPv4/TCP connect egress) was actually active and blocked (`active` / `absent` / `failed` / `not_applicable`), which is a different question from how complete the observation was. The Harness reports observed coverage from `observation_health` and must never let observed coverage be read as enforcement; the consumer of enforcement truth is Plimsoll, which reads the artifact via `--enforcement-health` and surfaces it under a dedicated `enforcement` block. Keeping it out of the Harness preserves the separation: `observation_health` = observation completeness, `enforcement_health` = enforcement outcome, neither inferred from the other. |
 
+**Principle:** observation and coverage reports must not imply enforcement unless an
+`enforcement_health` artifact is explicitly provided by a consumer layer.
+
 ## Cross-repo boundary
 
 The Runner side ([`Rul1an/assay`](https://github.com/Rul1an/assay))
