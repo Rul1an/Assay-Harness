@@ -22,9 +22,9 @@ artifact semantics — those live in Assay.
 - not an observability platform or dashboard
 - not a second policy or trust model beside Assay
 
-See [docs/POSITIONING.md](docs/POSITIONING.md) for the full positioning and
-the `assay` / `assay-action` / Assay-Harness boundary (compiler / button /
-playbook).
+The `assay` / `assay-action` / Assay-Harness split is compiler / button /
+playbook: `assay` compiles evidence, `assay-action` is the one-click CI gate,
+and Assay-Harness is the consumer that reviews claims against the evidence.
 
 Adjacent product boundary: Assay-Harness is the open CI playbook for released
 Assay artifacts. Plimsoll is the release-review product for capability-surface

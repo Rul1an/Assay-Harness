@@ -183,7 +183,7 @@ P42 does not add:
 - OpenFeature provider support
 - metadata import
 - SARIF
-- a public two-wedge note
+- a public two-part note
 - a new upstream OpenFeature message
 
 ## Acceptance Criteria

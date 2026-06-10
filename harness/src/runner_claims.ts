@@ -7,8 +7,8 @@
  * claim at THIS strength, and if not, what is the strongest claim the evidence
  * supports? Outcomes: `supported`, `degraded`, `blocked`, `not_evaluable`.
  *
- * It speaks the open-core vocabulary directly — `claim_kind` ∈
- * {positive, exhaustive, bounded_negative}, open-core dimension names
+ * It speaks the claim-support vocabulary directly — `claim_kind` ∈
+ * {positive, exhaustive, bounded_negative}, observed-effect dimension names
  * (`filesystem_paths_touched`, `network_endpoints`, …), `claim_strength` ∈
  * {strong, partial, weak, absent}, `claim_basis` ∈
  * {measured, reported, derived, inferred}. No second vocabulary, no mapping.
