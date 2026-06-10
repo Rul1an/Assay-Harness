@@ -55,8 +55,8 @@ Ten Runner-aware verbs are available:
 `runner claims` reads a claim-assertions document (`assay.harness.claim_assertions.v0`)
 plus a coverage annotation, and asks, per claim, whether the independently
 observed evidence supports it at the required strength — and if not, what the
-evidence does support. It speaks the open-core vocabulary directly: `claim_kind`
-∈ {`positive`, `exhaustive`, `bounded_negative`}; open-core dimension names
+evidence does support. It speaks the claim-support vocabulary directly: `claim_kind`
+∈ {`positive`, `exhaustive`, `bounded_negative`}; observed-effect dimension names
 (`filesystem_paths_touched`, `network_endpoints`, …); `claim_strength` ∈
 {`strong`,`partial`,`weak`,`absent`}; `claim_basis` ∈
 {`measured`,`reported`,`derived`,`inferred`}.
@@ -70,7 +70,7 @@ granularity and these are not independently verified. Observed support is the
 ceiling; attestation is not consulted. Consumer-only: no new Runner capture, no
 attestation adapter, no state.
 
-Full reference, the four outcomes, the open-core vocabulary, runnable examples,
+Full reference, the four outcomes, the claim-support vocabulary, runnable examples,
 and a CI-gate snippet: **[docs/CLAIM_SUPPORT.md](docs/CLAIM_SUPPORT.md)**. Worked
 examples: [`examples/claims-clean/`](examples/claims-clean/) (all supported) and
 [`examples/claims-eval-honesty/`](examples/claims-eval-honesty/) (over-claims
