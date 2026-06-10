@@ -8,3 +8,6 @@ __pycache__/
 results/
 baselines/
 /tmp/
+
+# Positioning/strategy doc: kept local, not published
+docs/POSITIONING.md

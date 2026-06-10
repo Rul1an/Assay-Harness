@@ -38,7 +38,7 @@ All notable changes to Assay Harness will be documented in this file.
   release-binary proof dispatch is pending.
 
 - Made `runner claims` discoverable: added `docs/CLAIM_SUPPORT.md` (the four
-  outcomes, the open-core vocabulary, runnable examples, and a GitHub Actions
+  outcomes, the claim-support vocabulary, runnable examples, and a GitHub Actions
   release-gate snippet), linked from the README, plus a second worked example
   `examples/claims-clean/` (every claim supported; gate exits 0) to complement
   the eval-honesty example. Docs/examples only; no code or contract change.
@@ -58,8 +58,8 @@ All notable changes to Assay Harness will be documented in this file.
   `not_evaluable`. `report` is informational (exit 0); `gate` passes only when
   every claim is `supported` (or `degraded` with `--allow-degraded`) and exits 6
   otherwise (`not_evaluable` is fail-safe and cannot be allowed). Speaks the
-  open-core vocabulary directly (`positive`/`exhaustive`/`bounded_negative`,
-  open-core dimension names, `claim_strength`, `claim_basis`) — no second
+  claim-support vocabulary directly (`positive`/`exhaustive`/`bounded_negative`,
+  observed-effect dimension names, `claim_strength`, `claim_basis`) — no second
   vocabulary. A claim's `value`/`effect_class` are advisory and not
   independently verified; support is evaluated at dimension granularity, and
   attestation is not consulted (observed support is the ceiling). Consumer-only:

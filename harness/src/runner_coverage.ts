@@ -52,7 +52,7 @@ export const COVERAGE_ASSERTABLE_CLAIM_TYPES: readonly string[] = [
 /**
  * Measured (effect-bearing) drift dimensions. A bounded-negative claim is only
  * evaluable for one of these; on a reported/unknown dimension it is not
- * evaluable and therefore not permitted. Mirrors the open-core
+ * evaluable and therefore not permitted. Mirrors the core
  * coverage-claims-gate example.
  */
 export const COVERAGE_MEASURED_DIMENSIONS: readonly string[] = [

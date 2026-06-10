@@ -29,10 +29,10 @@ more claims not supported.
 | `blocked` | the evidence contradicts the claim, or the coverage method cannot justify it (e.g. cannot prove a negative) |
 | `not_evaluable` | no observed evidence for the dimension — fail-safe: the gate blocks |
 
-## Vocabulary (open-core, no second layer)
+## Vocabulary (claim-support, no second layer)
 
 - `claim_kind`: `positive`, `exhaustive`, `bounded_negative`
-- `dimension`: open-core names — `filesystem_paths_touched`, `kernel_file_operations`, `network_endpoints`, `process_execs`
+- `dimension`: core names — `filesystem_paths_touched`, `kernel_file_operations`, `network_endpoints`, `process_execs`
 - `claim_strength`: `strong | partial | weak | absent`
 - `claim_basis`: `measured | reported | derived | inferred`
 
