@@ -1,0 +1,70 @@
+{
+  "name": "main-required-ci-contexts",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH",
+        "refs/heads/release/*"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          {
+            "context": "Node Tests + Type Check",
+            "integration_id": 15368
+          },
+          {
+            "context": "Contract Validation",
+            "integration_id": 15368
+          },
+          {
+            "context": "Golden Contract Tests",
+            "integration_id": 15368
+          },
+          {
+            "context": "Hardening Tests",
+            "integration_id": 15368
+          },
+          {
+            "context": "Policy Validation",
+            "integration_id": 15368
+          },
+          {
+            "context": "Verify Evidence",
+            "integration_id": 15368
+          },
+          {
+            "context": "Regression Gate",
+            "integration_id": 15368
+          },
+          {
+            "context": "Evidence Export",
+            "integration_id": 15368
+          },
+          {
+            "context": "Audit workflow security",
+            "integration_id": 15368
+          },
+          {
+            "context": "Public Artifact Sanitization",
+            "integration_id": 15368
+          }
+        ]
+      }
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "deletion"
+    }
+  ]
+}
