@@ -122,14 +122,19 @@ confirm:
 - `timeout-minutes` on every job.
 - Per-job `permissions` only; workflow-level default remains `permissions: {}`.
 - `persist-credentials: false` on all checkouts unless a job explicitly writes.
-- If release or SBOM workflows keep using tag-pinned third-party actions, the
-  contract should record that choice; otherwise move high-trust release actions
-  toward commit-SHA pins in an implementation PR.
+- Ordinary setup/check actions may keep tag pins as a recorded tradeoff while
+  this repo is still tightening.
+- High-trust actions that can affect release artifacts, provenance, SBOM, or
+  security-tab output must move to commit-SHA pins in an implementation PR. This
+  includes release, SBOM, attestation, and SARIF-upload actions.
 
 ### Public Artifact Sanitization Guard
 
-Add a required public-artifact sanitization check for docs, examples, fixtures,
-SARIF/JUnit generation code, and release notes.
+Add a required fail-closed public-artifact sanitization check for the whole
+repository, excluding only generated, vendored, build, dependency, and cache
+output explicitly allowlisted by the implementation. In a public repository, any
+source file, fixture, doc, test, code comment, sample, or workflow can leak
+public text; do not rely on path enumeration.
 
 Hard rule:
 
@@ -143,6 +148,14 @@ Acceptable implementation patterns:
 - Run plaintext sensitive-list checks only in trusted private contexts where logs
   are not public and untrusted PR code cannot read the list.
 - On fork PRs, run only the public-safe structural portion.
+
+Required-gate split:
+
+- The public-safe structural portion is required on every PR, including forks.
+- The full hashed-denylist comparison runs only for trusted same-repository PRs,
+  pushes, and scheduled checks that can access the private source safely.
+- A degraded fork run must say that private-list comparison was skipped without
+  exposing the list, while still enforcing structural public-artifact rules.
 
 Logging contract:
 
