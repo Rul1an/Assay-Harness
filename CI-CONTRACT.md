@@ -325,6 +325,9 @@ Proposed required context names for the next branch-protection review:
 - `Audit workflow security`
 - `Public Artifact Sanitization`
 
+Checked-in ruleset activation lives at
+`.github/rulesets/main-required-ci-contexts.json`.
+
 Do not require `Assay Release Compatibility Recipes` on ordinary pull
 requests. It is a manual or compatibility recipe lane, not a stable required
 merge gate.
