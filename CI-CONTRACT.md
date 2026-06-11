@@ -203,14 +203,23 @@ Scheduled checks are for ecosystem drift and compatibility warning, not for
 ordinary PR cost.
 
 - Existing weekly `zizmor` drift canary.
-- OpenSSF Scorecard for public supply-chain posture.
-- OSV-Scanner for npm, Python, and GitHub Actions dependency surfaces.
+- OpenSSF Scorecard for public supply-chain posture. The first implementation
+  uses the default `GITHUB_TOKEN`, which can read repository rulesets but may
+  not fully measure classic branch-protection or webhook settings unless a
+  future read/admin token is intentionally added.
+- OSV-Scanner for npm dependency surfaces with resolved lockfiles. Today this
+  is `harness/package-lock.json`.
 - CodeQL or equivalent code scanning for TypeScript/JavaScript, Python, and
   workflow glue if GitHub default setup is not enabled.
 - Scheduled SBOM remains useful on main.
 - Optional scheduled Assay release compatibility against the latest supported
   release.
 - Optional non-blocking Assay `main` compatibility canary.
+
+Scheduled supply-chain posture workflows are advisory only. They run on a
+weekly cadence plus manual dispatch, do not run on ordinary pull requests, and
+must not be promoted to required contexts without a separate context-capture
+review.
 
 Do not schedule:
 
