@@ -26,7 +26,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -95,7 +95,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -112,7 +112,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -131,7 +131,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -167,7 +167,7 @@ jobs:
       contents: read
     needs: contract-validation
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -188,7 +188,7 @@ jobs:
       contents: read
     needs: [contract-validation, verify-evidence]
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -319,7 +319,7 @@ jobs:
       security-events: write
     needs: [contract-validation, verify-evidence, regression-gate]
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
@@ -363,7 +363,7 @@ jobs:
             fixtures/failure.assay.ndjson
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4.36.0
+        uses: github/codeql-action/upload-sarif@v4.36.2
         if: always()
         continue-on-error: true
         with:
@@ -395,7 +395,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
