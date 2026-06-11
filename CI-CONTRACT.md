@@ -298,7 +298,39 @@ Proposed required context groups:
 - Action/workflow lint.
 - Claims and boundary guard.
 
-Exact names: to be filled from a live implementation PR.
+Observed from the CI baseline implementation PR `#106`:
+
+- `Node Tests + Type Check`
+- `Contract Validation`
+- `Golden Contract Tests`
+- `Hardening Tests`
+- `Policy Validation`
+- `Verify Evidence`
+- `Regression Gate`
+- `Evidence Export`
+- `Audit workflow security`
+- `Public Artifact Sanitization`
+- `Assay Release Compatibility Recipes`
+
+Proposed required context names for the next branch-protection review:
+
+- `Node Tests + Type Check`
+- `Contract Validation`
+- `Golden Contract Tests`
+- `Hardening Tests`
+- `Policy Validation`
+- `Verify Evidence`
+- `Regression Gate`
+- `Evidence Export`
+- `Audit workflow security`
+- `Public Artifact Sanitization`
+
+Do not require `Assay Release Compatibility Recipes` on ordinary pull
+requests. It is a manual or compatibility recipe lane, not a stable required
+merge gate.
+
+External advisory checks should remain non-required unless the repository owner
+explicitly accepts their availability as a merge dependency.
 
 ## 7. Target Workflow Files
 
