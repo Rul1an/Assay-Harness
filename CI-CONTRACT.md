@@ -156,6 +156,14 @@ Required-gate split:
   pushes, and scheduled checks that can access the private source safely.
 - A degraded fork run must say that private-list comparison was skipped without
   exposing the list, while still enforcing structural public-artifact rules.
+- The trusted hashed-list layer is part of the sanitizer workflow, not a
+  separate required context, until a future context-capture/import review says
+  otherwise.
+- The trusted list must enumerate every spelling, casing, and spacing variant of
+  a term. Normalization lowercases, splits on non-alphanumerics, and hashes
+  one-to-five-token windows per line, so a compound spelling and a spaced or
+  hyphenated spelling of the same term produce different hashes. Variant
+  completeness is a property of the trusted list, not the scanner.
 
 Logging contract:
 
@@ -298,7 +306,48 @@ Proposed required context groups:
 - Action/workflow lint.
 - Claims and boundary guard.
 
-Exact names: to be filled from a live implementation PR.
+Observed from the CI baseline implementation PR `#106`:
+
+- `Node Tests + Type Check`
+- `Contract Validation`
+- `Golden Contract Tests`
+- `Hardening Tests`
+- `Policy Validation`
+- `Verify Evidence`
+- `Regression Gate`
+- `Evidence Export`
+- `Audit workflow security`
+- `Public Artifact Sanitization`
+- `Assay Release Compatibility Recipes`
+
+Proposed required context names for the next branch-protection review:
+
+- `Node Tests + Type Check`
+- `Contract Validation`
+- `Golden Contract Tests`
+- `Hardening Tests`
+- `Policy Validation`
+- `Verify Evidence`
+- `Regression Gate`
+- `Evidence Export`
+- `Audit workflow security`
+- `Public Artifact Sanitization`
+
+Checked-in ruleset activation lives at
+`.github/rulesets/main-required-ci-contexts.json`.
+
+Import note: the checked-in ruleset is config-as-code only until imported in
+GitHub settings. Add `bypass_actors` only if the repository owner intentionally
+wants to preserve an admin bypass path; otherwise
+`strict_required_status_checks_policy: true` means merges must be rebased-current
+and green.
+
+Do not require `Assay Release Compatibility Recipes` on ordinary pull
+requests. It is a manual or compatibility recipe lane, not a stable required
+merge gate.
+
+External advisory checks should remain non-required unless the repository owner
+explicitly accepts their availability as a merge dependency.
 
 ## 7. Target Workflow Files
 
