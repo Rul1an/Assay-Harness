@@ -4,6 +4,16 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added the `carrier supply-chain` conformance-carrier gate: consumes
+  `assay.supply_chain_conformance.v0`, validates the frozen v0 shape, gates on the
+  producer-owned `policy_result` (pass is clean; fail/incomplete are not), and
+  projects Markdown / JUnit / SARIF. Consumer-not-owner: it surfaces the carrier's
+  verdict and never turns a passing carrier into approval, compliance, provider
+  trust, runtime truth, or safety. An unknown status or `policy_result` is rejected
+  as a contract error. First adapter in a small carrier registry, with vendored
+  real carrier fixtures and a demo recipe. No change to existing verbs or the
+  exit-code taxonomy.
+
 - Recorded `assay.enforcement_health.v0` (new in Assay v3.20.0) in the cross-repo
   boundary doc under "deliberately does not consume". It is an enforcement-truth
   carrier in the top-level `assay.*` namespace, separate from the `assay.runner.*`

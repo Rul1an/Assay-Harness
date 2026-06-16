@@ -1,0 +1,53 @@
+{
+  "schema": "assay.supply_chain_conformance.v0",
+  "subject": {
+    "name": "mcp-pack",
+    "version": "1.2.3",
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "checks": {
+    "integrity": {
+      "artifact_digest": "verified",
+      "subject_digest_binding": "not_applicable"
+    },
+    "provenance": {
+      "dsse_signature": "unsupported_format",
+      "slsa_provenance": "unsupported_format",
+      "builder_identity": "unsupported_format",
+      "sigstore_bundle": "unsupported_format",
+      "rekor_inclusion": "not_applicable"
+    },
+    "pinning": {
+      "version_pinned": "verified",
+      "digest_pinned": "verified",
+      "lockfile_subject_matches_artifact": "verified",
+      "no_floating_source_ref": "verified",
+      "no_tag_only_container_ref": "verified"
+    }
+  },
+  "declared": {
+    "required_slsa_build_level": "L2"
+  },
+  "verified": {
+    "slsa_build_level": "L0"
+  },
+  "policy_result": "incomplete",
+  "coverage": {
+    "sources_checked": [
+      "pack",
+      "lockfile",
+      "provenance"
+    ],
+    "limits": [
+      "transitive dependencies not re-fetched",
+      "sigstore keyless / PEP 740 / npm provenance not verified in this slice",
+      "live transparency-log lookup not performed offline"
+    ]
+  },
+  "non_claims": [
+    "provenance verification does not prove code safety",
+    "verified provenance does not prove absence of malicious behaviour",
+    "verified signer identity is not a judgement that the provider is trustworthy",
+    "not_present is not a silent pass when policy requires provenance"
+  ]
+}

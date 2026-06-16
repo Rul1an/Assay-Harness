@@ -42,6 +42,12 @@ import {
   TrustBasisReportError,
 } from "./trust_basis_report.js";
 import {
+  formatSupplyChainMarkdown,
+  formatSupplyChainSummary,
+  loadSupplyChainReport,
+  writeSupplyChainProjections,
+} from "./carrier_supply_chain.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -113,6 +119,7 @@ Commands:
   runner claims gate --claims <claims.json> --annotation <annotation.json> [--allow-degraded] [--format markdown|json]
   runner sandbox report --events <events.json> [--format markdown|json]
   runner sandbox gate --events <events.json> [--allow-degraded] [--format markdown|json]
+  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -1339,6 +1346,87 @@ function cmdTrustBasis(args: Record<string, string | boolean>): void {
   process.exit(EXIT.CONFIG_ERROR);
 }
 
+function cmdCarrier(args: Record<string, string | boolean>): void {
+  const subcommand = args._file as string | undefined;
+  if (subcommand === "supply-chain") {
+    cmdCarrierSupplyChain(args);
+    return;
+  }
+  console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
+  console.error(
+    "Usage:\n" +
+      "  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]",
+  );
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = args["out-dir"] as string | undefined;
+  const format = (args.format as string) ?? "markdown";
+
+  // Bare `--carrier` without a value parses as `true`; require a non-empty path.
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <supply-chain-conformance.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier supply-chain --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadSupplyChainReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] Supply-chain carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  // Write projection artifacts when requested; a write failure is a formatter error.
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeSupplyChainProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatSupplyChainMarkdown(report).trimEnd());
+  }
+  console.log(formatSupplyChainSummary(report));
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.log(
+      `[carrier-supply-chain] artifacts: ${outDir}/supply-chain-conformance.{md,junit.xml,sarif.json}`,
+    );
+  }
+
+  // Exit routing (carrier-local, producer-owned):
+  //   - invalid carrier (malformed JSON, schema mismatch, unknown status /
+  //     policy_result, contract-shape violation) -> ARTIFACT_CONTRACT (3)
+  //   - valid but policy_result != pass (fail or incomplete) -> REGRESSION (6);
+  //     incomplete is never clean
+  //   - valid and policy_result == pass -> SUCCESS (0)
+  //   - missing file / bare --carrier -> CONFIG_ERROR (2) (handled above)
+  // The gate consumes the producer's own policy_result; it does not re-derive a
+  // verdict from the dimensions (policy-aware review is a separate, private step).
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier supply-chain: invalid carrier (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (!report.passed) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
 function cmdPolicy(args: Record<string, string | boolean>): void {
   const policyPath = (args.policy as string) ?? resolve(__dirname, "..", "policy.yaml");
   const toolName = args.tool as string;
@@ -1481,6 +1569,9 @@ switch (command) {
     break;
   case "trust-basis":
     cmdTrustBasis(args);
+    break;
+  case "carrier":
+    cmdCarrier(args);
     break;
   case "verify":
     cmdVerify(args);

@@ -131,6 +131,32 @@ Runner archives and cross-runtime diffs are defined and produced by the Runner s
 
 ---
 
+## Supply-chain conformance carrier gate (`carrier supply-chain`)
+
+Assay (`crates/assay-registry`) emits an `assay.supply_chain_conformance.v0`
+carrier when it verifies pack provenance: per-dimension integrity, provenance
+(including the Sigstore-keyless dimensions), and pinning statuses, plus an
+aggregate `policy_result`. The Harness consumes that carrier as a CI gate.
+
+```bash
+# Gate CI on a supply-chain conformance carrier and write reviewer artifacts
+npx tsx harness/src/cli.ts carrier supply-chain \
+  --carrier path/to/supply-chain-conformance.json \
+  --out-dir results/supply-chain-conformance
+```
+
+It validates the frozen v0 shape, gates on the producer-owned `policy_result`
+(`pass` is clean; `fail` and `incomplete` are not, and `incomplete` is never read
+as clean), and projects Markdown, JUnit, and SARIF. An unknown status or unknown
+`policy_result` is rejected as a contract error rather than passing silently.
+
+Consumer-not-owner: the Harness surfaces the carrier's own producer-computed
+verdict and per-dimension statuses. It does not approve, certify, judge
+compliance, or assert provider trust, runtime truth, or supply-chain safety;
+policy-aware review is a separate step. See
+`harness/fixtures/supply-chain-conformance/` and
+`demo/run-supply-chain-conformance-gate.sh`.
+
 ## The PR Gate Flow
 
 ```
