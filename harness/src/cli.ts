@@ -64,6 +64,12 @@ import {
   loadCarrierContract,
 } from "./carrier_drift.js";
 import {
+  formatEnforcementHealthMarkdown,
+  formatEnforcementHealthSummary,
+  loadEnforcementHealthReport,
+  writeEnforcementHealthProjections,
+} from "./carrier_enforcement_health.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -138,6 +144,7 @@ Commands:
   carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]
   carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]
   carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]
+  carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]
   carrier check --carrier <conformance.json> [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
@@ -1394,12 +1401,17 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
     cmdCarrierCheck(args);
     return;
   }
+  if (subcommand === "enforcement-health") {
+    cmdCarrierEnforcementHealth(args);
+    return;
+  }
   console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
       "  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
+      "  carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier check --carrier <conformance.json> [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
@@ -1584,6 +1596,67 @@ function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): voi
   if (!report.validation.valid) {
     const codes = report.validation.errors.map((e) => e.code).join(",");
     console.error(`[artifact_contract] carrier token-passthrough: invalid carrier (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (!report.passed) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierEnforcementHealth(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = args["out-dir"] as string | undefined;
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <enforcement-health.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier enforcement-health --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadEnforcementHealthReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] Enforcement-health carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeEnforcementHealthProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatEnforcementHealthMarkdown(report).trimEnd());
+  }
+  console.log(formatEnforcementHealthSummary(report));
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.log(
+      `[carrier-enforcement-health] artifacts: ${outDir}/enforcement-health.{md,junit.xml,sarif.json}`,
+    );
+  }
+
+  // Exit routing (carrier-local honest-state; the enforcement-truth review is a
+  // separate, private step):
+  //   - invalid carrier -> ARTIFACT_CONTRACT (3)
+  //   - status=failed (enforcement requested but not installed) -> REGRESSION (6)
+  //   - status=active -> SUCCESS (0)
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier enforcement-health: invalid carrier (${codes})`);
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   if (!report.passed) {

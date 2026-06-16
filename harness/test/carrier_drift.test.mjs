@@ -7,6 +7,7 @@ import { getCarrierAdapter, registeredCarrierSchemas } from "../dist/carrier_reg
 import { SUPPLY_CHAIN_CONFORMANCE_SCHEMA } from "../dist/carrier_supply_chain.js";
 import { RENDER_SAFETY_CONFORMANCE_SCHEMA } from "../dist/carrier_render_safety.js";
 import { TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA } from "../dist/carrier_token_passthrough.js";
+import { ENFORCEMENT_HEALTH_V1_SCHEMA } from "../dist/carrier_enforcement_health.js";
 
 const fx = (sub, name) => fileURLToPath(new URL(`../fixtures/${sub}/${name}`, import.meta.url));
 const CLI = "dist/cli.js";
@@ -16,6 +17,7 @@ const GOLDENS = {
   [SUPPLY_CHAIN_CONFORMANCE_SCHEMA]: fx("supply-chain-conformance", "pass.conformance.json"),
   [RENDER_SAFETY_CONFORMANCE_SCHEMA]: fx("render-safety-conformance", "clean.conformance.json"),
   [TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA]: fx("token-passthrough-conformance", "clean.conformance.json"),
+  [ENFORCEMENT_HEALTH_V1_SCHEMA]: fx("enforcement-health-conformance", "active-no-probe.conformance.json"),
 };
 
 test("registry completeness: every registered schema resolves an adapter and has a golden", () => {

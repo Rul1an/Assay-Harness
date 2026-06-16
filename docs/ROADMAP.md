@@ -4,6 +4,18 @@
 
 ## Main after v0.6.1 — current
 
+### Enforcement-health carrier gate (`carrier enforcement-health`) — added on main
+- New `carrier enforcement-health` verb: consumes `assay.enforcement_health.v1`
+  (Landlock TCP-connect), gating on the producer-reported status (active is clean,
+  failed is not; real-block probe surfaced)
+- Carrier-local honest-state gate, distinct from the enforcement-truth review
+  (policy-aware approval) which remains Plimsoll's
+- DELIBERATE REVERSAL of the documented "Harness does not consume enforcement_health"
+  boundary, scoped to v1; `docs/RUNNER_SCHEMA_CONSUMPTION.md` updated explicitly. v0
+  (connect4) is a different shape, not yet adapted
+- Vendored real producer fixtures; the v1 producer-emit (Landlock sandbox) is a later
+  gated step, so today the gate runs against the carrier bytes
+
 ### Carrier contract-drift detection (`carrier check`) — added on main
 - New `carrier check` verb: dispatches any conformance carrier by its `schema` id
   to the registered adapter; recognized + frozen-shape-valid is contract-OK, an

@@ -194,6 +194,32 @@ and is not `pass == false`; `not_applicable` channels are out of scope. This cov
 the confused-deputy boundary only, not arbitrary payload scrubbing, provider token
 grants, or token lifecycle.
 
+## Enforcement-health conformance carrier gate (`carrier enforcement-health`)
+
+Assay (`crates/assay-cli/src/enforcement_health_v1.rs`) emits an
+`assay.enforcement_health.v1` carrier for the Landlock TCP-connect port-allowlist
+domain: whether enforcement was `active` (the ruleset was applied) or `failed`
+(requested but not installed), plus an optional real-block probe. The Harness gates
+CI on that producer-reported status.
+
+```bash
+npx tsx harness/src/cli.ts carrier enforcement-health \
+  --carrier path/to/enforcement-health.json \
+  --out-dir results/enforcement-health
+```
+
+`status=active` is clean; `status=failed` is not clean. A real-block probe upgrades
+the evidence to "a denied connect was really blocked before the listener was
+reached" and is surfaced, but is not required for a clean gate.
+
+This is the carrier-local honest-state gate (was enforcement requested, and did the
+ruleset apply or fail), distinct from the enforcement-truth review (policy-aware
+approval over the enforcement outcome), which is a separate step. Consuming this
+carrier is a deliberate reversal of the earlier "the Harness does not consume
+`enforcement_health`" position, scoped to the v1 (Landlock) domain; see
+`docs/RUNNER_SCHEMA_CONSUMPTION.md`. The connect4/eBPF `v0` carrier is a different
+shape and is not consumed here.
+
 ## Carrier contract-drift check (`carrier check`)
 
 `carrier check` dispatches any conformance carrier by its `schema` id to the
