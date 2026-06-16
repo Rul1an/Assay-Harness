@@ -167,6 +167,20 @@ JUnit / SARIF.
 | `--carrier` missing, or the carrier file is not found | 2 |
 | Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
 
+### `assay-harness carrier check`
+
+Detect carrier contract drift: dispatch any conformance carrier by its `schema` id
+to the registered adapter and report whether the Harness recognizes the contract
+and the carrier matches its frozen shape. This is the schema / shape dimension
+only; the per-carrier gate verdict is the schema-specific verb's job (a well-formed
+carrier that reports a leak is contract-valid here and fails its own gate verb).
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Schema id is registered and the carrier matches the frozen shape | 0 |
+| Unknown/unregistered schema id, missing or non-string `schema`, malformed JSON, or a recognized schema whose shape has drifted | 3 |
+| `--carrier` missing, the file is not found, or `--format` is not `markdown`/`json` | 2 |
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `carrier check`: a generic contract-drift detector that dispatches any
+  conformance carrier by its `schema` id to the registered adapter and reports
+  whether the Harness recognizes the contract and the carrier matches its frozen
+  shape (schema/shape dimension only, distinct from the per-carrier gate verbs). An
+  unknown/unregistered schema id, missing/non-string `schema`, malformed JSON, or a
+  drifted shape is a contract error (exit 3). A golden-drift test pins every
+  registered schema's shape and asserts registry completeness. No change to existing
+  verbs or the exit-code taxonomy.
+
 - Added two more conformance-carrier gates: `carrier render-safety`
   (`assay.render_safety_conformance.v0`, clean iff every render sink leaked no raw
   secret/PII/terminal-control, preserved benign output, and redacted before

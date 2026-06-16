@@ -4,6 +4,15 @@
 
 ## Main after v0.6.1 — current
 
+### Carrier contract-drift detection (`carrier check`) — added on main
+- New `carrier check` verb: dispatches any conformance carrier by its `schema` id
+  to the registered adapter; recognized + frozen-shape-valid is contract-OK, an
+  unknown/unregistered schema or a drifted shape is a contract error
+- Schema / shape dimension only, distinct from the per-carrier gate verbs (a
+  well-formed leak carrier is contract-valid here and gate-fails separately)
+- Golden-drift test pins every registered schema's shape + asserts registry
+  completeness, so a future producer change is caught rather than mis-parsed
+
 ### Conformance carrier gate: render-safety + token-passthrough — added on main
 - New `carrier render-safety` verb: consumes `assay.render_safety_conformance.v0`,
   gates on per-sink leak / redaction-order / benign-preserved facts

@@ -60,6 +60,10 @@ import {
   writeTokenPassthroughProjections,
 } from "./carrier_token_passthrough.js";
 import {
+  formatCarrierContractSummary,
+  loadCarrierContract,
+} from "./carrier_drift.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -134,6 +138,7 @@ Commands:
   carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]
   carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]
   carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]
+  carrier check --carrier <conformance.json> [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -1385,12 +1390,17 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
     cmdCarrierTokenPassthrough(args);
     return;
   }
+  if (subcommand === "check") {
+    cmdCarrierCheck(args);
+    return;
+  }
   console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
       "  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
-      "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]",
+      "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
+      "  carrier check --carrier <conformance.json> [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
@@ -1578,6 +1588,44 @@ function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): voi
   }
   if (!report.passed) {
     process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierCheck(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error("[config_error] --carrier <conformance.json> is required (must be a non-empty path)");
+    console.error("Usage: carrier check --carrier <path> [--format markdown|json]");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadCarrierContract(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] Carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const result = load.result!;
+
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(formatCarrierContractSummary(result));
+  }
+
+  // Exit routing (contract / shape dimension only; the gate verdict is the
+  // schema-specific verb's job):
+  //   - recognized schema + valid shape -> SUCCESS (0)
+  //   - unknown schema id, missing/non-string schema, malformed JSON, or a
+  //     recognized schema whose shape drifted -> ARTIFACT_CONTRACT (3)
+  //   - missing file / bare --carrier -> CONFIG_ERROR (2) (handled above)
+  if (!result.recognized || !result.valid) {
+    const codes = result.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier check: contract not recognized or drifted (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   process.exit(EXIT.SUCCESS);
 }
