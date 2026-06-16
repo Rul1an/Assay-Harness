@@ -187,7 +187,7 @@ export function validateSupplyChainConformance(raw: unknown): SupplyChainValidat
         {
           code: "CARRIER_SCHEMA_MISMATCH",
           message: `Expected schema ${SUPPLY_CHAIN_CONFORMANCE_SCHEMA}; got ${
-            typeof raw.schema === "string" ? JSON.stringify(raw.schema) : "(missing)"
+            raw.schema === undefined ? "(missing)" : JSON.stringify(raw.schema)
           }`,
           path: "schema",
         },

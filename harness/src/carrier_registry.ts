@@ -31,7 +31,9 @@ const ADAPTERS: Record<string, CarrierAdapter> = {
 
 /** Return the adapter for a schema id, or `undefined` when none is registered. */
 export function getCarrierAdapter(schemaId: string): CarrierAdapter | undefined {
-  return ADAPTERS[schemaId];
+  // Own-property lookup only: an arbitrary schema id must never resolve to an
+  // inherited Object.prototype member (e.g. "toString", "constructor").
+  return Object.prototype.hasOwnProperty.call(ADAPTERS, schemaId) ? ADAPTERS[schemaId] : undefined;
 }
 
 /** Schema ids with a registered adapter (for usage/help and tests). */

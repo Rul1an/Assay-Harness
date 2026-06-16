@@ -194,6 +194,9 @@ test("sarif: emits 2.1.0 with namespaced carrier rule ids and never on a clean c
 test("registry resolves the supply-chain adapter and rejects unknown schemas", () => {
   assert.ok(getCarrierAdapter(SUPPLY_CHAIN_CONFORMANCE_SCHEMA));
   assert.equal(getCarrierAdapter("assay.unknown_carrier.v0"), undefined);
+  // own-property lookup: a prototype key must never resolve to an adapter
+  assert.equal(getCarrierAdapter("toString"), undefined);
+  assert.equal(getCarrierAdapter("constructor"), undefined);
   assert.ok(registeredCarrierSchemas().includes(SUPPLY_CHAIN_CONFORMANCE_SCHEMA));
   assert.equal(peekCarrierSchema({ schema: "x" }), "x");
   assert.equal(peekCarrierSchema("nope"), undefined);
