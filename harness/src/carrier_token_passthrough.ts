@@ -310,7 +310,15 @@ export function formatTokenPassthroughMarkdown(report: TokenPassthroughReport): 
 }
 
 function xmlEscape(value: string): string {
-  return value
+  // Replace XML 1.0 forbidden control characters (they cannot appear even escaped)
+  // with U+FFFD, then escape entities, so a control byte in producer-supplied text
+  // cannot produce malformed JUnit that breaks CI parsers.
+  let cleaned = "";
+  for (const ch of value) {
+    const cp = ch.codePointAt(0) ?? 0;
+    cleaned += cp < 0x20 && cp !== 0x09 && cp !== 0x0a && cp !== 0x0d ? "�" : ch;
+  }
+  return cleaned
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")

@@ -1360,6 +1360,17 @@ function cmdTrustBasis(args: Record<string, string | boolean>): void {
   process.exit(EXIT.CONFIG_ERROR);
 }
 
+function carrierFormat(args: Record<string, string | boolean>): "markdown" | "json" {
+  const format = args.format === undefined ? "markdown" : args.format;
+  if (format !== "markdown" && format !== "json") {
+    console.error(
+      `[config_error] --format must be markdown or json; got ${JSON.stringify(args.format)}`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  return format;
+}
+
 function cmdCarrier(args: Record<string, string | boolean>): void {
   const subcommand = args._file as string | undefined;
   if (subcommand === "supply-chain") {
@@ -1387,7 +1398,7 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
 function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
   const outDir = args["out-dir"] as string | undefined;
-  const format = (args.format as string) ?? "markdown";
+  const format = carrierFormat(args);
 
   // Bare `--carrier` without a value parses as `true`; require a non-empty path.
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1454,7 +1465,7 @@ function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
 function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
   const outDir = args["out-dir"] as string | undefined;
-  const format = (args.format as string) ?? "markdown";
+  const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
     console.error(
@@ -1514,7 +1525,7 @@ function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
 function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
   const outDir = args["out-dir"] as string | undefined;
-  const format = (args.format as string) ?? "markdown";
+  const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
     console.error(

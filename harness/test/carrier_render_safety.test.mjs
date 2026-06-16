@@ -102,3 +102,40 @@ test("CLI exit codes: clean=0, leak=6, truncation-order=6, wrong-schema=3, missi
   assert.equal(runCli("--carrier", fixture("wrong-schema.conformance.json")).status, 3);
   assert.equal(runCli("--carrier", "/nonexistent/x.json").status, 2);
 });
+
+test("CLI: invalid --format -> exit 2 (config_error)", () => {
+  assert.equal(runCli("--carrier", fixture("clean.conformance.json"), "--format", "xml").status, 2);
+});
+
+test("junit replaces XML-forbidden control characters with U+FFFD", () => {
+  const ctrl = String.fromCharCode(1);
+  const report = {
+    carrier_path: "x",
+    validation: {
+      valid: true,
+      errors: [],
+      carrier: { schema: RENDER_SAFETY_CONFORMANCE_SCHEMA, corpus_digest: "x", sinks: [] },
+    },
+    passed: false,
+    sinks: [
+      {
+        sink: {
+          sink: `std${ctrl}out`,
+          renderer: "assay-core",
+          hostile_probe_count: 1,
+          benign_control_count: 1,
+          raw_secret_leak_count: 1,
+          raw_pii_leak_count: 0,
+          terminal_control_leak_count: 0,
+          redaction_before_truncation: true,
+          benign_preserved: true,
+          sink_specific_encoding: "x",
+        },
+        issues: ["raw_secret_leak_count=1"],
+      },
+    ],
+  };
+  const junit = formatRenderSafetyJUnit(report);
+  assert.ok(!junit.includes(ctrl), "XML-forbidden control byte must be stripped");
+  assert.ok(junit.includes("�"), "stripped control byte is replaced with U+FFFD");
+});

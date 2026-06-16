@@ -90,3 +90,33 @@ test("CLI exit codes: clean=0, leak=6, wrong-schema=3, missing=2", () => {
   assert.equal(runCli("--carrier", fixture("wrong-schema.conformance.json")).status, 3);
   assert.equal(runCli("--carrier", "/nonexistent/x.json").status, 2);
 });
+
+test("CLI: invalid --format -> exit 2 (config_error)", () => {
+  assert.equal(runCli("--carrier", fixture("clean.conformance.json"), "--format", "xml").status, 2);
+});
+
+test("junit replaces XML-forbidden control characters with U+FFFD", () => {
+  const ctrl = String.fromCharCode(1);
+  const report = {
+    carrier_path: "x",
+    validation: {
+      valid: true,
+      errors: [],
+      carrier: {
+        schema: TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA,
+        topology: "t",
+        probed_inbound_auth_sources: [],
+        outbound_channels: [],
+        transparent_relay: { in_scope: false, reason: "r" },
+        non_claims: [],
+      },
+    },
+    passed: false,
+    channels: [
+      { channel: { channel: `hdr${ctrl}`, checked: true, leak_count: 1, pass: false }, issue: "leak_count=1" },
+    ],
+  };
+  const junit = formatTokenPassthroughJUnit(report);
+  assert.ok(!junit.includes(ctrl), "XML-forbidden control byte must be stripped");
+  assert.ok(junit.includes("�"), "stripped control byte is replaced with U+FFFD");
+});
