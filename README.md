@@ -157,6 +157,43 @@ policy-aware review is a separate step. See
 `harness/fixtures/supply-chain-conformance/` and
 `demo/run-supply-chain-conformance-gate.sh`.
 
+## Render-safety conformance carrier gate (`carrier render-safety`)
+
+Assay (`crates/assay-core/src/render_safety`) emits an
+`assay.render_safety_conformance.v0` carrier: per render sink it records raw
+secret / PII / terminal-control leak counts, redaction-before-truncation, and
+benign-preserved. The Harness gates CI on those facts.
+
+```bash
+npx tsx harness/src/cli.ts carrier render-safety \
+  --carrier path/to/render-safety-conformance.json \
+  --out-dir results/render-safety-conformance
+```
+
+A sink is clean iff it leaked no raw secret/PII/terminal-control, preserved benign
+output, and honoured redaction-before-truncation; the report is clean iff every
+sink is clean. This covers render output safety per sink only, not secret
+lifecycle, vaulting, or rotation.
+
+## Token-passthrough conformance carrier gate (`carrier token-passthrough`)
+
+Assay (`crates/assay-mcp-server/src/token_passthrough.rs`) emits an
+`assay.token_passthrough_conformance.v0` carrier: value-free, it records that a
+consumed inbound authentication value is not re-emitted on a checked outbound
+channel (transport header, JSON body, spawned env). The Harness gates CI on those
+per-channel facts.
+
+```bash
+npx tsx harness/src/cli.ts carrier token-passthrough \
+  --carrier path/to/token-passthrough-conformance.json \
+  --out-dir results/token-passthrough-conformance
+```
+
+The carrier is clean iff every checked outbound channel reports `leak_count == 0`
+and is not `pass == false`; `not_applicable` channels are out of scope. This covers
+the confused-deputy boundary only, not arbitrary payload scrubbing, provider token
+grants, or token lifecycle.
+
 ## The PR Gate Flow
 
 ```

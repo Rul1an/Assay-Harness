@@ -1,0 +1,17 @@
+{
+  "schema": "assay.token_passthrough_conformance.v1",
+  "topology": "consuming_path",
+  "probed_inbound_auth_sources": [
+    { "source": "initialize.params.authorization", "probed": true, "consumed": true }
+  ],
+  "outbound_channels": [
+    { "channel": "transport_header", "checked": true, "leak_count": 0, "pass": true }
+  ],
+  "transparent_relay": {
+    "in_scope": false,
+    "reason": "relay path does not consume inbound auth"
+  },
+  "non_claims": [
+    "tracks only consumed inbound authentication values"
+  ]
+}

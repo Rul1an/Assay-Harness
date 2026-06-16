@@ -14,6 +14,14 @@ import {
   validateSupplyChainConformance,
   type CarrierValidationError,
 } from "./carrier_supply_chain.js";
+import {
+  RENDER_SAFETY_CONFORMANCE_SCHEMA,
+  validateRenderSafetyConformance,
+} from "./carrier_render_safety.js";
+import {
+  TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA,
+  validateTokenPassthroughConformance,
+} from "./carrier_token_passthrough.js";
 
 export interface CarrierAdapter {
   /** The exact frozen schema id this adapter consumes. */
@@ -26,6 +34,14 @@ const ADAPTERS: Record<string, CarrierAdapter> = {
   [SUPPLY_CHAIN_CONFORMANCE_SCHEMA]: {
     schema: SUPPLY_CHAIN_CONFORMANCE_SCHEMA,
     validate: validateSupplyChainConformance,
+  },
+  [RENDER_SAFETY_CONFORMANCE_SCHEMA]: {
+    schema: RENDER_SAFETY_CONFORMANCE_SCHEMA,
+    validate: validateRenderSafetyConformance,
+  },
+  [TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA]: {
+    schema: TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA,
+    validate: validateTokenPassthroughConformance,
   },
 };
 

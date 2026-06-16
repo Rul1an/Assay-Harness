@@ -1,0 +1,19 @@
+{
+  "schema": "assay.token_passthrough_conformance.v0",
+  "topology": "consuming_path",
+  "probed_inbound_auth_sources": [
+    { "source": "initialize.params.authorization", "probed": true, "consumed": true }
+  ],
+  "outbound_channels": [
+    { "channel": "transport_header", "checked": true, "leak_count": 1, "pass": false },
+    { "channel": "json_body", "checked": true, "leak_count": 0, "pass": true },
+    { "channel": "environment", "checked": false, "not_applicable": true, "leak_count": 0 }
+  ],
+  "transparent_relay": {
+    "in_scope": false,
+    "reason": "relay path does not consume inbound auth; verbatim JSON-RPC forwarding is relay behaviour, not consumed-token passthrough"
+  },
+  "non_claims": [
+    "tracks only consumed inbound authentication values"
+  ]
+}
