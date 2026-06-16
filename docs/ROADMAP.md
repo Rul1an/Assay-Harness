@@ -4,6 +4,20 @@
 
 ## Main after v0.6.1 — current
 
+### Conformance carrier gate (supply_chain_conformance.v0) — added on main
+- New `carrier supply-chain` verb: consumes `assay.supply_chain_conformance.v0`,
+  validates the frozen v0 shape, gates on the producer-owned `policy_result`, and
+  projects Markdown / JUnit / SARIF
+- Consumer-not-owner: surfaces the carrier's verdict, never converts a passing
+  carrier into approval, certification, compliance, provider trust, runtime truth,
+  or safety; an unknown status / `policy_result` is a contract error, not a silent
+  pass
+- First adapter in a small carrier registry (`carrier_registry.ts`); future
+  conformance carriers register without changing the dispatch shape
+- The released-binary recipe awaits an assay CLI that emits the carrier (today it
+  is produced by the assay-registry library); the demo and tests run against
+  vendored real carrier bytes
+
 ### Assay compatibility-line bump to v3.27.0 — done on main
 - Current target: Assay `v3.8.0` minimum / `v3.27.0` proof
 - The `Harness CI` release-binary compatibility job passed against the

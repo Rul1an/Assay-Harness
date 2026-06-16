@@ -124,6 +124,21 @@ Tier 3C — CI-blocking gate over the same precomputed `assay.runner.cross_runti
 
 > Same v0 cross-runtime policy as `report`: removed entries never block, SDK metadata changes are side-band only and NEVER trigger exit 6, tampered out-of-scope markers fail validation with exit 3.
 
+### `assay-harness carrier supply-chain`
+
+Consume an `assay.supply_chain_conformance.v0` carrier, validate its frozen
+shape, gate on the producer-owned `policy_result`, and project Markdown / JUnit /
+SARIF. The gate surfaces the producer's verdict; it does not re-derive one from
+the dimensions.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Carrier valid and `policy_result` is `pass` | 0 |
+| Carrier valid but `policy_result` is `fail` or `incomplete` (incomplete is never clean) | 6 |
+| Carrier malformed, wrong/unknown schema id, unknown `CheckStatus`, unknown `policy_result`, or contract-shape violation | 3 |
+| `--carrier` missing, or the carrier file is not found | 2 |
+| Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |
