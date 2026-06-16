@@ -194,6 +194,24 @@ and is not `pass == false`; `not_applicable` channels are out of scope. This cov
 the confused-deputy boundary only, not arbitrary payload scrubbing, provider token
 grants, or token lifecycle.
 
+## Carrier contract-drift check (`carrier check`)
+
+`carrier check` dispatches any conformance carrier by its `schema` id to the
+registered adapter and reports whether the Harness recognizes the contract and the
+carrier matches its frozen shape. It is the schema / shape dimension only, distinct
+from the per-carrier gate verbs: a well-formed carrier that reports a leak is
+contract-valid here (exit 0) and fails its own gate verb (exit 6) separately.
+
+```bash
+npx tsx harness/src/cli.ts carrier check --carrier path/to/conformance.json
+```
+
+An unknown or unregistered `schema` id, a missing/non-string `schema`, malformed
+JSON, or a recognized schema whose shape has drifted is a contract error (exit 3):
+the Harness never silently accepts a carrier it does not recognize. A golden-drift
+test pins every registered schema's shape, so a future producer change is caught
+rather than mis-parsed.
+
 ## The PR Gate Flow
 
 ```
