@@ -139,6 +139,34 @@ the dimensions.
 | `--carrier` missing, or the carrier file is not found | 2 |
 | Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
 
+### `assay-harness carrier render-safety`
+
+Consume an `assay.render_safety_conformance.v0` carrier, validate the frozen
+shape, gate on the producer-reported per-sink facts, and project Markdown / JUnit /
+SARIF.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Carrier valid and every sink is clean (no raw secret/PII/control leak, redaction-before-truncation, benign-preserved) | 0 |
+| Carrier valid but any sink leaked, truncated before redacting, or over-redacted benign output | 6 |
+| Carrier malformed, wrong/unknown schema id, or contract-shape violation | 3 |
+| `--carrier` missing, or the carrier file is not found | 2 |
+| Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
+
+### `assay-harness carrier token-passthrough`
+
+Consume an `assay.token_passthrough_conformance.v0` carrier, validate the frozen
+shape, gate on the producer-reported per-channel facts, and project Markdown /
+JUnit / SARIF.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Carrier valid and no checked outbound channel leaked or reported `pass=false` | 0 |
+| Carrier valid but a checked outbound channel reports `leak_count > 0` or `pass=false` | 6 |
+| Carrier malformed, wrong/unknown schema id, or contract-shape violation | 3 |
+| `--carrier` missing, or the carrier file is not found | 2 |
+| Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

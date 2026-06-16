@@ -1,0 +1,18 @@
+{
+  "schema": "assay.render_safety_conformance.v0",
+  "corpus_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "sinks": [
+    {
+      "sink": "json",
+      "renderer": "assay-core",
+      "hostile_probe_count": 10,
+      "benign_control_count": 5,
+      "raw_secret_leak_count": 0,
+      "raw_pii_leak_count": 0,
+      "terminal_control_leak_count": 0,
+      "redaction_before_truncation": false,
+      "benign_preserved": true,
+      "sink_specific_encoding": "json_serializer"
+    }
+  ]
+}

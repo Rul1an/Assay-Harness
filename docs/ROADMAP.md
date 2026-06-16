@@ -4,6 +4,17 @@
 
 ## Main after v0.6.1 — current
 
+### Conformance carrier gate: render-safety + token-passthrough — added on main
+- New `carrier render-safety` verb: consumes `assay.render_safety_conformance.v0`,
+  gates on per-sink leak / redaction-order / benign-preserved facts
+- New `carrier token-passthrough` verb: consumes
+  `assay.token_passthrough_conformance.v0`, gates on per-channel leak facts (a
+  consumed inbound auth value not re-emitted on a checked outbound channel)
+- Both register in the carrier registry next to supply-chain; same consumer-not-owner
+  boundary, MD/JUnit/SARIF projections, and frozen-shape + unknown-rejected validation
+- Released-binary recipes await assay CLI emitters; the tests run against the real
+  render-safety golden and the producer's deterministic token-passthrough report
+
 ### Conformance carrier gate (supply_chain_conformance.v0) — added on main
 - New `carrier supply-chain` verb: consumes `assay.supply_chain_conformance.v0`,
   validates the frozen v0 shape, gates on the producer-owned `policy_result`, and

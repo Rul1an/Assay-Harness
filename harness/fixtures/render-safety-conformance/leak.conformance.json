@@ -1,0 +1,18 @@
+{
+  "schema": "assay.render_safety_conformance.v0",
+  "corpus_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "sinks": [
+    {
+      "sink": "stdout",
+      "renderer": "assay-core",
+      "hostile_probe_count": 10,
+      "benign_control_count": 5,
+      "raw_secret_leak_count": 1,
+      "raw_pii_leak_count": 0,
+      "terminal_control_leak_count": 0,
+      "redaction_before_truncation": true,
+      "benign_preserved": true,
+      "sink_specific_encoding": "terminal_safe"
+    }
+  ]
+}

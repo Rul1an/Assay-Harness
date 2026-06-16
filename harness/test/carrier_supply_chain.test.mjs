@@ -246,3 +246,8 @@ test("CLI: bare carrier verb -> exit 2 (config_error)", () => {
   const r = spawnSync(process.execPath, [CLI, "carrier"], { encoding: "utf8" });
   assert.equal(r.status, 2, r.stderr);
 });
+
+test("CLI: invalid --format -> exit 2 (config_error)", () => {
+  const r = runCli("--carrier", fixture("pass.conformance.json"), "--format", "xml");
+  assert.equal(r.status, 2, r.stderr);
+});

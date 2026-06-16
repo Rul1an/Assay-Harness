@@ -4,6 +4,16 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added two more conformance-carrier gates: `carrier render-safety`
+  (`assay.render_safety_conformance.v0`, clean iff every render sink leaked no raw
+  secret/PII/terminal-control, preserved benign output, and redacted before
+  truncating) and `carrier token-passthrough`
+  (`assay.token_passthrough_conformance.v0`, clean iff no checked outbound channel
+  re-emitted a consumed inbound auth value). Both validate the frozen shape, gate on
+  producer-reported facts, project Markdown / JUnit / SARIF, and register in the
+  carrier registry. Same consumer-not-owner boundary; vendored real / deterministic
+  fixtures. No change to existing verbs or the exit-code taxonomy.
+
 - Added the `carrier supply-chain` conformance-carrier gate: consumes
   `assay.supply_chain_conformance.v0`, validates the frozen v0 shape, gates on the
   producer-owned `policy_result` (pass is clean; fail/incomplete are not), and

@@ -48,6 +48,18 @@ import {
   writeSupplyChainProjections,
 } from "./carrier_supply_chain.js";
 import {
+  formatRenderSafetyMarkdown,
+  formatRenderSafetySummary,
+  loadRenderSafetyReport,
+  writeRenderSafetyProjections,
+} from "./carrier_render_safety.js";
+import {
+  formatTokenPassthroughMarkdown,
+  formatTokenPassthroughSummary,
+  loadTokenPassthroughReport,
+  writeTokenPassthroughProjections,
+} from "./carrier_token_passthrough.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -120,6 +132,8 @@ Commands:
   runner sandbox report --events <events.json> [--format markdown|json]
   runner sandbox gate --events <events.json> [--allow-degraded] [--format markdown|json]
   carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]
+  carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]
+  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -1346,16 +1360,37 @@ function cmdTrustBasis(args: Record<string, string | boolean>): void {
   process.exit(EXIT.CONFIG_ERROR);
 }
 
+function carrierFormat(args: Record<string, string | boolean>): "markdown" | "json" {
+  const format = args.format === undefined ? "markdown" : args.format;
+  if (format !== "markdown" && format !== "json") {
+    console.error(
+      `[config_error] --format must be markdown or json; got ${JSON.stringify(args.format)}`,
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  return format;
+}
+
 function cmdCarrier(args: Record<string, string | boolean>): void {
   const subcommand = args._file as string | undefined;
   if (subcommand === "supply-chain") {
     cmdCarrierSupplyChain(args);
     return;
   }
+  if (subcommand === "render-safety") {
+    cmdCarrierRenderSafety(args);
+    return;
+  }
+  if (subcommand === "token-passthrough") {
+    cmdCarrierTokenPassthrough(args);
+    return;
+  }
   console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
-      "  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]",
+      "  carrier supply-chain --carrier <supply-chain-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
+      "  carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
+      "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
@@ -1363,7 +1398,7 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
 function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
   const outDir = args["out-dir"] as string | undefined;
-  const format = (args.format as string) ?? "markdown";
+  const format = carrierFormat(args);
 
   // Bare `--carrier` without a value parses as `true`; require a non-empty path.
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1419,6 +1454,126 @@ function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
   if (!report.validation.valid) {
     const codes = report.validation.errors.map((e) => e.code).join(",");
     console.error(`[artifact_contract] carrier supply-chain: invalid carrier (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (!report.passed) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = args["out-dir"] as string | undefined;
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <render-safety-conformance.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier render-safety --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadRenderSafetyReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] Render-safety carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeRenderSafetyProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatRenderSafetyMarkdown(report).trimEnd());
+  }
+  console.log(formatRenderSafetySummary(report));
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.log(
+      `[carrier-render-safety] artifacts: ${outDir}/render-safety-conformance.{md,junit.xml,sarif.json}`,
+    );
+  }
+
+  // Exit routing: invalid carrier -> ARTIFACT_CONTRACT (3); a sink the producer
+  // reports as not clean (any raw leak, truncation-order, or benign-overredaction)
+  // -> REGRESSION (6); all sinks clean -> SUCCESS (0). The gate consumes the
+  // producer-reported per-sink facts; it does not re-render or re-judge.
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier render-safety: invalid carrier (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (!report.passed) {
+    process.exit(EXIT.REGRESSION);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = args["out-dir"] as string | undefined;
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <token-passthrough-conformance.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier token-passthrough --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadTokenPassthroughReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] Token-passthrough carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeTokenPassthroughProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatTokenPassthroughMarkdown(report).trimEnd());
+  }
+  console.log(formatTokenPassthroughSummary(report));
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.log(
+      `[carrier-token-passthrough] artifacts: ${outDir}/token-passthrough-conformance.{md,junit.xml,sarif.json}`,
+    );
+  }
+
+  // Exit routing: invalid carrier -> ARTIFACT_CONTRACT (3); a checked outbound
+  // channel the producer reports as leaked or failed -> REGRESSION (6); no checked
+  // channel leaked -> SUCCESS (0). The gate consumes the producer-reported per-channel
+  // facts; not_applicable channels are out of scope.
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier token-passthrough: invalid carrier (${codes})`);
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   if (!report.passed) {
