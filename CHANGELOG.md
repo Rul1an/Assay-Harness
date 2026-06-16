@@ -13,11 +13,13 @@ All notable changes to Assay Harness will be documented in this file.
   the artifact and surfaces it under a dedicated `enforcement` block. Docs only;
   no schema-consumption, gate, or report semantics changed.
 
-- Updated the release-binary compatibility rail to Assay `v3.19.1`: the manual
+- Updated the release-binary compatibility rail to Assay `v3.27.0`: the manual
   `Harness CI` `assay_version` default/fallback, README, roadmap, and
   `docs/ASSAY_COMPATIBILITY.md` now point at the latest proved Assay release
-  line. Proof/docs only; no Harness CLI, schema consumption, or gate/report
-  semantics changed.
+  line. This records the first hosted proof since `v3.19.1` (run 27651437917,
+  2026-06-17) and aligns the workflow default, which had moved to `v3.26.0` in
+  #115 without a recorded proof, to the proved `v3.27.0` binary. Proof/docs
+  only; no Harness CLI, schema consumption, or gate/report semantics changed.
 
 ## [0.8.0] - 2026-06-06
 

@@ -1,8 +1,21 @@
 # Roadmap
 
-> Last updated: 2026-06-07
+> Last updated: 2026-06-17
 
 ## Main after v0.6.1 — current
+
+### Assay compatibility-line bump to v3.27.0 — done on main
+- Current target: Assay `v3.8.0` minimum / `v3.27.0` proof
+- The `Harness CI` release-binary compatibility job passed against the
+  `v3.27.0` binary in
+  [run 27651437917](https://github.com/Rul1an/Assay-Harness/actions/runs/27651437917)
+  on 2026-06-17, the first recorded proof since `v3.19.1`
+- Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the workflow
+  `assay_version` default were updated to `v3.27.0`; the default had moved to
+  `v3.26.0` in #115 without a recorded proof, and this aligns it to the proved
+  binary
+- This is proof/docs only: no Harness gate/report semantics and no Runner
+  schema-consumption tiers changed
 
 ### Assay compatibility-line bump to v3.19.1 — done on main
 - Current target: Assay `v3.8.0` minimum / `v3.19.1` proof
