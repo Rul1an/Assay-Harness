@@ -83,6 +83,11 @@ import {
   formatSuiteSummary,
 } from "./suite_compatibility.js";
 import {
+  buildEvidencePack,
+  verifyEvidencePack,
+  formatPackMarkdown,
+} from "./suite_evidence_pack.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -1878,6 +1883,85 @@ function cmdSuiteMatrix(args: Record<string, string | boolean>): void {
   process.exit(EXIT.SUCCESS);
 }
 
+function evidencePackArg(args: Record<string, string | boolean>, name: string): string {
+  const v = args[name];
+  if (typeof v !== "string" || v.length === 0) {
+    console.error(`[config_error] --${name} <path> is required`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  return v;
+}
+
+function cmdEvidencePack(args: Record<string, string | boolean>): void {
+  const subcommand = args._file as string | undefined;
+  if (subcommand === "create") {
+    cmdEvidencePackCreate(args);
+    return;
+  }
+  if (subcommand === "verify") {
+    cmdEvidencePackVerify(args);
+    return;
+  }
+  console.error("[config_error] unknown evidence-pack subcommand; expected: create | verify");
+  console.error("Usage: evidence-pack create --carrier <p> --suite-matrix <p> --provenance <p> --markdown <p> --out <dir>");
+  console.error("       evidence-pack verify <dir> [--format markdown|json]");
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdEvidencePackCreate(args: Record<string, string | boolean>): void {
+  const outDir = args.out;
+  if (typeof outDir !== "string" || outDir.length === 0) {
+    console.error("[config_error] --out <dir> is required");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const inputs = {
+    carrierPath: evidencePackArg(args, "carrier"),
+    suiteMatrixPath: evidencePackArg(args, "suite-matrix"),
+    provenancePath: evidencePackArg(args, "provenance"),
+    markdownPath: evidencePackArg(args, "markdown"),
+    // Keep in sync with package.json version + the recipe's harness.version.
+    harnessVersion: "0.8.0",
+  };
+  try {
+    const manifest = buildEvidencePack(inputs, outDir);
+    console.error(`[evidence-pack] wrote ${outDir} (digest ${manifest.manifest.digest})`);
+    // Fail closed: a pack we just built must self-verify.
+    const v = verifyEvidencePack(outDir);
+    if (!v.valid) {
+      console.error(`[ci_formatter] built pack failed self-verify: ${v.errors.map((e) => e.code).join(",")}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  } catch (e) {
+    console.error(`[ci_formatter] evidence-pack create failed: ${(e as Error).message}`);
+    process.exit(EXIT.CI_FORMATTER);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdEvidencePackVerify(args: Record<string, string | boolean>): void {
+  // `evidence-pack verify <dir>` -> the dir is the third positional (_subfile); --pack also works.
+  const packDir = (args._subfile as string | undefined) ?? (args.pack as string | undefined);
+  if (typeof packDir !== "string" || packDir.length === 0) {
+    console.error("[config_error] evidence-pack verify <dir> requires a pack directory");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const format = carrierFormat(args);
+  const result = verifyEvidencePack(packDir);
+
+  // `--format json` emits only the JSON document on stdout so it stays parseable.
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    if (result.manifest) console.log(formatPackMarkdown(result.manifest));
+    console.log(`[evidence-pack] ${result.valid ? "VALID" : "INVALID"}`);
+  }
+  if (!result.valid) {
+    console.error(`[artifact_contract] evidence-pack verify: ${result.errors.map((e) => e.code).join(",")}`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
 function cmdPolicy(args: Record<string, string | boolean>): void {
   const policyPath = (args.policy as string) ?? resolve(__dirname, "..", "policy.yaml");
   const toolName = args.tool as string;
@@ -2026,6 +2110,9 @@ switch (command) {
     break;
   case "suite":
     cmdSuite(args);
+    break;
+  case "evidence-pack":
+    cmdEvidencePack(args);
     break;
   case "verify":
     cmdVerify(args);

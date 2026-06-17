@@ -596,10 +596,31 @@ jobs:
             echo "- \`runner_os\`: \`${RUNNER_OS}\` (ubuntu-latest)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload inventory carrier artifact
+          # Emit suite.recipe_provenance.v0 as a file so the Evidence Pack (H-next-3)
+          # can bundle it — the same proof facts, machine-readable.
+          cat > /tmp/recipe.provenance.json <<PROV
+          {
+            "schema": "suite.recipe_provenance.v0",
+            "recipe": "assay_mcp_inventory_e2e",
+            "hosted_run": "${GITHUB_RUN_ID}",
+            "runner_os": "ubuntu-latest",
+            "hosted": true,
+            "ambient_scan": false,
+            "assay": { "version": "${ASSAY_VERSION}", "binary_digest": "${binary_digest}", "command": "assay mcp inventory --no-process-scan --out /tmp/inventory.json" },
+            "fixture": { "path": "${fixture}", "digest": "${fixture_digest}" },
+            "artifact": { "path": "carriers/assay.mcp_server_inventory.v0.json", "digest": "${artifact_digest}" },
+            "harness": { "version": "0.8.0", "command": "assay-harness carrier inventory --carrier carriers/assay.mcp_server_inventory.v0.json" },
+            "result": { "exit_code": 0, "classification": "success" }
+          }
+          PROV
+          node -e "JSON.parse(require('fs').readFileSync('/tmp/recipe.provenance.json','utf-8'))" # fail if not valid JSON
+
+      - name: Upload inventory carrier + provenance artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: inventory-carrier
-          path: /tmp/inventory.json
+          path: |
+            /tmp/inventory.json
+            /tmp/recipe.provenance.json
           if-no-files-found: warn

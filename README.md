@@ -294,6 +294,35 @@ A malformed matrix, an unknown enum state, a digest mismatch, a `proven` end-to-
 without its `hosted_run` + `artifact_digest`, or (in registry mode) drift between the
 matrix and the registry is a contract error (exit 3). An unknown state is never clean.
 
+## Evidence Pack (`evidence-pack create` / `evidence-pack verify`)
+
+An Evidence Pack (`suite.evidence_pack.v0`) is a deterministic, digest-bound bundle of a
+proven carrier recipe. It binds raw Assay carrier bytes, the Harness Markdown projection,
+the suite compatibility matrix, and the recipe provenance (`suite.recipe_provenance.v0`) by
+digest. It creates no new evidence, approves no policy, and does not replace Plimsoll — it is
+VSA-shaped, not a SLSA VSA. v0 carries the proven inventory recipe only.
+
+```bash
+# Build a pack from a proven recipe's outputs
+npx tsx harness/src/cli.ts evidence-pack create \
+  --carrier carriers/assay.mcp_server_inventory.v0.json \
+  --suite-matrix harness/suite-compatibility.json \
+  --provenance recipe.provenance.json \
+  --markdown inventory.review.md \
+  --out evidence-pack/
+
+# Verify a pack (strict)
+npx tsx harness/src/cli.ts evidence-pack verify evidence-pack/
+```
+
+`verify` separates source-of-truth (carrier, matrix, provenance) from lossy projections
+(every projection must resolve to a source digest), enforces path safety (no `..` / absolute
+/ symlink / unlisted / escaping paths), and holds the **coherence invariant**: the carrier
+bytes, the matrix's proven row, and the provenance must all agree on the same artifact and
+the same proof. A pack cannot be internally consistent by digest while lying about where the
+evidence came from. The manifest digest is deterministic over the evidence (volatile metadata
+excluded), so identical evidence yields the same pack identity.
+
 ## The PR Gate Flow
 
 ```
