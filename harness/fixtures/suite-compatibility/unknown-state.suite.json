@@ -22,7 +22,7 @@
       "reviews": {
         "reviewer": "plimsoll",
         "availability": "private",
-        "min_version": "0.13.0"
+        "version_disclosure": "not_public"
       },
       "proof": {
         "harness_consumption": "proven",
@@ -53,7 +53,7 @@
       "reviews": {
         "reviewer": "plimsoll",
         "availability": "private",
-        "min_version": "0.13.0"
+        "version_disclosure": "not_public"
       },
       "proof": {
         "harness_consumption": "proven",
@@ -111,7 +111,7 @@
       "reviews": {
         "reviewer": "plimsoll",
         "availability": "private",
-        "min_version": "0.13.0"
+        "version_disclosure": "not_public"
       },
       "proof": {
         "harness_consumption": "proven",
@@ -144,7 +144,7 @@
       "reviews": {
         "reviewer": "plimsoll",
         "availability": "private",
-        "min_version": "0.13.0"
+        "version_disclosure": "not_public"
       },
       "proof": {
         "harness_consumption": "proven",
@@ -184,6 +184,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:7d9ff7f563d70c79f8656adc97daeb8a3d228c4690878b28b0a11a6594471b19"
+    "digest": "sha256:5a935c41363a0b6607dd7e3be5ab609059d68f224478c887dc143cc3f7aa2a1e"
   }
 }
