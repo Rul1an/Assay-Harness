@@ -335,8 +335,10 @@ media-type family and the harness-posture flags, and holds the binding: the atte
 equal `recipe_provenance.release_asset.digest` — the release asset the recipe downloaded and
 verified before extracting the binary. GitHub attested the release asset, **not** the extracted
 binary; `assay.binary_digest` stays a separate field and is never equated with the attested subject.
-The Harness does **not** verify the attestation's signature, trusted root, or transparency log — the
-bundle is included and digest-bound, never asserted as trusted.
+The Harness decodes and cross-checks the attestation subject against
+`recipe_provenance.release_asset.digest`; it does **not** verify the attestation's signature, trusted
+root, transparency-log (Rekor) inclusion, issuer identity, or policy compliance — the bundle is
+included and digest-bound, never asserted as trusted or verified.
 
 ## The PR Gate Flow
 

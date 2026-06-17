@@ -11,8 +11,10 @@ All notable changes to Assay Harness will be documented in this file.
   binding `external.subject_digest == recipe_provenance.release_asset.digest` (the release asset the
   recipe consumed). `v0` stays frozen — `external_evidence` is v1-only in the core digest, so v0 pack
   identities never change. GitHub attested the release asset, not the extracted binary
-  (`assay.binary_digest` stays separate); signature / trusted-root / transparency-log trust is never
-  checked by the Harness. Exit codes unchanged (`0` / `2` / `3`; no `6`). `evidence-pack verify`
+  (`assay.binary_digest` stays separate); signature / trusted-root / transparency-log (Rekor) /
+  issuer-identity / policy-compliance trust is never checked by the Harness — the bundle is
+  cross-checked and digest-bound, never asserted as verified. Exit codes unchanged (`0` / `2` / `3`;
+  no `6`). `evidence-pack verify`
   auto-detects v0 vs v1; a create-side flag is a later slice.
 
 - Pinned a real, public **GitHub artifact-attestation** fixture (the `Rul1an/assay` v3.27.0 release
