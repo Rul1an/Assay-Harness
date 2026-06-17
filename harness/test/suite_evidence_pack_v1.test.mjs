@@ -161,6 +161,27 @@ test("an unlisted file in external/ is rejected", () => {
   assert.ok(codes(p).includes("PACK_UNLISTED_FILE"));
 });
 
+// external_evidence gets the SAME file discipline as pack artifacts (it joins allEntries) — proven
+// directly on external entries, not only transitively via a source_of_truth entry.
+test("an external entry with a traversal path is rejected (path safety on external)", () => {
+  // No reseal: pathSafe rejects "../escape.json" before any read (stale digest co-occurs).
+  const p = mutated((pack) => { const m = readManifest(pack); bundleEntry(m).path = "../escape.json"; writeManifest(pack, m); });
+  assert.ok(codes(p).includes("PACK_PATH_UNSAFE"));
+});
+test("an external entry with an absolute path is rejected (path safety on external)", () => {
+  const p = mutated((pack) => { const m = readManifest(pack); bundleEntry(m).path = "/tmp/escape.json"; writeManifest(pack, m); });
+  assert.ok(codes(p).includes("PACK_PATH_UNSAFE"));
+});
+test("an external entry duplicating another entry's path is rejected (duplicate detection on external)", () => {
+  const p = mutated((pack) => {
+    const m = readManifest(pack);
+    // point the metadata entry at the bundle's path -> two allEntries share one normalized path.
+    m.external_evidence.find((e) => e.role === "external_attestation_metadata").path = bundleEntry(m).path;
+    reseal(pack, m);
+  });
+  assert.ok(codes(p).includes("PACK_PATH_DUPLICATE"));
+});
+
 // --- v0 invariants still enforced on v1 ---
 test("v1 still enforces coherence (carrier bytes vs provenance.artifact)", () => {
   const p = mutated((pack) => { const pr = readProv(pack); pr.artifact.digest = "sha256:" + "5".repeat(64); writeProv(pack, pr); reseal(pack, readManifest(pack)); });
