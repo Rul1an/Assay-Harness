@@ -12,7 +12,7 @@ separate review step.
 
 | Fixture | Source | Notes |
 |---|---|---|
-| `golden.inventory.json` | the real producer golden, vendored verbatim | mixed coverage (one source `not_scanned`, process/network not scanned), so it does **not** support an absence claim |
+| `golden.inventory.json` | the real producer golden, vendored verbatim | mixed coverage (one source `not_scanned`, `process_scan=unavailable`, `network_scan=unsupported`), so it does **not** support an absence claim |
 | `complete-coverage.inventory.json` | synthetic, all sources `complete` | supports an absence claim (every scanned source complete) |
 | `wrong-schema.inventory.json` | synthetic, `v1` schema id with no adapter | contract error (exit 3) |
 

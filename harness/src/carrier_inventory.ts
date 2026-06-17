@@ -242,6 +242,11 @@ export function formatMcpInventorySummary(report: McpInventoryReport): string {
   ].join("\n");
 }
 
+function mdCell(value: string): string {
+  // A pipe or newline in a producer-supplied value would break the Markdown table.
+  return value.replace(/\r\n|\r|\n/g, " ").replaceAll("|", "\\|");
+}
+
 export function formatMcpInventoryMarkdown(report: McpInventoryReport): string {
   const lines: string[] = [];
   lines.push("# MCP Server Inventory (descriptive)");
@@ -271,7 +276,7 @@ export function formatMcpInventoryMarkdown(report: McpInventoryReport): string {
   lines.push("| Source | Coverage |");
   lines.push("| --- | --- |");
   for (const [name, state] of Object.entries(c.scanner_coverage.config_sources)) {
-    lines.push(`| config:${name} | \`${state}\` |`);
+    lines.push(`| config:${mdCell(name)} | \`${state}\` |`);
   }
   lines.push(`| process_scan | \`${c.scanner_coverage.process_scan}\` |`);
   lines.push(`| network_scan | \`${c.scanner_coverage.network_scan}\` |`);
@@ -287,8 +292,10 @@ export function formatMcpInventoryMarkdown(report: McpInventoryReport): string {
     lines.push("| Server | Source | Transport | Credentials (by name) | Observed |");
     lines.push("| --- | --- | --- | --- | --- |");
     for (const s of c.servers) {
-      const creds = s.credential_indicators.length > 0 ? s.credential_indicators.join(", ") : "none";
-      lines.push(`| ${s.server_id} | ${s.source} | ${s.transport} | ${creds} | \`${s.observed_state}\` |`);
+      const creds = s.credential_indicators.length > 0 ? s.credential_indicators.map(mdCell).join(", ") : "none";
+      lines.push(
+        `| ${mdCell(s.server_id)} | ${mdCell(s.source)} | ${mdCell(s.transport)} | ${creds} | \`${mdCell(s.observed_state)}\` |`,
+      );
     }
     lines.push("");
   }

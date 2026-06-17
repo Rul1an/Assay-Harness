@@ -60,6 +60,32 @@ test("markdown surfaces coverage + servers + absence-claim honesty, never alarmi
   }
 });
 
+test("markdown escapes a pipe in a producer-supplied server field", () => {
+  const report = {
+    carrier_path: "x",
+    validation: {
+      valid: true,
+      errors: [],
+      carrier: {
+        schema: MCP_SERVER_INVENTORY_SCHEMA,
+        scanner_coverage: { config_sources: {}, process_scan: "complete", network_scan: "complete" },
+        servers: [
+          {
+            server_id: "a|b", source: "s", transport: "stdio",
+            command_digest: "sha256:x", args_digest: "sha256:y",
+            credential_indicators: [], observed_state: "observed",
+          },
+        ],
+        non_claims: [],
+      },
+    },
+    server_count: 1,
+    supports_absence_claim: true,
+  };
+  const md = formatMcpInventoryMarkdown(report);
+  assert.ok(md.includes("a\\|b"), "a pipe in server_id must be escaped to not break the table");
+});
+
 test("loadMcpInventoryReport reports not_found for a missing path", () => {
   assert.equal(loadMcpInventoryReport("/nonexistent/x.json").not_found, true);
 });
