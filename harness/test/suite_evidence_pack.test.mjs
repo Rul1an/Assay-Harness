@@ -267,9 +267,47 @@ test("a projection whose source_digest resolves to no source is rejected", () =>
   const p = mutated((pack) => { const m = readManifest(pack); m.projections[0].source_digest = BOGUS(9); reseal(pack, m); });
   assert.ok(codes(p).includes("PACK_PROJECTION_NO_SOURCE"));
 });
-test("a projection with no source_digest is rejected", () => {
-  const p = mutated((pack) => { const m = readManifest(pack); delete m.projections[0].source_digest; reseal(pack, m); });
-  assert.ok(codes(p).includes("PACK_PROJECTION_NO_SOURCE"));
+test("a projection with no source_digest is rejected (structural)", () => {
+  // A missing required field is caught by the entry-shape guard (PACK_MANIFEST_SHAPE); a
+  // present-but-unresolvable source_digest is the semantic PACK_PROJECTION_NO_SOURCE above.
+  const p = mutated((pack) => { const m = readManifest(pack); delete m.projections[0].source_digest; writeManifest(pack, m); });
+  assert.ok(codes(p).includes("PACK_MANIFEST_SHAPE"));
+});
+
+// --- second-round outside-diff findings (CodeRabbit Major x3) ---
+test("a v0 pack with more than one projection is rejected", () => {
+  const p = mutated((pack) => {
+    const m = readManifest(pack);
+    cpSync(join(pack, "harness/inventory.review.md"), join(pack, "harness/extra.md"));
+    m.projections.push({ role: "junit", path: "harness/extra.md", lossy: true, source_digest: m.source_of_truth.find((e) => e.role === "assay_carrier").digest, digest: m.projections[0].digest });
+    reseal(pack, m);
+  });
+  assert.ok(codes(p).includes("PACK_PROJECTION_MISSING"));
+});
+test("a null source entry fails closed without throwing", () => {
+  const p = mutated((pack) => { const m = readManifest(pack); m.source_of_truth = [null]; writeManifest(pack, m); });
+  let r;
+  assert.doesNotThrow(() => { r = verifyEvidencePack(p); });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.map((e) => e.code).includes("PACK_MANIFEST_SHAPE"));
+});
+test("a non-string entry path fails closed without throwing", () => {
+  const p = mutated((pack) => { const m = readManifest(pack); m.source_of_truth[0].path = 123; writeManifest(pack, m); });
+  let r;
+  assert.doesNotThrow(() => { r = verifyEvidencePack(p); });
+  assert.ok(r.errors.map((e) => e.code).includes("PACK_MANIFEST_SHAPE"));
+});
+test("a duplicated source role skips the cross-check (digest-clean is single-role gated)", () => {
+  const p = mutated((pack) => {
+    const m = readManifest(pack);
+    cpSync(join(pack, "carriers/assay.mcp_server_inventory.v0.json"), join(pack, "carriers/dup.json"));
+    const carrier = m.source_of_truth.find((e) => e.role === "assay_carrier");
+    m.source_of_truth.push({ role: "assay_carrier", path: "carriers/dup.json", schema: carrier.schema, digest: carrier.digest });
+    reseal(pack, m);
+  });
+  const cs = codes(p);
+  assert.ok(cs.includes("PACK_ROLE_DUPLICATE"));
+  assert.ok(!cs.some((c) => c.startsWith("PACK_COHERENCE")), `cross-check must be skipped on a duplicate role; got ${cs}`);
 });
 
 // --- complete proof comparison (CodeRabbit Major): binary/command/runner_os/hosted ---

@@ -184,32 +184,55 @@ function readJson(packRoot: string, rel: string): unknown {
   return JSON.parse(readFileSync(resolve(packRoot, rel), "utf-8"));
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
 export function verifyEvidencePack(packDir: string): PackVerifyResult {
   const errors: PackError[] = [];
-  let manifest: PackManifest;
+  let parsed: unknown;
   try {
-    manifest = JSON.parse(readFileSync(join(packDir, "manifest.json"), "utf-8")) as PackManifest;
+    parsed = JSON.parse(readFileSync(join(packDir, "manifest.json"), "utf-8"));
   } catch (e) {
     return { valid: false, errors: [{ code: "PACK_MANIFEST_UNREADABLE", message: `manifest.json: ${(e as Error).message}` }] };
   }
+  if (!isRecord(parsed)) {
+    return { valid: false, errors: [{ code: "PACK_MANIFEST_SHAPE", message: "manifest.json must be a JSON object", path: "manifest" }] };
+  }
+  const manifest = parsed as unknown as PackManifest;
   if (manifest.schema !== SUITE_EVIDENCE_PACK_SCHEMA) {
     errors.push({ code: "PACK_SCHEMA_MISMATCH", message: `schema must be ${SUITE_EVIDENCE_PACK_SCHEMA}; got ${JSON.stringify(manifest.schema)}`, path: "schema" });
     return { valid: false, errors };
   }
 
   // Fail closed on a schema-matching but structurally malformed manifest (e.g.
-  // `source_of_truth: "x"`) before any digest/`.map` work would throw on it.
+  // `source_of_truth: "x"`, or an entry that is `null` / has a non-string path) before any
+  // digest/`.map`/`.replace` work would throw on it.
   const arraysOk =
     Array.isArray(manifest.source_of_truth) &&
     Array.isArray(manifest.projections) &&
     Array.isArray(manifest.optional_private_reviews) &&
     Array.isArray(manifest.non_claims);
   const objsOk =
-    manifest.subject != null && typeof manifest.subject === "object" &&
-    manifest.producer != null && typeof manifest.producer === "object" &&
-    manifest.manifest != null && typeof manifest.manifest === "object";
+    isRecord(manifest.subject) && isRecord(manifest.producer) && isRecord(manifest.manifest);
   if (!arraysOk || !objsOk) {
     errors.push({ code: "PACK_MANIFEST_SHAPE", message: "source_of_truth/projections/optional_private_reviews/non_claims must be arrays and subject/producer/manifest objects", path: "manifest" });
+    return { valid: false, errors, manifest };
+  }
+  // Entry-level shape: every array element must be a typed record before the loops below
+  // dereference role/path/digest. (A missing source_digest is structural here, not the later
+  // PACK_PROJECTION_NO_SOURCE which catches a present-but-unresolvable digest.)
+  const sourcesOk = manifest.source_of_truth.every((e) =>
+    isRecord(e) && typeof e.role === "string" && typeof e.path === "string" && typeof e.digest === "string" &&
+    (e.schema === undefined || typeof e.schema === "string"));
+  const projectionsOk = manifest.projections.every((e) =>
+    isRecord(e) && typeof e.role === "string" && typeof e.path === "string" &&
+    typeof e.lossy === "boolean" && typeof e.source_digest === "string" && typeof e.digest === "string");
+  const reviewsOk = manifest.optional_private_reviews.every((e) =>
+    isRecord(e) && typeof e.role === "string" && typeof e.available === "boolean" &&
+    (e.digest === undefined || typeof e.digest === "string") &&
+    (e.visibility === undefined || typeof e.visibility === "string"));
+  if (!sourcesOk || !projectionsOk || !reviewsOk || !manifest.non_claims.every((x) => typeof x === "string")) {
+    errors.push({ code: "PACK_MANIFEST_SHAPE", message: "manifest entry fields have invalid types", path: "manifest" });
     return { valid: false, errors, manifest };
   }
 
@@ -259,8 +282,11 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     if (n === 0) errors.push({ code: "PACK_ROLE_MISSING", message: `v0 pack requires a ${role} source_of_truth entry`, path: "source_of_truth" });
     else if (n > 1) errors.push({ code: "PACK_ROLE_DUPLICATE", message: `v0 pack must carry exactly one ${role} source_of_truth entry`, path: "source_of_truth" });
   }
-  if (manifest.projections.filter((p) => p.role === "harness_markdown").length !== 1) {
-    errors.push({ code: "PACK_PROJECTION_MISSING", message: `v0 pack requires exactly one harness_markdown projection`, path: "projections" });
+  // v0 carries ONLY the digest-bound Harness Markdown projection — reject extra projections
+  // (even known roles like junit/sarif) so an inventory pack stays Markdown-only per the DoR.
+  const harnessMarkdownCount = manifest.projections.filter((p) => p.role === "harness_markdown").length;
+  if (manifest.projections.length !== 1 || harnessMarkdownCount !== 1) {
+    errors.push({ code: "PACK_PROJECTION_MISSING", message: `v0 pack requires exactly one projection (harness_markdown)`, path: "projections" });
   }
   // Source roles whose path was safe AND whose bytes matched the declared digest. Only these
   // are re-read for the coherence cross-check, so a tampered/unsafe source surfaces as its own
@@ -308,8 +334,14 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
   // would read inconsistent (or unsafe) files. A failed source already surfaces its own error.
   const src = (role: string) => (manifest.source_of_truth ?? []).find((e) => e.role === role);
   const carrierSrc = src("assay_carrier"), matrixSrc = src("suite_matrix"), provSrc = src("recipe_provenance");
+  // Require exactly one entry per required role: digestCleanSources is role-keyed, so without
+  // the count gate a clean *duplicate* role could satisfy this while src(role) returns an
+  // earlier entry that failed path/digest validation (and would then be re-read).
   const sourcesClean =
     !!carrierSrc && !!provSrc && !!matrixSrc &&
+    sourceRoleCount.get("assay_carrier") === 1 &&
+    sourceRoleCount.get("recipe_provenance") === 1 &&
+    sourceRoleCount.get("suite_matrix") === 1 &&
     digestCleanSources.has("assay_carrier") &&
     digestCleanSources.has("recipe_provenance") &&
     digestCleanSources.has("suite_matrix");
