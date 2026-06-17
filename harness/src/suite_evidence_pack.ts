@@ -262,6 +262,10 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
   if (manifest.projections.filter((p) => p.role === "harness_markdown").length !== 1) {
     errors.push({ code: "PACK_PROJECTION_MISSING", message: `v0 pack requires exactly one harness_markdown projection`, path: "projections" });
   }
+  // Source roles whose path was safe AND whose bytes matched the declared digest. Only these
+  // are re-read for the coherence cross-check, so a tampered/unsafe source surfaces as its own
+  // file/path error and is never read again to produce a (misleading) coherence verdict.
+  const digestCleanSources = new Set<string>();
   for (const e of allEntries) {
     const norm = e.path.replace(/\/+/g, "/");
     if (seen.has(norm)) { errors.push({ code: "PACK_PATH_DUPLICATE", message: `duplicate path entry: ${e.path}`, path: e.path }); continue; }
@@ -270,6 +274,7 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     try {
       const got = sha256(readFileSync(resolve(packDir, e.path)));
       if (got !== e.digest) errors.push({ code: "PACK_FILE_DIGEST_MISMATCH", message: `${e.path}: digest ${e.digest} != actual ${got}`, path: e.path });
+      else if (e.kind === "source") digestCleanSources.add(e.role);
     } catch {
       errors.push({ code: "PACK_FILE_MISSING", message: `listed file missing or unreadable: ${e.path}`, path: e.path });
     }
@@ -298,12 +303,18 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     /* an unreadable pack dir surfaces via the manifest read above */
   }
 
-  // If structural problems exist, the cross-checks below would read inconsistent files; still
-  // attempt them when the three sources are present and digest-clean.
+  // The cross-checks below re-read the source files, so run them only when all three required
+  // sources are present, path-safe, and digest-clean — otherwise the byte/coherence checks
+  // would read inconsistent (or unsafe) files. A failed source already surfaces its own error.
   const src = (role: string) => (manifest.source_of_truth ?? []).find((e) => e.role === role);
   const carrierSrc = src("assay_carrier"), matrixSrc = src("suite_matrix"), provSrc = src("recipe_provenance");
+  const sourcesClean =
+    !!carrierSrc && !!provSrc && !!matrixSrc &&
+    digestCleanSources.has("assay_carrier") &&
+    digestCleanSources.has("recipe_provenance") &&
+    digestCleanSources.has("suite_matrix");
 
-  if (carrierSrc && provSrc && matrixSrc) {
+  if (sourcesClean && carrierSrc && provSrc && matrixSrc) {
     try {
       const provRaw = readJson(packDir, provSrc.path) as Record<string, unknown>;
       const pv = validateRecipeProvenance(provRaw);
@@ -340,8 +351,14 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
             if (p.end_to_end !== "proven") errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix row for ${manifest.subject.carrier} is not end_to_end=proven`, path: "matrix.row" });
             if (p.hosted_run !== prov.hosted_run) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix hosted_run != provenance.hosted_run`, path: "matrix.row.hosted_run" });
             if (p.assay_version !== prov.assay.version) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix assay_version != provenance.assay.version`, path: "matrix.row.assay_version" });
+            if (p.assay_binary_digest !== prov.assay.binary_digest) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix assay_binary_digest != provenance.assay.binary_digest`, path: "matrix.row.assay_binary_digest" });
+            if (p.command !== prov.assay.command) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix command != provenance.assay.command`, path: "matrix.row.command" });
             if (p.artifact_digest !== prov.artifact.digest) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix artifact_digest != provenance.artifact.digest`, path: "matrix.row.artifact_digest" });
             if (p.fixture_digest !== prov.fixture.digest) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix fixture_digest != provenance.fixture.digest`, path: "matrix.row.fixture_digest" });
+            // runner_os + hosted come from the schema-guaranteed proof_scope (validateCarrierRow
+            // requires proof_scope.{runner_os,hosted,ambient_scan}), not the incidental proof.* copies.
+            if (ps.runner_os !== prov.runner_os) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.runner_os != provenance.runner_os`, path: "matrix.row.proof_scope" });
+            if (ps.hosted !== prov.hosted) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.hosted != provenance.hosted`, path: "matrix.row.proof_scope" });
             if (ps.ambient_scan !== prov.ambient_scan) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.ambient_scan != provenance.ambient_scan`, path: "matrix.row.proof_scope" });
           }
         }

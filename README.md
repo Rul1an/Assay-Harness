@@ -317,9 +317,10 @@ npx tsx harness/src/cli.ts evidence-pack verify evidence-pack/
 
 `verify` separates source-of-truth (carrier, matrix, provenance) from lossy projections
 (every projection must resolve to a source digest), enforces path safety (no `..` / absolute
-/ symlink / unlisted / escaping paths), and holds the **coherence invariant**: the carrier
-bytes, the matrix's proven row, and the provenance must all agree on the same artifact and
-the same proof. A pack cannot be internally consistent by digest while lying about where the
+/ symlink / duplicate / unlisted / escaping paths), and holds the **coherence invariant**: the
+carrier bytes, the matrix's proven row, and the provenance must all agree on the same artifact
+and the same proof — covering the binary, command, fixture, runner, and hosting context, not
+just the artifact digest. A pack cannot be internally consistent by digest while lying about where the
 evidence came from. The manifest digest is deterministic over the evidence (volatile metadata
 excluded), so identical evidence yields the same pack identity.
 

@@ -271,3 +271,30 @@ test("a projection with no source_digest is rejected", () => {
   const p = mutated((pack) => { const m = readManifest(pack); delete m.projections[0].source_digest; reseal(pack, m); });
   assert.ok(codes(p).includes("PACK_PROJECTION_NO_SOURCE"));
 });
+
+// --- complete proof comparison (CodeRabbit Major): binary/command/runner_os/hosted ---
+test("coherence: matrix assay_binary_digest != provenance -> fail", () => {
+  const p = mutated((pack) => { const pr = readProv(pack); pr.assay.binary_digest = BOGUS(4); writeProv(pack, pr); reseal(pack, readManifest(pack)); });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+test("coherence: matrix command != provenance.assay.command -> fail", () => {
+  const p = mutated((pack) => { const pr = readProv(pack); pr.assay.command = "assay mcp inventory --rogue"; writeProv(pack, pr); reseal(pack, readManifest(pack)); });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+test("coherence: matrix proof_scope.runner_os != provenance.runner_os -> fail", () => {
+  const p = mutated((pack) => { const pr = readProv(pack); pr.runner_os = "windows-latest"; writeProv(pack, pr); reseal(pack, readManifest(pack)); });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+test("coherence: matrix proof_scope.hosted != provenance.hosted -> fail", () => {
+  // Mutate the matrix side (provenance.hosted must stay true to keep the hermetic-success check clean).
+  const p = mutated((pack) => { const m = readMatrix(pack); invRow(m).proof_scope.hosted = false; writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack)); });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+// --- cross-check gating (CodeRabbit Critical): only read digest-clean sources ---
+test("a digest-mismatched source skips the cross-check (no misleading coherence verdict)", () => {
+  const p = mutated((pack) => appendFileSync(join(pack, "carriers/assay.mcp_server_inventory.v0.json"), "\n"));
+  const cs = codes(p);
+  assert.ok(cs.includes("PACK_FILE_DIGEST_MISMATCH"));
+  assert.ok(!cs.some((c) => c.startsWith("PACK_COHERENCE")), `coherence must be skipped for an unclean source; got ${cs}`);
+});
