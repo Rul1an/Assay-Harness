@@ -4,12 +4,34 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Extended the suite compatibility matrix toward end-to-end proof (H-next-2):
+  - Carrier rows now carry a machine-readable `end_to_end_gap` (`{reason_code, owner}`)
+    while `declared`, so the matrix reads as a roadmap rather than silent omission. A
+    `proven` carrier row now requires hermetic-proof provenance (`hosted_run` +
+    `artifact_digest` + `assay_version` + `fixture_digest`), with an optional
+    `proof_scope` (`{runner_os, hosted, ambient_scan}`); run+digest alone is too thin.
+  - Added a hermetic, dispatch-only `assay-inventory-recipe` CI job: it downloads the
+    released Assay binary, scopes discovery to a committed MCP config fixture (isolated
+    `HOME`, never ambient runner state), emits `assay.mcp_server_inventory.v0` via
+    `assay mcp inventory --no-process-scan`, asserts the fixture server + frozen schema
+    are present, and consumes it through `carrier inventory` (descriptive => exit 0),
+    printing the proof metadata for the controlled matrix flip.
+  - `mcp_server_inventory.v0` is now `end_to_end=proven`: the hosted recipe ran the
+    released v3.27.0 binary against the committed fixture and Harness consumed the
+    emitted carrier (run `27682711427`), and its row carries the hermetic provenance
+    (`hosted_run` + `artifact_digest` + `assay_version` + `assay_binary_digest` +
+    `fixture_digest` + `proof_scope{ambient_scan:false}`). The four other carriers stay
+    `declared` with explicit producer-gap reasons (`no_released_binary_emitter` for
+    supply-chain / render-safety, `live_proxy_only` for token-passthrough,
+    `requires_privileged_runtime` for enforcement-health.v1), all owner `assay`. No
+    change to exit codes; `declared` remains non-failing.
+
 - Fixed a public/private boundary leak in the suite compatibility matrix: the
   `reviews` block named the private reviewer's exact version (`min_version`). The
   public matrix now carries `version_disclosure: "not_public"` instead, and a new
   `suite check` rule (`SUITE_PRIVATE_VERSION_LEAK`) rejects any `reviews.min_version`
-  so the leak cannot be reintroduced. The public projection is unchanged (it already
-  surfaced only the `private-consumer-backed` backing, never the private version).
+  (and a private reviewer must disclose exactly `not_public`, so the version cannot be
+  smuggled through `version_disclosure`). The public projection is unchanged.
 
 - Added the **suite compatibility matrix** (`suite.compatibility.v0`): a checked-in,
   versioned suite-contract artifact that records the relationship between the layers

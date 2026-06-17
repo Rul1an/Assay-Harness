@@ -497,3 +497,109 @@ jobs:
         with:
           name: assay-release-compatibility-recipes-${{ env.ASSAY_VERSION }}
           path: results/assay-release-compatibility/**
+
+  assay-inventory-recipe:
+    name: Assay Inventory Recipe (hermetic E2E)
+    # Dispatch-only, like the receipt recipes: it produces the end-to-end proof
+    # (hosted_run + digests) that a controlled update folds into the suite matrix
+    # to flip the inventory row from declared -> proven. It is not run on every
+    # unrelated PR (keeping the proof rail small and predictable).
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Resolve + download released Assay binary
+        env:
+          ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
+        run: |
+          set -euo pipefail
+          assay_version="${ASSAY_VERSION_INPUT:-}"
+          [ -z "$assay_version" ] && assay_version="v3.27.0"
+          case "$assay_version" in v*) ;; *) assay_version="v${assay_version}" ;; esac
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+          mkdir -p /tmp/assay-release && cd /tmp/assay-release
+          asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
+          # Retry/timeout so a transient GitHub/CDN hiccup does not fail the proof run.
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          tar -xzf "$asset"
+          bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
+          test -x "$bin"
+          echo "ASSAY_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Hermetic inventory emit + Harness consume
+        working-directory: harness
+        run: |
+          set -x
+          set -euo pipefail
+          # Hermetic: scope discovery to a committed fixture, never ambient runner state.
+          # On Linux v3.27.0 looks at $HOME/.config/claude/claude_desktop_config.json.
+          export HOME="$RUNNER_TEMP/assay-mcp-home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          rm -rf "$HOME"
+          mkdir -p "$HOME/.config/claude"
+          fixture="fixtures/suite-compatibility/mcp-config/claude_desktop_config.json"
+          test -f "$fixture" || { echo "FIXTURE MISSING: $fixture (cwd=$PWD)"; ls -la fixtures/suite-compatibility/ || true; exit 1; }
+          cp "$fixture" "$HOME/.config/claude/claude_desktop_config.json"
+          echo "=== placed fixture ==="; ls -la "$HOME/.config/claude/"; cat "$HOME/.config/claude/claude_desktop_config.json"
+
+          fixture_digest="sha256:$(sha256sum "$fixture" | cut -d' ' -f1)"
+          binary_digest="sha256:$(sha256sum "$ASSAY_BIN" | cut -d' ' -f1)"
+
+          # Emit the carrier from the RELEASED binary, scoped + deterministic
+          # (--no-process-scan => process_scan is reported not_scanned, never partial).
+          # Capture the exit code so a non-zero emit is reported, not swallowed by set -e.
+          emit_rc=0
+          "$ASSAY_BIN" mcp inventory --no-process-scan --out /tmp/inventory.json || emit_rc=$?
+          echo "=== assay mcp inventory exit=$emit_rc ==="
+          echo "=== inventory.json ==="; cat /tmp/inventory.json || { echo "(no inventory.json written)"; exit 1; }
+          [ "$emit_rc" -eq 0 ] || { echo "emit failed (exit $emit_rc)"; exit 1; }
+          artifact_digest="sha256:$(sha256sum /tmp/inventory.json | cut -d' ' -f1)"
+
+          # Hermetic assertions with diagnostics: the released-binary output carries the
+          # fixture server + the frozen schema, and nothing from the ambient host leaked in.
+          grep -q 'assay.mcp_server_inventory.v0' /tmp/inventory.json || { echo "ASSERT FAIL: schema id missing from inventory.json"; exit 1; }
+          # The fixture's "notes" server is emitted with its client prefix as
+          # server_id "claude_desktop-notes" from source "claude_desktop_mcp_config".
+          grep -q 'claude_desktop-notes' /tmp/inventory.json || { echo "ASSERT FAIL: fixture server (claude_desktop-notes) not discovered (config-path or parse mismatch)"; exit 1; }
+          grep -q 'claude_desktop_mcp_config' /tmp/inventory.json || { echo "ASSERT FAIL: fixture source (claude_desktop) not attributed"; exit 1; }
+
+          # Harness consumes it end-to-end (descriptive carrier => exit 0).
+          npx tsx src/cli.ts carrier inventory --carrier /tmp/inventory.json
+
+          # Emit the proof metadata for the controlled matrix flip (declared -> proven).
+          {
+            echo "## Inventory recipe — hermetic end-to-end proof"
+            echo ""
+            echo "Fold these into the inventory row of \`suite-compatibility.json\` via a controlled update:"
+            echo ""
+            echo "- \`hosted_run\`: \`${GITHUB_RUN_ID}\`"
+            echo "- \`assay_version\`: \`${ASSAY_VERSION}\`"
+            echo "- \`assay_binary_digest\`: \`${binary_digest}\`"
+            echo "- \`fixture_digest\`: \`${fixture_digest}\`"
+            echo "- \`artifact_digest\`: \`${artifact_digest}\`"
+            echo "- \`command\`: \`assay mcp inventory --no-process-scan --out /tmp/inventory.json\`"
+            echo "- \`runner_os\`: \`${RUNNER_OS}\` (ubuntu-latest)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload inventory carrier artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: inventory-carrier
+          path: /tmp/inventory.json
+          if-no-files-found: warn

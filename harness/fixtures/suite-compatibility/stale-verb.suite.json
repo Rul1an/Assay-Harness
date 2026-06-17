@@ -31,6 +31,10 @@
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
+      "end_to_end_gap": {
+        "reason_code": "no_released_binary_emitter",
+        "owner": "assay"
+      },
       "limits": []
     },
     {
@@ -58,6 +62,10 @@
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
+      "end_to_end_gap": {
+        "reason_code": "no_released_binary_emitter",
+        "owner": "assay"
+      },
       "limits": []
     },
     {
@@ -80,6 +88,10 @@
         "hosted_run": null,
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "end_to_end_gap": {
+        "reason_code": "live_proxy_only",
+        "owner": "assay"
       },
       "limits": []
     },
@@ -108,6 +120,10 @@
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
+      "end_to_end_gap": {
+        "reason_code": "requires_privileged_runtime",
+        "owner": "assay"
+      },
       "limits": [
         "assay.enforcement_health.v0 not covered by this adapter"
       ]
@@ -135,7 +151,11 @@
         "end_to_end": "declared",
         "hosted_run": null,
         "artifact_digest": null,
-        "note": "descriptive: valid inventory is clean; malformed/unknown-coverage is a contract error; no approval/shadow verdict (Plimsoll)"
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "end_to_end_gap": {
+        "reason_code": "awaiting_hosted_recipe_run",
+        "owner": "harness"
       },
       "limits": []
     }
@@ -164,6 +184,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:06a762cdc8d562c3e429bda2430ec23567501bb275b059d45716e4b9277cde4c"
+    "digest": "sha256:55f69475374c3e7d540f2cb4145d18c718f521789ff6f90ee0193d84076cc8fd"
   }
 }

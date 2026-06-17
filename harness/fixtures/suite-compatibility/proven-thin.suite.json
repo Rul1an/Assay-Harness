@@ -26,9 +26,9 @@
       },
       "proof": {
         "harness_consumption": "proven",
-        "end_to_end": "totally_bogus",
-        "hosted_run": null,
-        "artifact_digest": null,
+        "end_to_end": "proven",
+        "hosted_run": "999",
+        "artifact_digest": "sha256:aa",
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
       "end_to_end_gap": {
@@ -184,6 +184,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:5a935c41363a0b6607dd7e3be5ab609059d68f224478c887dc143cc3f7aa2a1e"
+    "digest": "sha256:a6897b010ca14b7cf1204903e577b6862ad136bac63744df2d3421aefb991c31"
   }
 }

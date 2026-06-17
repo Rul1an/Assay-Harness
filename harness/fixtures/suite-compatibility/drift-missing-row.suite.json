@@ -31,6 +31,10 @@
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
+      "end_to_end_gap": {
+        "reason_code": "no_released_binary_emitter",
+        "owner": "assay"
+      },
       "limits": []
     },
     {
@@ -58,6 +62,10 @@
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
+      "end_to_end_gap": {
+        "reason_code": "no_released_binary_emitter",
+        "owner": "assay"
+      },
       "limits": []
     },
     {
@@ -80,6 +88,10 @@
         "hosted_run": null,
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "end_to_end_gap": {
+        "reason_code": "live_proxy_only",
+        "owner": "assay"
       },
       "limits": []
     },
@@ -107,6 +119,10 @@
         "hosted_run": null,
         "artifact_digest": null,
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "end_to_end_gap": {
+        "reason_code": "requires_privileged_runtime",
+        "owner": "assay"
       },
       "limits": [
         "assay.enforcement_health.v0 not covered by this adapter"
@@ -137,6 +153,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:bd6629b2a0d1f24c5c82904e70cdeb283577503948d64bdb72135595f078c0cb"
+    "digest": "sha256:523bf21f297c7a05f68c973f3df8d9d59d414ff06b88f92a15aae44781265733"
   }
 }
