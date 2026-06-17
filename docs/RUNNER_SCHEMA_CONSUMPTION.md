@@ -8,7 +8,7 @@
 > [`Rul1an/assay docs/reference/runner/schemas-overview.md`](https://github.com/Rul1an/assay/blob/main/docs/reference/runner/schemas-overview.md),
 > which is the canonical Runner-side inventory.
 >
-> Last updated: 2026-06-09.
+> Last updated: 2026-06-17.
 
 ## What Assay-Harness consumes
 
