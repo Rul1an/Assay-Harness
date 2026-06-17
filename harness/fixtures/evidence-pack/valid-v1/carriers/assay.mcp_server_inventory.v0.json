@@ -1,0 +1,25 @@
+{
+  "schema": "assay.mcp_server_inventory.v0",
+  "scanner_coverage": {
+    "config_sources": {
+      "claude_desktop": "complete",
+      "cursor": "not_scanned"
+    },
+    "process_scan": "not_scanned",
+    "network_scan": "unsupported"
+  },
+  "servers": [
+    {
+      "server_id": "claude_desktop-notes",
+      "source": "claude_desktop_mcp_config",
+      "transport": "stdio",
+      "command_digest": "sha256:0f61677887e8c665271ec70d4b9e18812f4528206ad3161dc70021a0b1bda2e3",
+      "args_digest": "sha256:14c98a3d5e642fb14188da34af595a683e791b61c1e9bbfdb7637ef7925c9d92",
+      "credential_indicators": [],
+      "observed_state": "observed"
+    }
+  ],
+  "non_claims": [
+    "absence from inventory is not absence from environment unless scanner coverage is complete"
+  ]
+}

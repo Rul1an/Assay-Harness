@@ -247,6 +247,17 @@ policy. `verify` is strict and does artifact-contract only (the carrier gate alr
 `created_at` is informational and excluded from the manifest digest, so identical evidence
 yields the same pack identity. No `6`.
 
+**`suite.evidence_pack.v1`** is a strict superset: all of the above plus exactly one external
+GitHub attestation bundle + its metadata, bound to `recipe_provenance.release_asset.digest`. The
+external checks are also artifact-contract (exit `3`): `external_evidence` on a v0 pack or absent on
+a v1 pack; wrong external role / cardinality; bundle or meta digest mismatch; `meta.bundle.digest` /
+`meta.retrieval.artifact_digest` / media-type disagreements; a non-v0.3 media type; a posture flag
+other than signature-trust-false / subject-decoded-true / cross-check-only-true; `provider` other
+than `github`; missing `non_claims`; a bundle that is not a DSSE in-toto envelope or whose attested
+subjects do not include the declared subject; an unknown `binding.to`; or a release-asset binding
+that disagrees with the provenance. Signature / trusted-root / transparency-log trust is never
+checked. No `6`.
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

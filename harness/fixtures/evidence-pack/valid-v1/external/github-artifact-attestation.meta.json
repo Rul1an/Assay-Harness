@@ -1,0 +1,33 @@
+{
+  "schema": "suite.external_attestation_source.v0",
+  "provider": "github",
+  "retrieval": {
+    "method": "gh_attestation_download",
+    "source_format": "gh_attestation_download_jsonl",
+    "repository": "Rul1an/assay",
+    "repo_visibility": "public",
+    "artifact_digest": "sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc",
+    "selected_index": 0,
+    "selection_reason": "subject_digest_match",
+    "retrieved_at": "2026-06-17"
+  },
+  "bundle": {
+    "path": "external/github-artifact-attestation.bundle.json",
+    "digest": "sha256:8b2cdebbfe55b0910d7b38bafaf96e27acfd0cb78ef7dfc3abb0f752c366b552",
+    "media_type": "application/vnd.dev.sigstore.bundle.v0.3+json"
+  },
+  "verification": {
+    "signature_trust_verified_by_harness": false,
+    "subject_decoded_by_harness": true,
+    "external_cross_check_only": true
+  },
+  "non_claims": [
+    "bound to the release asset used to obtain the Assay binary, NOT the extracted binary",
+    "GitHub attested the release asset, NOT proof of the extracted binary digest",
+    "not verified as an Assay carrier",
+    "not converted into supply_chain_conformance.v0",
+    "signature / trusted-root / transparency-log NOT checked by the Harness",
+    "does not imply policy approval",
+    "does not prove artifact safety"
+  ]
+}
