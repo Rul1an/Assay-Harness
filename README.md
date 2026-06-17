@@ -324,6 +324,22 @@ just the artifact digest. A pack cannot be internally consistent by digest while
 evidence came from. The manifest digest is deterministic over the evidence (volatile metadata
 excluded), so identical evidence yields the same pack identity.
 
+### External attestation cross-check (`suite.evidence_pack.v1`)
+
+`v1` is a strict superset of `v0`: all the v0 invariants, plus exactly one external GitHub
+artifact-attestation bundle (a Sigstore `v0.3` bundle) and its `suite.external_attestation_source.v0`
+metadata. `v0` stays frozen — it carries no `external_evidence`, and `external_evidence` in the
+core digest is v1-only, so a `v0` pack's identity never changes. `verify` decodes the bundle's
+in-toto subject for **integrity** (the declared subject must be one the bundle attests), checks the
+media-type family and the harness-posture flags, and holds the binding: the attested subject must
+equal `recipe_provenance.release_asset.digest` — the release asset the recipe downloaded and
+verified before extracting the binary. GitHub attested the release asset, **not** the extracted
+binary; `assay.binary_digest` stays a separate field and is never equated with the attested subject.
+The Harness decodes and cross-checks the attestation subject against
+`recipe_provenance.release_asset.digest`; it does **not** verify the attestation's signature, trusted
+root, transparency-log (Rekor) inclusion, issuer identity, or policy compliance — the bundle is
+included and digest-bound, never asserted as trusted or verified.
+
 ## The PR Gate Flow
 
 ```

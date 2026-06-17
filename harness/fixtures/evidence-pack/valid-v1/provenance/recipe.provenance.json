@@ -1,0 +1,14 @@
+{
+  "schema": "suite.recipe_provenance.v0",
+  "recipe": "assay_mcp_inventory_e2e",
+  "hosted_run": "27705264810",
+  "runner_os": "ubuntu-latest",
+  "hosted": true,
+  "ambient_scan": false,
+  "assay": { "version": "v3.27.0", "binary_digest": "sha256:52a30b3f8156063f0bc2d2e9f306d7e9a432d71414d5fdba460d74dd5b2d26e5", "command": "assay mcp inventory --no-process-scan --out /tmp/inventory.json" },
+  "release_asset": { "path": "assay-v3.27.0-x86_64-unknown-linux-gnu.tar.gz", "digest": "sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc" },
+  "fixture": { "path": "fixtures/suite-compatibility/mcp-config/claude_desktop_config.json", "digest": "sha256:9f2ebcb98e98331f12e816b0805db122d631e6e420822927a43bdbd499aa04fa" },
+  "artifact": { "path": "carriers/assay.mcp_server_inventory.v0.json", "digest": "sha256:ded545cec4188e79c184f0a162e255661eb09d000b710d0b6a6e5b52566586ad" },
+  "harness": { "version": "0.8.0", "command": "assay-harness carrier inventory --carrier carriers/assay.mcp_server_inventory.v0.json" },
+  "result": { "exit_code": 0, "classification": "success" }
+}
