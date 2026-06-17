@@ -4,6 +4,13 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Pinned a real, public **GitHub artifact-attestation** fixture (the `Rul1an/assay` v3.27.0 release
+  asset) plus its `suite.external_attestation_source.v0` metadata, with shape tests. These are inputs
+  for the upcoming Evidence Pack external cross-check (H-next-4); the bundle's recorded subject equals
+  `recipe_provenance.release_asset.digest`. No verifier and no Evidence Pack v1 yet — GitHub attested
+  the release asset, not the extracted binary, and the Harness does not verify the attestation's
+  cryptographic trust.
+
 - Recipe provenance (`suite.recipe_provenance.v0`) gained an optional, additive `release_asset`
   `{ path, digest }` section: the released asset (tarball) the hermetic recipe downloads and verifies
   via its published `.sha256` before extracting the binary. It is recorded separately from
