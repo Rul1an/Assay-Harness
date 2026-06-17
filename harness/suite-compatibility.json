@@ -154,7 +154,7 @@
         "assay_version": "v3.27.0",
         "assay_binary_digest": "sha256:52a30b3f8156063f0bc2d2e9f306d7e9a432d71414d5fdba460d74dd5b2d26e5",
         "fixture_digest": "sha256:9f2ebcb98e98331f12e816b0805db122d631e6e420822927a43bdbd499aa04fa",
-        "command": "assay mcp inventory --no-process-scan --out inventory.json",
+        "command": "assay mcp inventory --no-process-scan --out /tmp/inventory.json",
         "runner_os": "ubuntu-latest",
         "note": "hermetic E2E: released v3.27.0 binary emitted the carrier (fixture-scoped, isolated HOME) and Harness consumed it via carrier inventory => exit 0"
       },
@@ -190,6 +190,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:eadf1259fb1d0fece42f2d8b3d5802dba63f9d267cd2e5ef4b37cef84c1c8245"
+    "digest": "sha256:40ca198ea6e5ab4e8b8cca5af53a62b6c4fe0f804afe0fa451839f120f69058f"
   }
 }

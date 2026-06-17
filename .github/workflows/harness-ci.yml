@@ -527,8 +527,13 @@ jobs:
           mkdir -p /tmp/assay-release && cd /tmp/assay-release
           asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
           base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
-          curl -fsSLO "${base}/${asset}"
-          curl -fsSLO "${base}/${asset}.sha256"
+          # Retry/timeout so a transient GitHub/CDN hiccup does not fail the proof run.
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
           sha256sum -c "${asset}.sha256"
           tar -xzf "$asset"
           bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
@@ -587,7 +592,7 @@ jobs:
             echo "- \`assay_binary_digest\`: \`${binary_digest}\`"
             echo "- \`fixture_digest\`: \`${fixture_digest}\`"
             echo "- \`artifact_digest\`: \`${artifact_digest}\`"
-            echo "- \`command\`: \`assay mcp inventory --no-process-scan --out inventory.json\`"
+            echo "- \`command\`: \`assay mcp inventory --no-process-scan --out /tmp/inventory.json\`"
             echo "- \`runner_os\`: \`${RUNNER_OS}\` (ubuntu-latest)"
           } >> "$GITHUB_STEP_SUMMARY"
 
