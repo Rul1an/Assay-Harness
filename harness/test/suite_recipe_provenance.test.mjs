@@ -24,6 +24,10 @@ const base = () => ({
   result: { exit_code: 0, classification: "success" },
 });
 const codes = (raw) => validateRecipeProvenance(raw).errors.map((e) => e.code);
+// A release_asset negative must fail for a release_asset-specific reason (not because some other
+// field happened to be invalid): assert the error path points at release_asset or its digest.
+const rejectedForReleaseAsset = (raw) =>
+  validateRecipeProvenance(raw).errors.some((e) => e.path === "release_asset" || e.path === "release_asset.digest");
 
 test("schema constant", () => {
   assert.equal(RECIPE_PROVENANCE_SCHEMA, "suite.recipe_provenance.v0");
@@ -44,13 +48,13 @@ test("a provenance WITH a well-formed release_asset is valid", () => {
   assert.equal(r.valid, true, JSON.stringify(r.errors));
 });
 
-test("release_asset present but missing digest is rejected", () => {
+test("release_asset present but missing digest is rejected (release_asset path)", () => {
   const p = base();
   p.release_asset = { path: "assay-v3.27.0-x86_64-unknown-linux-gnu.tar.gz" };
-  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+  assert.ok(rejectedForReleaseAsset(p), JSON.stringify(validateRecipeProvenance(p).errors));
 });
 
-test("release_asset with a malformed (non-sha256) digest is rejected", () => {
+test("release_asset with a malformed (non-sha256) digest is rejected (release_asset.digest path)", () => {
   const p = base();
   p.release_asset = { path: "x.tar.gz", digest: "not-a-sha256" };
   const r = validateRecipeProvenance(p);
@@ -58,28 +62,28 @@ test("release_asset with a malformed (non-sha256) digest is rejected", () => {
   assert.ok(r.errors.some((e) => e.path === "release_asset.digest"), JSON.stringify(r.errors));
 });
 
-test("release_asset with a wrong-length sha256 digest is rejected", () => {
+test("release_asset with a wrong-length sha256 digest is rejected (release_asset.digest path)", () => {
   const p = base();
   p.release_asset = { path: "x.tar.gz", digest: "sha256:079492e5" };
-  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+  assert.ok(validateRecipeProvenance(p).errors.some((e) => e.path === "release_asset.digest"));
 });
 
-test("release_asset with a missing path is rejected", () => {
+test("release_asset with a missing path is rejected (release_asset path)", () => {
   const p = base();
   p.release_asset = { digest: "sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc" };
-  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+  assert.ok(rejectedForReleaseAsset(p));
 });
 
-test("release_asset present with empty digest is rejected", () => {
+test("release_asset present with empty digest is rejected (release_asset path)", () => {
   const p = base();
   p.release_asset = { path: "x.tar.gz", digest: "" };
-  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+  assert.ok(rejectedForReleaseAsset(p));
 });
 
-test("release_asset present as a non-object is rejected", () => {
+test("release_asset present as a non-object is rejected (release_asset path)", () => {
   const p = base();
   p.release_asset = "sha256:079492e5";
-  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+  assert.ok(rejectedForReleaseAsset(p));
 });
 
 test("the rest of the shape is still enforced (missing assay -> invalid)", () => {
