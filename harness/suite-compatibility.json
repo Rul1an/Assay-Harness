@@ -12,7 +12,7 @@
       "backing": "private-consumer-backed",
       "emits": {
         "producer": "assay",
-        "min_version": "v3.27.0"
+        "min_version": "v3.28.0"
       },
       "consumes": {
         "consumer": "harness",
@@ -26,16 +26,22 @@
       },
       "proof": {
         "harness_consumption": "proven",
-        "end_to_end": "declared",
-        "hosted_run": null,
-        "artifact_digest": null,
-        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+        "end_to_end": "proven",
+        "hosted_run": "27724742076",
+        "artifact_digest": "sha256:2492b7731cab3017aba2718ac23b0626b1291ddccfa8e18c07c0c2fdcf307453",
+        "assay_version": "v3.28.0",
+        "assay_binary_digest": "sha256:0e93f6cd19a13eba81bcc51d7368f54ad99586eb2415982a1bc45bdee676ffc1",
+        "fixture_digest": "sha256:a66661663a07739c5b6e5728b78706fe987894c6b12510812d67626b1c8d720d",
+        "command": "assay registry supply-chain-conformance --input fixtures/suite-compatibility/supply-chain/input.example.json --out /tmp/supply-chain-conformance.json --offline",
+        "runner_os": "ubuntu-latest",
+        "note": "hermetic E2E: released v3.28.0 binary emitted a valid carrier (policy_result=incomplete; offline, committed fixture) and Harness consumed/classified it via carrier supply-chain => exit 6 (valid, not-clean). Proves producer->consumer compatibility + incomplete-never-clean, NOT a clean supply-chain verdict."
       },
-      "end_to_end_gap": {
-        "reason_code": "no_released_binary_emitter",
-        "owner": "assay"
-      },
-      "limits": []
+      "limits": [],
+      "proof_scope": {
+        "runner_os": "ubuntu-latest",
+        "hosted": true,
+        "ambient_scan": false
+      }
     },
     {
       "carrier": "assay.render_safety_conformance.v0",
@@ -190,6 +196,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:40ca198ea6e5ab4e8b8cca5af53a62b6c4fe0f804afe0fa451839f120f69058f"
+    "digest": "sha256:51dbfef54fe556ccbe9f125d768a17116d69a93ebe36918ead0c67b780fbfd6b"
   }
 }

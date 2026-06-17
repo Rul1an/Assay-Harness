@@ -44,10 +44,11 @@ test("real golden matrix validates", () => {
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
   assert.equal(r.recipe_count, 1);
-  // honest split: the recipe rail + the inventory carrier are e2e-proven (H-next-2);
-  // the four other carriers remain declared/pending behind their producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 2);
-  assert.equal(r.e2e_declared_count, 4);
+  // honest split: the recipe rail + the inventory carrier (H-next-2) + the supply_chain
+  // carrier (H-next-5a, released v3.28.0 emitter) are e2e-proven; three carriers remain
+  // declared/pending behind their producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 3);
+  assert.equal(r.e2e_declared_count, 3);
 });
 
 test("wrong schema id is rejected", () => {
@@ -124,10 +125,30 @@ test("inventory is hermetically e2e-proven; the declared carriers carry machine-
   assert.equal(inv.proof_scope.ambient_scan, false, "the proof must be fixture-scoped, not ambient");
   assert.equal(inv.end_to_end_gap, undefined);
   // a still-declared carrier keeps its machine-readable producer-gap reason.
+  const rs = m.carrier_rows.find((r) => r.carrier === "assay.render_safety_conformance.v0");
+  assert.equal(rs.proof.end_to_end, "declared");
+  assert.equal(rs.end_to_end_gap.reason_code, "no_released_binary_emitter");
+  assert.equal(rs.end_to_end_gap.owner, "assay");
+});
+
+test("supply_chain is hermetically e2e-proven by the released v3.28.0 emitter, and honestly not-clean", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
   const sc = m.carrier_rows.find((r) => r.carrier === "assay.supply_chain_conformance.v0");
-  assert.equal(sc.proof.end_to_end, "declared");
-  assert.equal(sc.end_to_end_gap.reason_code, "no_released_binary_emitter");
-  assert.equal(sc.end_to_end_gap.owner, "assay");
+  // proven via the released-binary recipe (H-next-5a): full hermetic provenance, no gap.
+  assert.equal(sc.proof.end_to_end, "proven");
+  assert.equal(sc.proof.harness_consumption, "proven");
+  assert.equal(sc.end_to_end_gap, undefined);
+  assert.ok(
+    sc.proof.hosted_run && sc.proof.artifact_digest && sc.proof.assay_version && sc.proof.fixture_digest,
+    "a proven carrier row needs hosted_run + artifact_digest + assay_version + fixture_digest",
+  );
+  // bound to the released v3.28.0 emitter, fixture-scoped (not ambient).
+  assert.equal(sc.proof.assay_version, "v3.28.0");
+  assert.equal(sc.proof_scope.hosted, true);
+  assert.equal(sc.proof_scope.ambient_scan, false);
+  // honesty: proven establishes producer->consumer compatibility, NOT a clean carrier.
+  // The row documents that the carrier itself is not-clean (policy_result incomplete).
+  assert.match(sc.proof.note, /not[ -]clean|incomplete/i);
 });
 
 test("reviews must not leak a private min_version in the public matrix", () => {
