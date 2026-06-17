@@ -17,7 +17,7 @@ fixture**; it is not itself a pack and the v1 verifier does not exist yet (lands
 The bundle is **multi-subject** (one build-provenance attestation covers all v3.27.0 release assets).
 The recorded subject is the x86_64 linux tarball:
 
-```
+```text
 assay-v3.27.0-x86_64-unknown-linux-gnu.tar.gz
 sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc
 ```
@@ -39,8 +39,19 @@ GitHub attested the **release asset (tarball)**, not the extracted binary. `assa
 ## Re-acquisition (not run in CI verify)
 
 ```bash
-gh api repos/Rul1an/assay/attestations/sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc \
-  | jq '.attestations[0].bundle' > github-artifact-attestation.bundle.json   # pretty-print to pin
+# Deterministic: select the v0.3 Sigstore bundle by media type (not a positional index), serialize
+# exactly as the committed fixture (Node JSON.stringify, 2-space + trailing newline), then confirm
+# the bytes pin to the recorded digest — fail otherwise. (jq's formatting differs, so it would not
+# reproduce these bytes; use the same serializer that produced the fixture.)
+gh api repos/Rul1an/assay/attestations/sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc > att.json
+node -e '
+  const r = JSON.parse(require("fs").readFileSync("att.json", "utf-8"));
+  const b = r.attestations.map((a) => a.bundle)
+    .filter((x) => x && x.mediaType === "application/vnd.dev.sigstore.bundle.v0.3+json")[0];
+  require("fs").writeFileSync("github-artifact-attestation.bundle.json", JSON.stringify(b, null, 2) + "\n");
+'
+test "$(sha256sum github-artifact-attestation.bundle.json | cut -d" " -f1)" \
+  = "8b2cdebbfe55b0910d7b38bafaf96e27acfd0cb78ef7dfc3abb0f752c366b552"
 ```
 
 Predicate: `https://slsa.dev/provenance/v1`; builder: the `Rul1an/assay` `release.yml` workflow at the
