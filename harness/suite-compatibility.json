@@ -27,7 +27,7 @@
       "proof": {
         "harness_consumption": "proven",
         "end_to_end": "proven",
-        "hosted_run": "27724742076",
+        "hosted_run": "27725477694",
         "artifact_digest": "sha256:2492b7731cab3017aba2718ac23b0626b1291ddccfa8e18c07c0c2fdcf307453",
         "assay_version": "v3.28.0",
         "assay_binary_digest": "sha256:0e93f6cd19a13eba81bcc51d7368f54ad99586eb2415982a1bc45bdee676ffc1",
@@ -196,6 +196,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:51dbfef54fe556ccbe9f125d768a17116d69a93ebe36918ead0c67b780fbfd6b"
+    "digest": "sha256:0e0336310695e850df38020535186cebf8272ed407b1ce1ec028a031e9a50d37"
   }
 }
