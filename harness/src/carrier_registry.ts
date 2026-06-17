@@ -22,6 +22,10 @@ import {
   TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA,
   validateTokenPassthroughConformance,
 } from "./carrier_token_passthrough.js";
+import {
+  ENFORCEMENT_HEALTH_V1_SCHEMA,
+  validateEnforcementHealthV1,
+} from "./carrier_enforcement_health.js";
 
 export interface CarrierAdapter {
   /** The exact frozen schema id this adapter consumes. */
@@ -42,6 +46,10 @@ const ADAPTERS: Record<string, CarrierAdapter> = {
   [TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA]: {
     schema: TOKEN_PASSTHROUGH_CONFORMANCE_SCHEMA,
     validate: validateTokenPassthroughConformance,
+  },
+  [ENFORCEMENT_HEALTH_V1_SCHEMA]: {
+    schema: ENFORCEMENT_HEALTH_V1_SCHEMA,
+    validate: validateEnforcementHealthV1,
   },
 };
 

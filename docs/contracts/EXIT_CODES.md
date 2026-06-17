@@ -167,6 +167,21 @@ JUnit / SARIF.
 | `--carrier` missing, or the carrier file is not found | 2 |
 | Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
 
+### `assay-harness carrier enforcement-health`
+
+Consume an `assay.enforcement_health.v1` carrier (Landlock TCP-connect domain),
+validate the frozen shape, gate on the producer-reported status, and project
+Markdown / JUnit / SARIF. This is the carrier-local honest-state gate; the
+enforcement-truth review (policy-aware approval over the outcome) is a separate step.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Carrier valid and `status` is `active` (ruleset applied; a real-block probe, when present, is surfaced) | 0 |
+| Carrier valid but `status` is `failed` (enforcement requested but not installed) | 6 |
+| Carrier malformed, wrong/unknown schema id, unknown status, or contract-shape violation | 3 |
+| `--carrier` missing, file not found, or `--format` not `markdown`/`json` | 2 |
+| Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
+
 ### `assay-harness carrier check`
 
 Detect carrier contract drift: dispatch any conformance carrier by its `schema` id

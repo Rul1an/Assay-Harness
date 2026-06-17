@@ -50,6 +50,17 @@ with provenance in
 **Principle:** observation and coverage reports must not imply enforcement unless an
 `enforcement_health` artifact is explicitly provided by a consumer layer.
 
+**Reversal (2026-06): the Harness now consumes `assay.enforcement_health.v1`** (the
+Landlock TCP-connect port-allowlist domain) as a carrier-local honest-state gate via
+`carrier enforcement-health`: `status=active` is clean, `status=failed` is not clean,
+and a real-block probe is surfaced. This reverses the earlier "the Harness does not
+consume `enforcement_health`" position for the v1 domain. The two layers stay
+distinct: the Harness gates the carrier-local honest state (was enforcement
+requested, and did the ruleset apply or fail), while the enforcement-truth REVIEW
+(policy-aware approval over the enforcement outcome) remains the Plimsoll consumer's
+job. The connect4/eBPF `assay.enforcement_health.v0` carrier is a different shape and
+is not yet adapted, so it stays unconsumed by the Harness.
+
 ## Cross-repo boundary
 
 The Runner side ([`Rul1an/assay`](https://github.com/Rul1an/assay))
@@ -86,7 +97,8 @@ Both repos follow the same dotted-namespace pattern:
 | `assay.runner.*` | v0 contract surface; minor refinements within v0 are common, breaking changes require an explicit v1 |
 | `assay.experiment.*` | experiment-scoped, time-limited, not promoted to stable surface (Harness ignores by policy) |
 | `assay.trust-basis.*` | Assay-core contract surface; see [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) |
-| `assay.enforcement_health.*` | Enforcement-truth carrier, producer-agnostic, outside the `assay.runner.*` archive (Harness does not consume; Plimsoll does) |
+| `assay.enforcement_health.v1` | Landlock TCP-connect enforcement-health carrier, outside the `assay.runner.*` archive (Harness consumes it as a carrier-local honest-state gate via `carrier enforcement-health`; Plimsoll retains the enforcement-truth review) |
+| `assay.enforcement_health.v0` | connect4/eBPF enforcement-health carrier; a different shape, not yet adapted (Harness does not consume; Plimsoll does) |
 | `assay.harness.*` | Harness-internal envelope (NDJSON evidence shape); Runner side does not consume |
 
 The Runner side started introducing `vX.Y` dotted-minor versions in

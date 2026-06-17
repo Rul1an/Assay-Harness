@@ -4,6 +4,17 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `carrier enforcement-health`: consumes `assay.enforcement_health.v1` (the
+  Landlock TCP-connect domain), gating on the producer-reported status (`active` is
+  clean, `failed` is not; a real-block probe is surfaced). This is the carrier-local
+  honest-state gate, distinct from the enforcement-truth review (policy-aware
+  approval), which remains the Plimsoll consumer's job. Consuming this carrier is a
+  deliberate, documented reversal of the prior "the Harness does not consume
+  `enforcement_health`" position, scoped to v1 (`docs/RUNNER_SCHEMA_CONSUMPTION.md`);
+  the connect4/eBPF v0 carrier is a different shape and stays unconsumed. Vendored
+  real producer fixtures; the v1 producer-emit is a later gated step. No change to
+  existing verbs or the exit-code taxonomy.
+
 - Added `carrier check`: a generic contract-drift detector that dispatches any
   conformance carrier by its `schema` id to the registered adapter and reports
   whether the Harness recognizes the contract and the carrier matches its frozen
