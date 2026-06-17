@@ -676,9 +676,18 @@ jobs:
           ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
         run: |
           set -euo pipefail
-          assay_version="${ASSAY_VERSION_INPUT:-}"
-          [ -z "$assay_version" ] && assay_version="v3.28.0"
+          # Default to v3.28.0 (the first release with the one-shot supply-chain emitter) and
+          # FAIL CLOSED on any older version: the shared dispatch input defaults to v3.27.0,
+          # which has no emitter, and the proof binds min_version v3.28.0 — so a run against an
+          # emitter-less release must not silently produce a bogus proof.
+          assay_version="${ASSAY_VERSION_INPUT:-v3.28.0}"
           case "$assay_version" in v*) ;; *) assay_version="v${assay_version}" ;; esac
+          min_required="3.28.0"
+          resolved="${assay_version#v}"
+          if [ "$(printf '%s\n' "$min_required" "$resolved" | sort -V | head -n1)" != "$min_required" ]; then
+            echo "supply-chain recipe requires Assay >= v${min_required}; got ${assay_version}" >&2
+            exit 1
+          fi
           echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
           mkdir -p /tmp/assay-release && cd /tmp/assay-release
           asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
@@ -736,9 +745,11 @@ jobs:
           [ "$policy_result" = "incomplete" ] \
             || { echo "ASSERT FAIL: expected policy_result=incomplete for the v1 (unsupported-provenance) fixture, got $policy_result"; exit 1; }
 
-          # Harness consumes/classifies it end-to-end. The v1 emitter => policy_result incomplete =>
-          # the gate exits 6 (valid, not-clean). For this proof, exit {0,6} WITH a valid report
-          # is a successful consumption; exit {2,3,7} is a config/contract/formatter failure.
+          # Harness consumes/classifies it end-to-end. We asserted the carrier is
+          # policy_result=incomplete above, so the gate MUST exit 6 (incomplete => not-clean).
+          # Accepting exit 0 here would mask a regression that reads an incomplete carrier as
+          # clean, so for THIS proof exit 6 is the only valid outcome ({2,3,7} are
+          # config/contract/formatter failures; 0 would be incomplete-read-as-clean).
           consume_rc=0
           npx tsx src/cli.ts carrier supply-chain \
             --carrier /tmp/supply-chain-conformance.json --format json \
@@ -747,13 +758,13 @@ jobs:
           cat /tmp/sc.report.json || true
           cat /tmp/sc.err || true
           case "$consume_rc" in
-            0|6) : ;;
-            *) echo "FAIL: consumption exit $consume_rc (config/contract/formatter) is not a valid consumption"; exit 1 ;;
+            6) : ;;
+            *) echo "FAIL: an incomplete carrier must classify as not-clean (exit 6); got exit $consume_rc"; exit 1 ;;
           esac
-          # exit {0,6} is only acceptable WITH a valid JSON report carrying the producer policy_result.
-          jq -e '.validation.valid == true and (.policy_result | type == "string")' /tmp/sc.report.json >/dev/null \
-            || { echo "FAIL: consumer exit $consume_rc without a valid report -> artifact_contract"; exit 1; }
-          echo "=== consumption OK: exit=$consume_rc, valid report, policy_result=$(jq -r .policy_result /tmp/sc.report.json) ==="
+          # exit 6 is only acceptable WITH a valid report whose policy_result matches the emitted incomplete.
+          jq -e '.validation.valid == true and .policy_result == "incomplete"' /tmp/sc.report.json >/dev/null \
+            || { echo "FAIL: consumer exit 6 without a valid incomplete report -> artifact_contract"; exit 1; }
+          echo "=== consumption OK: exit=$consume_rc (valid, not-clean), policy_result=incomplete ==="
 
           # Proof metadata for the controlled matrix flip (declared -> proven).
           {

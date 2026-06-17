@@ -120,12 +120,14 @@ test("inventory is hermetically e2e-proven; the declared carriers carry machine-
   // inventory flipped to proven (H-next-2) and carries the full hermetic provenance,
   // no end_to_end_gap (it is no longer declared).
   const inv = m.carrier_rows.find((r) => r.carrier === "assay.mcp_server_inventory.v0");
+  assert.ok(inv, "inventory carrier row must exist");
   assert.equal(inv.proof.end_to_end, "proven");
   assert.ok(inv.proof.hosted_run && inv.proof.artifact_digest && inv.proof.assay_version && inv.proof.fixture_digest);
   assert.equal(inv.proof_scope.ambient_scan, false, "the proof must be fixture-scoped, not ambient");
   assert.equal(inv.end_to_end_gap, undefined);
   // a still-declared carrier keeps its machine-readable producer-gap reason.
   const rs = m.carrier_rows.find((r) => r.carrier === "assay.render_safety_conformance.v0");
+  assert.ok(rs, "render_safety carrier row must exist");
   assert.equal(rs.proof.end_to_end, "declared");
   assert.equal(rs.end_to_end_gap.reason_code, "no_released_binary_emitter");
   assert.equal(rs.end_to_end_gap.owner, "assay");
@@ -134,6 +136,7 @@ test("inventory is hermetically e2e-proven; the declared carriers carry machine-
 test("supply_chain is hermetically e2e-proven by the released v3.28.0 emitter, and honestly not-clean", () => {
   const m = buildSuiteReport(ASSET).validation.matrix;
   const sc = m.carrier_rows.find((r) => r.carrier === "assay.supply_chain_conformance.v0");
+  assert.ok(sc, "supply_chain carrier row must exist");
   // proven via the released-binary recipe (H-next-5a): full hermetic provenance, no gap.
   assert.equal(sc.proof.end_to_end, "proven");
   assert.equal(sc.proof.harness_consumption, "proven");
