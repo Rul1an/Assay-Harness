@@ -84,6 +84,45 @@ test("unknown backing is rejected", () => {
   assert.ok(v.errors.some((e) => e.code === "SUITE_BACKING_UNKNOWN"));
 });
 
+test("a declared carrier row without a machine-readable end_to_end_gap is rejected", () => {
+  const r = buildSuiteReport(fixture("gap-missing.suite.json"));
+  assert.equal(r.validation.valid, false);
+  assert.ok(r.validation.errors.some((e) => e.code === "SUITE_GAP_REASON_INVALID"));
+});
+
+test("a proven carrier row needs hermetic-proof metadata, not just run+digest", () => {
+  const r = buildSuiteReport(fixture("proven-thin.suite.json"));
+  assert.equal(r.validation.valid, false, "run+digest alone is too thin for a carrier proof");
+  assert.ok(r.validation.errors.some((e) => e.code === "SUITE_PROVEN_WITHOUT_PROOF"));
+});
+
+test("an ill-shaped proof_scope is rejected", () => {
+  const v = validateSuiteCompatibility({
+    schema: SUITE_COMPATIBILITY_SCHEMA,
+    carrier_rows: [{
+      carrier: "assay.mcp_server_inventory.v0", support_mode: "descriptive", backing: "private-consumer-backed",
+      consumes: { verb: "carrier inventory" }, reviews: null,
+      proof: { harness_consumption: "proven", end_to_end: "declared" },
+      end_to_end_gap: { reason_code: "awaiting_hosted_recipe_run", owner: "harness" },
+      proof_scope: { runner_os: "", hosted: "yes", ambient_scan: 1 },
+    }],
+    recipe_rows: [],
+    manifest: { digest: "sha256:x" },
+  });
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"));
+});
+
+test("the seed asset carries machine-readable end_to_end gap reasons (roadmap, not prose)", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const inv = m.carrier_rows.find((r) => r.carrier === "assay.mcp_server_inventory.v0");
+  assert.equal(inv.end_to_end_gap.reason_code, "awaiting_hosted_recipe_run");
+  assert.equal(inv.end_to_end_gap.owner, "harness");
+  const sc = m.carrier_rows.find((r) => r.carrier === "assay.supply_chain_conformance.v0");
+  assert.equal(sc.end_to_end_gap.reason_code, "no_released_binary_emitter");
+  assert.equal(sc.end_to_end_gap.owner, "assay");
+});
+
 // ---------------------------------------------------------------------------
 // Drift vs the live carrier registry
 // ---------------------------------------------------------------------------

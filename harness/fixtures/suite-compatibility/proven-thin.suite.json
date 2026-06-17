@@ -26,9 +26,9 @@
       },
       "proof": {
         "harness_consumption": "proven",
-        "end_to_end": "declared",
-        "hosted_run": null,
-        "artifact_digest": null,
+        "end_to_end": "proven",
+        "hosted_run": "999",
+        "artifact_digest": "sha256:aa",
         "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
       },
       "end_to_end_gap": {
@@ -127,6 +127,37 @@
       "limits": [
         "assay.enforcement_health.v0 not covered by this adapter"
       ]
+    },
+    {
+      "carrier": "assay.mcp_server_inventory.v0",
+      "support_mode": "descriptive",
+      "backing": "private-consumer-backed",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier inventory"
+      },
+      "reviews": {
+        "reviewer": "plimsoll",
+        "availability": "private",
+        "min_version": "0.13.0"
+      },
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "end_to_end_gap": {
+        "reason_code": "awaiting_hosted_recipe_run",
+        "owner": "harness"
+      },
+      "limits": []
     }
   ],
   "recipe_rows": [
@@ -153,6 +184,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:d0c898bde5fc0ad9169de7e47c464a3c4a90be6dad2c11f73afbf1c2ab2e5e9c"
+    "digest": "sha256:f15722348963969a8b0903a914ecbf5e9552f03609e6a7c1213dd809e3ce5124"
   }
 }

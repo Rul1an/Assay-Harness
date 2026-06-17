@@ -44,6 +44,15 @@ export const KNOWN_BACKINGS: readonly string[] = [
 export const KNOWN_CARRIER_MODES: readonly string[] = ["gating", "descriptive"];
 export const RECIPE_MODE = "recipe";
 
+// Machine-readable end-to-end gap reasons (why a carrier row is not yet `proven`).
+export const KNOWN_GAP_REASONS: readonly string[] = [
+  "no_released_binary_emitter", // producer has no one-shot CLI that emits this carrier
+  "requires_privileged_runtime", // CLI exists but proof needs eBPF/Landlock/etc., not a generic runner
+  "live_proxy_only", // emitted by a running proxy/server session, not a one-shot command
+  "awaiting_hosted_recipe_run", // provable + recipe built; awaiting the first hosted run to capture proof
+];
+export const KNOWN_GAP_OWNERS: readonly string[] = ["assay", "harness", "plimsoll"];
+
 /**
  * The suite wiring the matrix is expected to assert. The `--against-registry`
  * drift check confirms the matrix matches both this wiring and the live carrier
@@ -73,7 +82,30 @@ export interface CarrierRowProof {
   end_to_end: string;
   hosted_run?: string | null;
   artifact_digest?: string | null;
+  // End-to-end proof provenance (required when end_to_end === "proven" on a carrier
+  // row): the released producer version, its binary digest, the committed fixture the
+  // hermetic run was scoped to, the exact command, and the runner OS. A proof without
+  // these is too thin to be machine-verifiable.
+  assay_version?: string | null;
+  assay_binary_digest?: string | null;
+  fixture_digest?: string | null;
+  command?: string | null;
+  runner_os?: string | null;
   note?: string;
+}
+
+export interface ProofScope {
+  runner_os: string;
+  hosted: boolean;
+  // false = the run was scoped to a committed fixture, not the ambient runner state.
+  ambient_scan: boolean;
+}
+
+// Machine-readable reason a row is not yet end_to_end=proven (so the matrix is a
+// usable roadmap, not prose). `owner` names the layer that has to close the gap.
+export interface EndToEndGap {
+  reason_code: string;
+  owner: string;
 }
 
 export interface RecipeRowProof {
@@ -92,6 +124,8 @@ export interface CarrierRow {
   consumes: { consumer: string; min_version: string; verb: string };
   reviews: { reviewer: string; availability: string; min_version: string } | null;
   proof: CarrierRowProof;
+  proof_scope?: ProofScope;
+  end_to_end_gap?: EndToEndGap;
   limits?: string[];
 }
 
@@ -182,15 +216,24 @@ function validateProof(
       });
     }
   }
-  // A `proven` end-to-end claim must carry its evidence: a hosted run and a
-  // content anchor (sha256:<emitted-carrier> or git:<proved-commit>). Absence of
-  // either is treated as an unbacked claim, not as success.
-  if (p.end_to_end === "proven" && !(nonEmptyString(p.hosted_run) && nonEmptyString(p.artifact_digest))) {
-    errors.push({
-      code: "SUITE_PROVEN_WITHOUT_PROOF",
-      message: `${path}.proof.end_to_end is "proven" but hosted_run and artifact_digest are not both present`,
-      path: `${path}.proof`,
-    });
+  // A `proven` end-to-end claim must carry its evidence. Every proven row needs a
+  // hosted run + a content anchor; a CARRIER row additionally needs the hermetic-proof
+  // provenance (released producer version + the committed fixture digest) so the proof
+  // is machine-verifiable, not just a human run-link. Absence is an unbacked claim.
+  if (p.end_to_end === "proven") {
+    const baseOk = nonEmptyString(p.hosted_run) && nonEmptyString(p.artifact_digest);
+    const carrierOk =
+      !opts.requireHarnessConsumption || (nonEmptyString(p.assay_version) && nonEmptyString(p.fixture_digest));
+    if (!(baseOk && carrierOk)) {
+      const need = opts.requireHarnessConsumption
+        ? "hosted_run + artifact_digest + assay_version + fixture_digest"
+        : "hosted_run + artifact_digest";
+      errors.push({
+        code: "SUITE_PROVEN_WITHOUT_PROOF",
+        message: `${path}.proof.end_to_end is "proven" but its evidence is incomplete (need ${need})`,
+        path: `${path}.proof`,
+      });
+    }
   }
 }
 
@@ -218,6 +261,31 @@ function validateCarrierRow(row: unknown, path: string, errors: SuiteValidationE
   }
   if (r.limits !== undefined && !(Array.isArray(r.limits) && r.limits.every((x) => typeof x === "string"))) {
     errors.push({ code: "SUITE_ROW_INVALID", message: `${path}.limits must be an array of strings`, path: `${path}.limits` });
+  }
+  // A declared (not-yet-proven) carrier row must carry a machine-readable gap reason,
+  // so the matrix reads as a roadmap rather than silent omission.
+  const proof = r.proof as Record<string, unknown> | undefined;
+  if (proof && proof.end_to_end === "declared") {
+    const gap = r.end_to_end_gap as Record<string, unknown> | undefined;
+    if (
+      typeof gap !== "object" ||
+      gap === null ||
+      !KNOWN_GAP_REASONS.includes(gap.reason_code as string) ||
+      !KNOWN_GAP_OWNERS.includes(gap.owner as string)
+    ) {
+      errors.push({
+        code: "SUITE_GAP_REASON_INVALID",
+        message: `${path}.end_to_end_gap is required for a declared row: reason_code in ${JSON.stringify(KNOWN_GAP_REASONS)}, owner in ${JSON.stringify(KNOWN_GAP_OWNERS)}`,
+        path: `${path}.end_to_end_gap`,
+      });
+    }
+  }
+  // proof_scope, when present, must be hermetic-shaped.
+  if (r.proof_scope !== undefined) {
+    const ps = r.proof_scope as Record<string, unknown>;
+    if (typeof ps !== "object" || ps === null || !nonEmptyString(ps.runner_os) || typeof ps.hosted !== "boolean" || typeof ps.ambient_scan !== "boolean") {
+      errors.push({ code: "SUITE_PROOF_SCOPE_INVALID", message: `${path}.proof_scope must be { runner_os: string, hosted: bool, ambient_scan: bool }`, path: `${path}.proof_scope` });
+    }
   }
   validateProof(r.proof, path, errors, { requireHarnessConsumption: true });
 }
@@ -431,8 +499,13 @@ export function formatSuiteMarkdown(report: SuiteReport): string {
   for (const r of m.carrier_rows) {
     const run = r.proof.end_to_end === "proven" ? mdCell(r.proof.hosted_run ?? "—") : "—";
     const limits = r.limits && r.limits.length > 0 ? mdCell(r.limits.join("; ")) : "—";
+    // A declared row shows its machine-readable gap reason so the matrix reads as a roadmap.
+    const e2e =
+      r.proof.end_to_end === "declared" && r.end_to_end_gap
+        ? `${e2eLabel("declared")} (${mdCell(r.end_to_end_gap.reason_code)})`
+        : e2eLabel(r.proof.end_to_end);
     lines.push(
-      `| \`${mdCell(r.carrier)}\` | ${mdCell(r.support_mode)} | ${mdCell(r.backing)} | ${mdCell(r.proof.harness_consumption)} | ${mdCell(e2eLabel(r.proof.end_to_end))} | ${run} | ${limits} |`,
+      `| \`${mdCell(r.carrier)}\` | ${mdCell(r.support_mode)} | ${mdCell(r.backing)} | ${mdCell(r.proof.harness_consumption)} | ${e2e} | ${run} | ${limits} |`,
     );
   }
   lines.push("");

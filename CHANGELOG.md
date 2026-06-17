@@ -4,6 +4,25 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Extended the suite compatibility matrix toward end-to-end proof (H-next-2):
+  - Carrier rows now carry a machine-readable `end_to_end_gap` (`{reason_code, owner}`)
+    while `declared`, so the matrix reads as a roadmap rather than silent omission. A
+    `proven` carrier row now requires hermetic-proof provenance (`hosted_run` +
+    `artifact_digest` + `assay_version` + `fixture_digest`), with an optional
+    `proof_scope` (`{runner_os, hosted, ambient_scan}`); run+digest alone is too thin.
+  - Added a hermetic, dispatch-only `assay-inventory-recipe` CI job: it downloads the
+    released Assay binary, scopes discovery to a committed MCP config fixture (isolated
+    `HOME`, never ambient runner state), emits `assay.mcp_server_inventory.v0` via
+    `assay mcp inventory --no-process-scan`, asserts the fixture server + frozen schema
+    are present, and consumes it through `carrier inventory` (descriptive => exit 0),
+    printing the proof metadata for the controlled matrix flip.
+  - Only `mcp_server_inventory.v0` is on the path to `end_to_end=proven` (its row carries
+    `awaiting_hosted_recipe_run`, owner harness); the four other carriers stay `declared`
+    with explicit producer-gap reasons (`no_released_binary_emitter` for supply-chain /
+    render-safety, `live_proxy_only` for token-passthrough, `requires_privileged_runtime`
+    for enforcement-health.v1), all owner `assay`. No change to exit codes; `declared`
+    remains non-failing.
+
 - Added the **suite compatibility matrix** (`suite.compatibility.v0`): a checked-in,
   versioned suite-contract artifact that records the relationship between the layers
   (Assay emits, Harness consumes/projects/gates, Plimsoll reviews) without becoming a

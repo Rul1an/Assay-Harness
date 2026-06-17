@@ -497,3 +497,92 @@ jobs:
         with:
           name: assay-release-compatibility-recipes-${{ env.ASSAY_VERSION }}
           path: results/assay-release-compatibility/**
+
+  assay-inventory-recipe:
+    name: Assay Inventory Recipe (hermetic E2E)
+    # Dispatch-only, like the receipt recipes: it produces the end-to-end proof
+    # (hosted_run + digests) that a controlled update folds into the suite matrix
+    # to flip the inventory row from declared -> proven. It is not run on every
+    # unrelated PR (keeping the proof rail small and predictable).
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Resolve + download released Assay binary
+        env:
+          ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
+        run: |
+          set -euo pipefail
+          assay_version="${ASSAY_VERSION_INPUT:-}"
+          [ -z "$assay_version" ] && assay_version="v3.27.0"
+          case "$assay_version" in v*) ;; *) assay_version="v${assay_version}" ;; esac
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+          mkdir -p /tmp/assay-release && cd /tmp/assay-release
+          asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
+          curl -fsSLO "${base}/${asset}"
+          curl -fsSLO "${base}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          tar -xzf "$asset"
+          bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
+          test -x "$bin"
+          echo "ASSAY_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Hermetic inventory emit + Harness consume
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          # Hermetic: scope discovery to a committed fixture, never ambient runner state.
+          export HOME="$RUNNER_TEMP/assay-mcp-home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          rm -rf "$HOME"
+          mkdir -p "$HOME/.config/claude"
+          fixture="fixtures/suite-compatibility/mcp-config/claude_desktop_config.json"
+          cp "$fixture" "$HOME/.config/claude/claude_desktop_config.json"
+
+          fixture_digest="sha256:$(sha256sum "$fixture" | cut -d' ' -f1)"
+          binary_digest="sha256:$(sha256sum "$ASSAY_BIN" | cut -d' ' -f1)"
+
+          # Emit the carrier from the RELEASED binary, scoped + deterministic
+          # (--no-process-scan => process_scan is reported not_scanned, never partial).
+          "$ASSAY_BIN" mcp inventory --no-process-scan --out /tmp/inventory.json
+          artifact_digest="sha256:$(sha256sum /tmp/inventory.json | cut -d' ' -f1)"
+
+          # Hermetic assertions: the released-binary output carries the fixture server
+          # and the frozen schema, and nothing from the ambient host leaked in.
+          grep -q '"notes"' /tmp/inventory.json
+          grep -q 'assay.mcp_server_inventory.v0' /tmp/inventory.json
+
+          # Harness consumes it end-to-end (descriptive carrier => exit 0).
+          npx tsx src/cli.ts carrier inventory --carrier /tmp/inventory.json
+
+          # Emit the proof metadata for the controlled matrix flip (declared -> proven).
+          {
+            echo "## Inventory recipe — hermetic end-to-end proof"
+            echo ""
+            echo "Fold these into the inventory row of \`suite-compatibility.json\` via a controlled update:"
+            echo ""
+            echo "- \`hosted_run\`: \`${GITHUB_RUN_ID}\`"
+            echo "- \`assay_version\`: \`${ASSAY_VERSION}\`"
+            echo "- \`assay_binary_digest\`: \`${binary_digest}\`"
+            echo "- \`fixture_digest\`: \`${fixture_digest}\`"
+            echo "- \`artifact_digest\`: \`${artifact_digest}\`"
+            echo "- \`command\`: \`assay mcp inventory --no-process-scan --out inventory.json\`"
+            echo "- \`runner_os\`: \`${RUNNER_OS}\` (ubuntu-latest)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload inventory carrier artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: inventory-carrier
+          path: /tmp/inventory.json
+          if-no-files-found: warn
