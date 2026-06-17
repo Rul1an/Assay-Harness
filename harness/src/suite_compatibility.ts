@@ -220,9 +220,21 @@ function validateCarrierRow(row: unknown, path: string, errors: SuiteValidationE
   }
   // Public-private boundary: the matrix may name the private reviewer and that it is
   // private, but must NOT carry its exact private version (a public-repo leak). Forbid
-  // `reviews.min_version` so the leak cannot be reintroduced; use `version_disclosure`.
-  if (r.reviews !== null && typeof r.reviews === "object" && !Array.isArray(r.reviews) && "min_version" in (r.reviews as object)) {
-    errors.push({ code: "SUITE_PRIVATE_VERSION_LEAK", message: `${path}.reviews must not expose a private min_version in the public matrix; use version_disclosure`, path: `${path}.reviews.min_version` });
+  // `reviews.min_version`, and enforce the *value* of the disclosure, not just the key
+  // name: a private reviewer must disclose exactly `not_public`, so the version cannot
+  // be smuggled back through `version_disclosure` (or any free-form value).
+  if (r.reviews !== null && typeof r.reviews === "object" && !Array.isArray(r.reviews)) {
+    const reviews = r.reviews as Record<string, unknown>;
+    if ("min_version" in reviews) {
+      errors.push({ code: "SUITE_PRIVATE_VERSION_LEAK", message: `${path}.reviews must not expose a private min_version in the public matrix; use version_disclosure`, path: `${path}.reviews.min_version` });
+    }
+    if (reviews.availability === "private" && reviews.version_disclosure !== "not_public") {
+      errors.push({
+        code: "SUITE_PRIVATE_VERSION_LEAK",
+        message: `${path}.reviews.version_disclosure must be "not_public" when availability is "private" (got ${JSON.stringify(reviews.version_disclosure)})`,
+        path: `${path}.reviews.version_disclosure`,
+      });
+    }
   }
   if (r.limits !== undefined && !(Array.isArray(r.limits) && r.limits.every((x) => typeof x === "string"))) {
     errors.push({ code: "SUITE_ROW_INVALID", message: `${path}.limits must be an array of strings`, path: `${path}.limits` });
