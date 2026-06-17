@@ -26,6 +26,10 @@ import {
   ENFORCEMENT_HEALTH_V1_SCHEMA,
   validateEnforcementHealthV1,
 } from "./carrier_enforcement_health.js";
+import {
+  MCP_SERVER_INVENTORY_SCHEMA,
+  validateMcpInventory,
+} from "./carrier_inventory.js";
 
 export interface CarrierAdapter {
   /** The exact frozen schema id this adapter consumes. */
@@ -50,6 +54,10 @@ const ADAPTERS: Record<string, CarrierAdapter> = {
   [ENFORCEMENT_HEALTH_V1_SCHEMA]: {
     schema: ENFORCEMENT_HEALTH_V1_SCHEMA,
     validate: validateEnforcementHealthV1,
+  },
+  [MCP_SERVER_INVENTORY_SCHEMA]: {
+    schema: MCP_SERVER_INVENTORY_SCHEMA,
+    validate: validateMcpInventory,
   },
 };
 

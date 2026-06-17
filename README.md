@@ -220,6 +220,31 @@ carrier is a deliberate reversal of the earlier "the Harness does not consume
 `docs/RUNNER_SCHEMA_CONSUMPTION.md`. The connect4/eBPF `v0` carrier is a different
 shape and is not consumed here.
 
+## MCP server inventory (`carrier inventory`, descriptive)
+
+Assay (`assay mcp inventory`, `crates/assay-core/src/discovery/inventory_carrier.rs`)
+emits an `assay.mcp_server_inventory.v0` carrier: a coverage-honest projection of
+discovered MCP servers (command/args hashed, credentials flagged by name only). The
+Harness projects it as reviewer context.
+
+```bash
+npx tsx harness/src/cli.ts carrier inventory \
+  --carrier path/to/mcp-server-inventory.json \
+  --out-dir results/mcp-server-inventory
+```
+
+This is **descriptive / non-gating**: a valid inventory exits 0 regardless of
+contents; only a malformed / wrong-schema / unknown-coverage-state carrier is a
+contract error (exit 3). Coverage honesty is surfaced, never decided: only a
+`complete` scan supports an absence claim, so the projection states which sources
+are complete and whether the inventory can support "nothing else is there". Drift
+and approval over the inventory (e.g. an unexpected server) are a separate review
+step.
+
+The other descriptive Tier-2B carriers, `tool_decision_surface.v0` and
+`mcp_manifest_observed.v0`, are not yet adapted (no clean single-carrier golden to
+pin against); they are a tracked follow-up, not hidden debt.
+
 ## Carrier contract-drift check (`carrier check`)
 
 `carrier check` dispatches any conformance carrier by its `schema` id to the
