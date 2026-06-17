@@ -568,7 +568,10 @@ jobs:
           # Hermetic assertions with diagnostics: the released-binary output carries the
           # fixture server + the frozen schema, and nothing from the ambient host leaked in.
           grep -q 'assay.mcp_server_inventory.v0' /tmp/inventory.json || { echo "ASSERT FAIL: schema id missing from inventory.json"; exit 1; }
-          grep -q '"notes"' /tmp/inventory.json || { echo "ASSERT FAIL: fixture server 'notes' not discovered (config-path or parse mismatch)"; exit 1; }
+          # The fixture's "notes" server is emitted with its client prefix as
+          # server_id "claude_desktop-notes" from source "claude_desktop_mcp_config".
+          grep -q 'claude_desktop-notes' /tmp/inventory.json || { echo "ASSERT FAIL: fixture server (claude_desktop-notes) not discovered (config-path or parse mismatch)"; exit 1; }
+          grep -q 'claude_desktop_mcp_config' /tmp/inventory.json || { echo "ASSERT FAIL: fixture source (claude_desktop) not attributed"; exit 1; }
 
           # Harness consumes it end-to-end (descriptive carrier => exit 0).
           npx tsx src/cli.ts carrier inventory --carrier /tmp/inventory.json
