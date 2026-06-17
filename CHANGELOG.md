@@ -4,6 +4,13 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Fixed a public/private boundary leak in the suite compatibility matrix: the
+  `reviews` block named the private reviewer's exact version (`min_version`). The
+  public matrix now carries `version_disclosure: "not_public"` instead, and a new
+  `suite check` rule (`SUITE_PRIVATE_VERSION_LEAK`) rejects any `reviews.min_version`
+  so the leak cannot be reintroduced. The public projection is unchanged (it already
+  surfaced only the `private-consumer-backed` backing, never the private version).
+
 - Added the **suite compatibility matrix** (`suite.compatibility.v0`): a checked-in,
   versioned suite-contract artifact that records the relationship between the layers
   (Assay emits, Harness consumes/projects/gates, Plimsoll reviews) without becoming a

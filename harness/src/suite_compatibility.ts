@@ -90,7 +90,9 @@ export interface CarrierRow {
   backing: string;
   emits: { producer: string; min_version: string };
   consumes: { consumer: string; min_version: string; verb: string };
-  reviews: { reviewer: string; availability: string; min_version: string } | null;
+  // The public matrix names the private reviewer and that it is private, but never
+  // its exact private version: a public artifact must not leak private-repo internals.
+  reviews: { reviewer: string; availability: string; version_disclosure: string } | null;
   proof: CarrierRowProof;
   limits?: string[];
 }
@@ -215,6 +217,12 @@ function validateCarrierRow(row: unknown, path: string, errors: SuiteValidationE
   }
   if (r.reviews !== null && (typeof r.reviews !== "object" || Array.isArray(r.reviews))) {
     errors.push({ code: "SUITE_ROW_INVALID", message: `${path}.reviews must be an object or null`, path: `${path}.reviews` });
+  }
+  // Public-private boundary: the matrix may name the private reviewer and that it is
+  // private, but must NOT carry its exact private version (a public-repo leak). Forbid
+  // `reviews.min_version` so the leak cannot be reintroduced; use `version_disclosure`.
+  if (r.reviews !== null && typeof r.reviews === "object" && !Array.isArray(r.reviews) && "min_version" in (r.reviews as object)) {
+    errors.push({ code: "SUITE_PRIVATE_VERSION_LEAK", message: `${path}.reviews must not expose a private min_version in the public matrix; use version_disclosure`, path: `${path}.reviews.min_version` });
   }
   if (r.limits !== undefined && !(Array.isArray(r.limits) && r.limits.every((x) => typeof x === "string"))) {
     errors.push({ code: "SUITE_ROW_INVALID", message: `${path}.limits must be an array of strings`, path: `${path}.limits` });

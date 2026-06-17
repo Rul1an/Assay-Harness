@@ -84,6 +84,33 @@ test("unknown backing is rejected", () => {
   assert.ok(v.errors.some((e) => e.code === "SUITE_BACKING_UNKNOWN"));
 });
 
+test("reviews must not leak a private min_version in the public matrix", () => {
+  const v = validateSuiteCompatibility({
+    schema: SUITE_COMPATIBILITY_SCHEMA,
+    carrier_rows: [{
+      carrier: "x", support_mode: "gating", backing: "public-only",
+      consumes: { verb: "carrier x" },
+      reviews: { reviewer: "plimsoll", availability: "private", min_version: "0.13.0" },
+      proof: { harness_consumption: "proven", end_to_end: "declared" },
+    }],
+    recipe_rows: [],
+    manifest: { digest: "sha256:x" },
+  });
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.code === "SUITE_PRIVATE_VERSION_LEAK"));
+});
+
+test("the seed asset names the private reviewer without exposing its version", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const reviewed = m.carrier_rows.filter((r) => r.reviews);
+  assert.ok(reviewed.length > 0);
+  for (const r of reviewed) {
+    assert.equal(r.reviews.availability, "private");
+    assert.equal(r.reviews.version_disclosure, "not_public");
+    assert.equal(r.reviews.min_version, undefined, "no private version in the public matrix");
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Drift vs the live carrier registry
 // ---------------------------------------------------------------------------
