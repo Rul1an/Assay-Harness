@@ -210,6 +210,26 @@ carrier that reports a leak is contract-valid here and fails its own gate verb).
 | Unknown/unregistered schema id, missing or non-string `schema`, malformed JSON, or a recognised schema whose shape has drifted | 3 |
 | `--carrier` missing, the file is not found, or `--format` is not `markdown`/`json` | 2 |
 
+### `assay-harness suite check` / `assay-harness suite matrix`
+
+The suite compatibility matrix (`suite.compatibility.v0`) is a suite-contract
+artifact, not a producer carrier and not a Plimsoll review. `suite check` gates the
+matrix on its own internal consistency (never on organization policy); `suite matrix`
+projects it. It is a VSA-shaped compatibility summary, not a SLSA VSA. Each row splits
+the proof into `harness_consumption` (Harness can validate/gate/project the carrier
+shape) and `end_to_end` (released Assay binary emitted it and Harness consumed it in a
+hosted run). `--against-registry` adds drift detection vs the live carrier registry.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Matrix valid and internally consistent (incl. recomputed digest match); with `--against-registry`, no drift | 0 |
+| Malformed JSON, wrong/missing `schema`, unknown enum state (`support_mode`/`backing`/proof state), digest mismatch, an `end_to_end: "proven"` row without `hosted_run` + `artifact_digest`, or (registry mode) a registered carrier with no row / a row with no adapter / a stale verb / a mode mismatch | 3 |
+| `--matrix` missing, the file is not found, or `--format` is not `markdown`/`json` | 2 |
+
+An `end_to_end: "declared"` row is **not** a failure; it is visible pending-proof. There
+is no `6` here: the matrix reports no producer-owned not-clean gate, it describes the
+suite contract.
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

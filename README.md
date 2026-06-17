@@ -263,6 +263,37 @@ the Harness never silently accepts a carrier it does not recognize. A golden-dri
 test pins every registered schema's shape, so a future producer change is caught
 rather than mis-parsed.
 
+## Suite compatibility matrix (`suite check` / `suite matrix`)
+
+The suite compatibility matrix (`suite.compatibility.v0`, checked in at
+`harness/suite-compatibility.json`) is a versioned suite-contract artifact: it records
+which Assay version emits each carrier, which Harness version consumes/projects/gates
+it, which Plimsoll version reviews it, the support mode, the public/private backing, and
+the proof state. It is a VSA-shaped compatibility summary, not a SLSA VSA. The Harness
+validates this evidence and projects it; it does not approve carrier semantics or
+organization policy.
+
+Each row splits the proof in two, which is the load-bearing honesty: `harness_consumption`
+(the Harness can validate/gate/project the carrier shape, proven by this repo's tests over
+real producer golden bytes) and `end_to_end` (the released Assay binary emitted the carrier
+and the Harness consumed it in a hosted run). A `declared / pending` end-to-end state means
+the first is proven but the second is not yet, so it renders as pending, never as approved.
+
+```bash
+# Validate the matrix shape + digest only
+npx tsx harness/src/cli.ts suite check --matrix harness/suite-compatibility.json
+
+# Also check drift vs the live carrier registry (CI)
+npx tsx harness/src/cli.ts suite check --matrix harness/suite-compatibility.json --against-registry
+
+# Project a reviewer-facing Markdown (or JSON) view
+npx tsx harness/src/cli.ts suite matrix --matrix harness/suite-compatibility.json
+```
+
+A malformed matrix, an unknown enum state, a digest mismatch, a `proven` end-to-end row
+without its `hosted_run` + `artifact_digest`, or (in registry mode) drift between the
+matrix and the registry is a contract error (exit 3). An unknown state is never clean.
+
 ## The PR Gate Flow
 
 ```
