@@ -239,10 +239,10 @@ policy. `verify` is strict and does artifact-contract only (the carrier gate alr
 
 | Outcome | Exit Code |
 |---------|-----------|
-| Pack valid: manifest digest + sidecar match, file digests match, path-safe, every projection resolves to a source, provenance is a hermetic success, metadata cross-check holds, and the coherence invariant holds (carrier bytes == matrix proven row == provenance, on the same artifact + proof) | 0 |
-| Manifest unreadable / wrong schema / digest mismatch, file missing / file-digest mismatch / unlisted file, unsafe path (`..` / absolute / symlink / escapes root) / duplicate path, projection without a resolvable source, provenance invalid or not a hermetic success, metadata or coherence mismatch, or `optional_private_reviews available:true` (unsupported in v0) | 3 |
+| Pack valid: the three v0 evidence roles present (each once) + the Markdown projection, manifest digest + sidecar match, file digests match, path-safe, every projection resolves to a source, provenance is a hermetic success, metadata cross-check holds, and the coherence invariant holds (carrier bytes == matrix proven row == provenance, on the same artifact + proof) | 0 |
+| Malformed manifest shape, missing/duplicated evidence role, unreadable / wrong schema / digest mismatch, file missing / file-digest mismatch / unlisted file (or unlisted symlink), unsafe path (`..` / absolute / symlink / escapes root) / duplicate path, projection without a resolvable source, provenance invalid or not a hermetic success, metadata or coherence mismatch, or `optional_private_reviews available:true` (unsupported in v0) | 3 |
 | Missing pack dir or bad CLI args | 2 |
-| (`create` only) projection/manifest write failure | 7 |
+| (`create` only) projection/manifest write failure, or the freshly built pack fails self-verify | 7 |
 
 `created_at` is informational and excluded from the manifest digest, so identical evidence
 yields the same pack identity. No `6`.

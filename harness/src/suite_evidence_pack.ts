@@ -166,8 +166,11 @@ function pathSafe(packRoot: string, rel: string, errors: PackError[]): boolean {
       errors.push({ code: "PACK_PATH_UNSAFE", message: `path is a symlink: ${rel}`, path: rel });
       return false;
     }
-    // realpath escape (a parent symlink) -> outside root.
-    if (!realpathSync(abs).startsWith(realpathSync(rootResolved))) {
+    // realpath escape (a parent symlink) -> outside root. Separator-aware so a sibling
+    // directory like `<root>_evil` cannot satisfy a bare string-prefix check.
+    const realRoot = realpathSync(rootResolved);
+    const realAbs = realpathSync(abs);
+    if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) {
       errors.push({ code: "PACK_PATH_UNSAFE", message: `path resolves outside the pack root: ${rel}`, path: rel });
       return false;
     }
@@ -192,6 +195,22 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
   if (manifest.schema !== SUITE_EVIDENCE_PACK_SCHEMA) {
     errors.push({ code: "PACK_SCHEMA_MISMATCH", message: `schema must be ${SUITE_EVIDENCE_PACK_SCHEMA}; got ${JSON.stringify(manifest.schema)}`, path: "schema" });
     return { valid: false, errors };
+  }
+
+  // Fail closed on a schema-matching but structurally malformed manifest (e.g.
+  // `source_of_truth: "x"`) before any digest/`.map` work would throw on it.
+  const arraysOk =
+    Array.isArray(manifest.source_of_truth) &&
+    Array.isArray(manifest.projections) &&
+    Array.isArray(manifest.optional_private_reviews) &&
+    Array.isArray(manifest.non_claims);
+  const objsOk =
+    manifest.subject != null && typeof manifest.subject === "object" &&
+    manifest.producer != null && typeof manifest.producer === "object" &&
+    manifest.manifest != null && typeof manifest.manifest === "object";
+  if (!arraysOk || !objsOk) {
+    errors.push({ code: "PACK_MANIFEST_SHAPE", message: "source_of_truth/projections/optional_private_reviews/non_claims must be arrays and subject/producer/manifest objects", path: "manifest" });
+    return { valid: false, errors, manifest };
   }
 
   // --- manifest digest + sidecar ---
@@ -229,6 +248,20 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     if (e.lossy !== true) errors.push({ code: "PACK_PROJECTION_INVALID", message: `projection ${e.path} must be lossy:true`, path: e.path });
     if (!sourceDigests.has(e.source_digest)) errors.push({ code: "PACK_PROJECTION_NO_SOURCE", message: `projection ${e.path} source_digest does not resolve to a source_of_truth digest`, path: e.path });
   }
+
+  // v0 requires exactly the three evidence sources (each once) plus the Markdown projection,
+  // so a contentless manifest cannot recompute a matching digest and silently skip every
+  // coherence cross-check below (which is gated on all three sources being present).
+  const sourceRoleCount = new Map<string, number>();
+  for (const e of manifest.source_of_truth) sourceRoleCount.set(e.role, (sourceRoleCount.get(e.role) ?? 0) + 1);
+  for (const role of KNOWN_SOURCE_ROLES) {
+    const n = sourceRoleCount.get(role) ?? 0;
+    if (n === 0) errors.push({ code: "PACK_ROLE_MISSING", message: `v0 pack requires a ${role} source_of_truth entry`, path: "source_of_truth" });
+    else if (n > 1) errors.push({ code: "PACK_ROLE_DUPLICATE", message: `v0 pack must carry exactly one ${role} source_of_truth entry`, path: "source_of_truth" });
+  }
+  if (manifest.projections.filter((p) => p.role === "harness_markdown").length !== 1) {
+    errors.push({ code: "PACK_PROJECTION_MISSING", message: `v0 pack requires exactly one harness_markdown projection`, path: "projections" });
+  }
   for (const e of allEntries) {
     const norm = e.path.replace(/\/+/g, "/");
     if (seen.has(norm)) { errors.push({ code: "PACK_PATH_DUPLICATE", message: `duplicate path entry: ${e.path}`, path: e.path }); continue; }
@@ -252,10 +285,13 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     const allowed = new Set<string>(["manifest.json", "evidence.sha256", ...allEntries.map((e) => e.path.replace(/\/+/g, "/"))]);
     for (const f of readdirSync(packDir, { recursive: true }) as string[]) {
       const rel = String(f).split(sep).join("/");
-      let isFile = false;
-      try { isFile = lstatSync(resolve(packDir, rel)).isFile(); } catch { isFile = false; }
-      if (isFile && !allowed.has(rel)) {
-        errors.push({ code: "PACK_UNLISTED_FILE", message: `unlisted file in pack: ${rel}`, path: rel });
+      let st: ReturnType<typeof lstatSync> | undefined;
+      try { st = lstatSync(resolve(packDir, rel)); } catch { st = undefined; }
+      if (!st || st.isDirectory()) continue;
+      // A regular file OR a symlink that is not explicitly listed is an unlisted artifact
+      // (a *listed* symlink is already rejected by pathSafe). Don't let isFile() skip symlinks.
+      if (!allowed.has(rel)) {
+        errors.push({ code: "PACK_UNLISTED_FILE", message: `unlisted ${st.isSymbolicLink() ? "symlink" : "file"} in pack: ${rel}`, path: rel });
       }
     }
   } catch {

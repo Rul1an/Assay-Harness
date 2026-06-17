@@ -12,15 +12,17 @@ All notable changes to Assay Harness will be documented in this file.
   recipe only. `evidence-pack create` writes the pack (one canonical `manifest.digest` over
   JCS-canonicalized, sorted evidence; `created_at`/`producer` excluded so identical evidence
   yields the same digest; mirrored in the `evidence.sha256` sidecar). `evidence-pack verify`
-  is strict: it enforces path safety (rejects `..` / absolute / symlink / outside-root /
-  duplicate / unlisted paths), file digests, source-of-truth vs lossy-projection separation
-  (every projection resolves to a source digest), the provenance being a hermetic success
-  (exit 0 / hosted / `ambient_scan:false`), a metadata cross-check, and the **coherence
-  invariant** — the carrier bytes, the matrix's proven row, and the provenance must all agree
-  on the same artifact and the same proof (hosted_run / version / fixture / artifact /
-  ambient_scan), so a pack cannot be internally consistent by digest while lying about where
-  the evidence came from. The hermetic recipe now also emits `recipe.provenance.json`. Exit
-  codes: `0` valid · `2` bad args · `3` artifact_contract · `7` ci_formatter (build). No `6`.
+  is strict: it requires the three v0 evidence roles (each once) plus the Markdown projection,
+  enforces path safety (rejects `..` / absolute / symlink / outside-root / duplicate / unlisted
+  paths, including unlisted symlinks), file digests, source-of-truth vs lossy-projection
+  separation (every projection resolves to a source digest), the provenance being a hermetic
+  success (exit 0 / classification `success` / hosted / `ambient_scan:false`), a metadata
+  cross-check, and the **coherence invariant** — the carrier bytes, the matrix's proven row,
+  and the provenance must all agree on the same artifact and the same proof (hosted_run /
+  version / fixture / artifact / ambient_scan), so a pack cannot be internally consistent by
+  digest while lying about where the evidence came from. The hermetic recipe now also emits
+  `recipe.provenance.json` (validated for shape at emit). Exit codes: `0` valid · `2` bad args
+  · `3` artifact_contract · `7` ci_formatter (build). No `6`.
 
 - Extended the suite compatibility matrix toward end-to-end proof (H-next-2):
   - Carrier rows now carry a machine-readable `end_to_end_gap` (`{reason_code, owner}`)

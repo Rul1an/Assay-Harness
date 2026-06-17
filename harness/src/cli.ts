@@ -140,6 +140,17 @@ const EXIT = {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Single source of truth for the Harness version; also stamped into recipe provenance,
+ *  so the pack's metadata cross-check (producer.version == provenance.harness.version) can
+ *  never silently drift on a version bump. */
+const HARNESS_VERSION: string = (() => {
+  try {
+    return JSON.parse(readFileSync(resolve(__dirname, "..", "package.json"), "utf-8")).version as string;
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 function usage(): never {
   console.log(`assay-harness — Approval-aware resumable harness with Assay evidence governance
 
@@ -1919,8 +1930,8 @@ function cmdEvidencePackCreate(args: Record<string, string | boolean>): void {
     suiteMatrixPath: evidencePackArg(args, "suite-matrix"),
     provenancePath: evidencePackArg(args, "provenance"),
     markdownPath: evidencePackArg(args, "markdown"),
-    // Keep in sync with package.json version + the recipe's harness.version.
-    harnessVersion: "0.8.0",
+    // Derived from package.json so it cannot drift from the recipe's harness.version.
+    harnessVersion: HARNESS_VERSION,
   };
   try {
     const manifest = buildEvidencePack(inputs, outDir);
