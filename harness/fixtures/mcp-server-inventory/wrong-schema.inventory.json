@@ -1,0 +1,12 @@
+{
+  "schema": "assay.mcp_server_inventory.v1",
+  "scanner_coverage": {
+    "config_sources": {
+      "claude_desktop": "complete"
+    },
+    "process_scan": "complete",
+    "network_scan": "complete"
+  },
+  "servers": [],
+  "non_claims": []
+}

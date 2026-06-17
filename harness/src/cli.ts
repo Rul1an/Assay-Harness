@@ -70,6 +70,12 @@ import {
   writeEnforcementHealthProjections,
 } from "./carrier_enforcement_health.js";
 import {
+  formatMcpInventoryMarkdown,
+  formatMcpInventorySummary,
+  loadMcpInventoryReport,
+  writeMcpInventoryProjections,
+} from "./carrier_inventory.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -146,6 +152,7 @@ Commands:
   carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]
   carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]
   carrier check --carrier <conformance.json> [--format markdown|json]
+  carrier inventory --carrier <mcp-server-inventory.json> [--out-dir <dir>] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -1405,6 +1412,10 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
     cmdCarrierEnforcementHealth(args);
     return;
   }
+  if (subcommand === "inventory") {
+    cmdCarrierInventory(args);
+    return;
+  }
   console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
@@ -1412,7 +1423,8 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
       "  carrier render-safety --carrier <render-safety-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]\n" +
-      "  carrier check --carrier <conformance.json> [--format markdown|json]",
+      "  carrier check --carrier <conformance.json> [--format markdown|json]\n" +
+      "  carrier inventory --carrier <mcp-server-inventory.json> [--out-dir <dir>] [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
@@ -1698,6 +1710,60 @@ function cmdCarrierCheck(args: Record<string, string | boolean>): void {
   if (!result.recognized || !result.valid) {
     const codes = result.errors.map((e) => e.code).join(",");
     console.error(`[artifact_contract] carrier check: contract not recognized or drifted (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierInventory(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = args["out-dir"] as string | undefined;
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <mcp-server-inventory.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier inventory --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadMcpInventoryReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] MCP inventory carrier file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeMcpInventoryProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatMcpInventoryMarkdown(report).trimEnd());
+  }
+  console.log(formatMcpInventorySummary(report));
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.log(`[carrier-inventory] artifacts: ${outDir}/mcp-server-inventory.md`);
+  }
+
+  // Exit routing (DESCRIPTIVE / non-gating): a valid inventory exits 0 regardless of
+  // contents; only a malformed / wrong-schema / unknown-coverage-state carrier is a
+  // contract error (3). Drift / approval over the inventory is a separate review step.
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier inventory: invalid carrier (${codes})`);
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   process.exit(EXIT.SUCCESS);

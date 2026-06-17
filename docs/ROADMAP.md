@@ -4,6 +4,16 @@
 
 ## Main after v0.6.1 — current
 
+### MCP server inventory projector (`carrier inventory`) — added on main
+- New `carrier inventory` verb: descriptive (non-gating) projector for
+  `assay.mcp_server_inventory.v0`; validates the frozen shape and projects reviewer
+  Markdown (scanner coverage + observed servers); a valid inventory exits 0
+- Coverage honesty surfaced, never decided (only a complete scan supports an absence
+  claim); drift/approval over the inventory stays the Plimsoll review step
+- The other descriptive Tier-2B carriers (`tool_decision_surface.v0`,
+  `mcp_manifest_observed.v0`) are a tracked follow-up: no clean single-carrier golden
+  to pin against yet, so they are explicitly not adapted rather than guessed
+
 ### Enforcement-health carrier gate (`carrier enforcement-health`) — added on main
 - New `carrier enforcement-health` verb: consumes `assay.enforcement_health.v1`
   (Landlock TCP-connect), gating on the producer-reported status (active is clean,

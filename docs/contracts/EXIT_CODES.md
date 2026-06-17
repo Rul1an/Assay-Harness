@@ -182,6 +182,20 @@ enforcement-truth review (policy-aware approval over the outcome) is a separate 
 | `--carrier` missing, file not found, or `--format` not `markdown`/`json` | 2 |
 | Markdown/JUnit/SARIF projection write fails (with `--out-dir`) | 7 |
 
+### `assay-harness carrier inventory`
+
+Describe an `assay.mcp_server_inventory.v0` carrier (Tier-2B, descriptive). Validate
+the frozen shape and project a reviewer-facing Markdown summary of scanner coverage
+and observed servers. This is descriptive, not a gate: a valid inventory exits 0
+regardless of contents.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Carrier valid (any inventory contents) | 0 |
+| Carrier malformed, wrong/unknown schema id, or unknown coverage state | 3 |
+| `--carrier` missing, file not found, or `--format` not `markdown`/`json` | 2 |
+| Markdown projection write fails (with `--out-dir`) | 7 |
+
 ### `assay-harness carrier check`
 
 Detect carrier contract drift: dispatch any conformance carrier by its `schema` id

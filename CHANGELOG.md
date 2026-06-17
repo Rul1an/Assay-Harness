@@ -4,6 +4,16 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added `carrier inventory`: a descriptive (non-gating) projector for
+  `assay.mcp_server_inventory.v0`. It validates the frozen shape and projects a
+  reviewer Markdown summary of scanner coverage and observed servers; a valid
+  inventory exits 0 regardless of contents (only malformed / wrong-schema /
+  unknown-coverage-state is a contract error). Coverage honesty is surfaced (only a
+  complete scan supports an absence claim), never decided. The other descriptive
+  Tier-2B carriers (`tool_decision_surface.v0`, `mcp_manifest_observed.v0`) are a
+  tracked follow-up (no clean single-carrier golden yet), not hidden debt. No change
+  to existing verbs or the exit-code taxonomy.
+
 - Added `carrier enforcement-health`: consumes `assay.enforcement_health.v1` (the
   Landlock TCP-connect domain), gating on the producer-reported status (`active` is
   clean, `failed` is not; a real-block probe is surfaced). This is the carrier-local
