@@ -16,7 +16,7 @@ import { getCarrierAdapter } from "../dist/carrier_registry.js";
 
 const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/render-safety-conformance/${name}`, import.meta.url));
-const CLI = "dist/cli.js";
+const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
 test("schema constant pins the producer contract + registry resolves the adapter", () => {
   assert.equal(RENDER_SAFETY_CONFORMANCE_SCHEMA, "assay.render_safety_conformance.v0");
@@ -101,6 +101,13 @@ test("CLI exit codes: clean=0, leak=6, truncation-order=6, wrong-schema=3, missi
   assert.equal(runCli("--carrier", fixture("truncation-order.conformance.json")).status, 6);
   assert.equal(runCli("--carrier", fixture("wrong-schema.conformance.json")).status, 3);
   assert.equal(runCli("--carrier", "/nonexistent/x.json").status, 2);
+});
+
+test("CLI: --format json emits only parseable JSON on stdout (no summary leak)", () => {
+  const r = runCli("--carrier", fixture("clean.conformance.json"), "--format", "json");
+  assert.equal(r.status, 0, r.stderr);
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.validation.carrier.schema, RENDER_SAFETY_CONFORMANCE_SCHEMA);
 });
 
 test("CLI: invalid --format -> exit 2 (config_error)", () => {

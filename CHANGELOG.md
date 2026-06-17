@@ -4,6 +4,17 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Fixed `--format json` on every `carrier` projection verb (supply-chain,
+  render-safety, token-passthrough, enforcement-health, inventory): the human
+  summary was printed to stdout after the JSON document, so the output did not
+  parse. JSON mode now emits only the JSON document on stdout; the summary moves to
+  the markdown path and the artifacts notice to stderr. A bare `--out-dir` (no
+  value) is now a config error instead of a silently skipped write, and the SARIF
+  artifact URI is resolved cross-platform (`path.relative` + POSIX normalisation)
+  rather than via a hard-coded `/`. Each projection verb gains a regression test
+  asserting json-mode output parses, plus projection-write-failure (exit 7) and
+  bare-`--out-dir` coverage. No change to exit codes or the carrier contracts.
+
 - Added `carrier inventory`: a descriptive (non-gating) projector for
   `assay.mcp_server_inventory.v0`. It validates the frozen shape and projects a
   reviewer Markdown summary of scanner coverage and observed servers; a valid

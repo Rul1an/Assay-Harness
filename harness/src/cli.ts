@@ -1390,6 +1390,18 @@ function carrierFormat(args: Record<string, string | boolean>): "markdown" | "js
   return format;
 }
 
+// Resolve `--out-dir`. A bare `--out-dir` (no value) parses as `true`; treat that
+// as a config error rather than silently skipping the projection write.
+function carrierOutDir(args: Record<string, string | boolean>): string | undefined {
+  const raw = args["out-dir"];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "string" || raw.length === 0) {
+    console.error("[config_error] --out-dir requires a directory path");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  return raw;
+}
+
 function cmdCarrier(args: Record<string, string | boolean>): void {
   const subcommand = args._file as string | undefined;
   if (subcommand === "supply-chain") {
@@ -1431,7 +1443,7 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
 
 function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
-  const outDir = args["out-dir"] as string | undefined;
+  const outDir = carrierOutDir(args);
   const format = carrierFormat(args);
 
   // Bare `--carrier` without a value parses as `true`; require a non-empty path.
@@ -1464,14 +1476,16 @@ function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
     }
   }
 
+  // `--format json` emits only the JSON document on stdout so it stays parseable;
+  // the human summary and the artifacts notice go to the markdown path / stderr.
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatSupplyChainMarkdown(report).trimEnd());
+    console.log(formatSupplyChainSummary(report));
   }
-  console.log(formatSupplyChainSummary(report));
   if (typeof outDir === "string" && outDir.length > 0) {
-    console.log(
+    console.error(
       `[carrier-supply-chain] artifacts: ${outDir}/supply-chain-conformance.{md,junit.xml,sarif.json}`,
     );
   }
@@ -1498,7 +1512,7 @@ function cmdCarrierSupplyChain(args: Record<string, string | boolean>): void {
 
 function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
-  const outDir = args["out-dir"] as string | undefined;
+  const outDir = carrierOutDir(args);
   const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1529,14 +1543,16 @@ function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
     }
   }
 
+  // `--format json` emits only the JSON document on stdout so it stays parseable;
+  // the human summary and the artifacts notice go to the markdown path / stderr.
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatRenderSafetyMarkdown(report).trimEnd());
+    console.log(formatRenderSafetySummary(report));
   }
-  console.log(formatRenderSafetySummary(report));
   if (typeof outDir === "string" && outDir.length > 0) {
-    console.log(
+    console.error(
       `[carrier-render-safety] artifacts: ${outDir}/render-safety-conformance.{md,junit.xml,sarif.json}`,
     );
   }
@@ -1558,7 +1574,7 @@ function cmdCarrierRenderSafety(args: Record<string, string | boolean>): void {
 
 function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
-  const outDir = args["out-dir"] as string | undefined;
+  const outDir = carrierOutDir(args);
   const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1589,14 +1605,16 @@ function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): voi
     }
   }
 
+  // `--format json` emits only the JSON document on stdout so it stays parseable;
+  // the human summary and the artifacts notice go to the markdown path / stderr.
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatTokenPassthroughMarkdown(report).trimEnd());
+    console.log(formatTokenPassthroughSummary(report));
   }
-  console.log(formatTokenPassthroughSummary(report));
   if (typeof outDir === "string" && outDir.length > 0) {
-    console.log(
+    console.error(
       `[carrier-token-passthrough] artifacts: ${outDir}/token-passthrough-conformance.{md,junit.xml,sarif.json}`,
     );
   }
@@ -1618,7 +1636,7 @@ function cmdCarrierTokenPassthrough(args: Record<string, string | boolean>): voi
 
 function cmdCarrierEnforcementHealth(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
-  const outDir = args["out-dir"] as string | undefined;
+  const outDir = carrierOutDir(args);
   const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1649,14 +1667,16 @@ function cmdCarrierEnforcementHealth(args: Record<string, string | boolean>): vo
     }
   }
 
+  // `--format json` emits only the JSON document on stdout so it stays parseable;
+  // the human summary and the artifacts notice go to the markdown path / stderr.
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatEnforcementHealthMarkdown(report).trimEnd());
+    console.log(formatEnforcementHealthSummary(report));
   }
-  console.log(formatEnforcementHealthSummary(report));
   if (typeof outDir === "string" && outDir.length > 0) {
-    console.log(
+    console.error(
       `[carrier-enforcement-health] artifacts: ${outDir}/enforcement-health.{md,junit.xml,sarif.json}`,
     );
   }
@@ -1717,7 +1737,7 @@ function cmdCarrierCheck(args: Record<string, string | boolean>): void {
 
 function cmdCarrierInventory(args: Record<string, string | boolean>): void {
   const carrierArg = args.carrier;
-  const outDir = args["out-dir"] as string | undefined;
+  const outDir = carrierOutDir(args);
   const format = carrierFormat(args);
 
   if (typeof carrierArg !== "string" || carrierArg.length === 0) {
@@ -1748,14 +1768,16 @@ function cmdCarrierInventory(args: Record<string, string | boolean>): void {
     }
   }
 
+  // `--format json` emits only the JSON document on stdout so it stays parseable;
+  // the human summary and the artifacts notice go to the markdown path / stderr.
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatMcpInventoryMarkdown(report).trimEnd());
+    console.log(formatMcpInventorySummary(report));
   }
-  console.log(formatMcpInventorySummary(report));
   if (typeof outDir === "string" && outDir.length > 0) {
-    console.log(`[carrier-inventory] artifacts: ${outDir}/mcp-server-inventory.md`);
+    console.error(`[carrier-inventory] artifacts: ${outDir}/mcp-server-inventory.md`);
   }
 
   // Exit routing (DESCRIPTIVE / non-gating): a valid inventory exits 0 regardless of
