@@ -27,7 +27,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, basename, resolve } from "node:path";
+import { dirname, basename, resolve, relative, isAbsolute, sep } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Constants (pinned to Rul1an/assay@v3.27.0 producer contract)
@@ -587,8 +587,12 @@ const SARIF_RULES = [
 function relativeUri(carrierPath: string): string {
   const base = resolve(process.env.GITHUB_WORKSPACE ?? process.cwd());
   const abs = resolve(carrierPath);
-  if (abs.startsWith(base + "/")) return abs.slice(base.length + 1);
-  return basename(carrierPath);
+  const rel = relative(base, abs);
+  // Outside the workspace (escapes via "..") or on a different drive (absolute on
+  // Windows) -> fall back to the basename rather than emitting a traversal path.
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return basename(carrierPath);
+  // SARIF artifact URIs are POSIX-style; normalize Windows "\" separators to "/".
+  return rel.split(sep).join("/");
 }
 
 export function formatSupplyChainSarif(report: SupplyChainReport): string {

@@ -15,7 +15,7 @@ import { getCarrierAdapter } from "../dist/carrier_registry.js";
 
 const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/enforcement-health-conformance/${name}`, import.meta.url));
-const CLI = "dist/cli.js";
+const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
 test("schema constant pins the producer contract + registry resolves the adapter", () => {
   assert.equal(ENFORCEMENT_HEALTH_V1_SCHEMA, "assay.enforcement_health.v1");
@@ -114,4 +114,11 @@ test("CLI exit codes: active=0, failed=6, wrong-schema=3, missing=2, bad-format=
   assert.equal(runCli("--carrier", fixture("wrong-schema.conformance.json")).status, 3);
   assert.equal(runCli("--carrier", "/nonexistent/x.json").status, 2);
   assert.equal(runCli("--carrier", fixture("active-no-probe.conformance.json"), "--format", "xml").status, 2);
+});
+
+test("CLI: --format json emits only parseable JSON on stdout (no summary leak)", () => {
+  const r = runCli("--carrier", fixture("active-with-probe.conformance.json"), "--format", "json");
+  assert.equal(r.status, 0, r.stderr);
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.validation.carrier.schema, ENFORCEMENT_HEALTH_V1_SCHEMA);
 });

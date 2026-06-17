@@ -13,7 +13,7 @@ import { getCarrierAdapter } from "../dist/carrier_registry.js";
 
 const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/mcp-server-inventory/${name}`, import.meta.url));
-const CLI = "dist/cli.js";
+const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
 test("schema constant + registry resolves the adapter", () => {
   assert.equal(MCP_SERVER_INVENTORY_SCHEMA, "assay.mcp_server_inventory.v0");
@@ -100,4 +100,11 @@ test("CLI: any valid inventory -> 0 (descriptive); wrong-schema -> 3; missing ->
   assert.equal(runCli("--carrier", fixture("wrong-schema.inventory.json")).status, 3);
   assert.equal(runCli("--carrier", "/nonexistent/x.json").status, 2);
   assert.equal(runCli("--carrier", fixture("golden.inventory.json"), "--format", "xml").status, 2);
+});
+
+test("CLI: --format json emits only parseable JSON on stdout (no summary leak)", () => {
+  const r = runCli("--carrier", fixture("golden.inventory.json"), "--format", "json");
+  assert.equal(r.status, 0, r.stderr);
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.validation.carrier.schema, MCP_SERVER_INVENTORY_SCHEMA);
 });

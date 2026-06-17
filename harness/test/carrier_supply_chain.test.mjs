@@ -1,5 +1,8 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
@@ -21,7 +24,7 @@ import {
 
 const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/supply-chain-conformance/${name}`, import.meta.url));
-const CLI = "dist/cli.js";
+const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Contract constants
@@ -250,4 +253,30 @@ test("CLI: bare carrier verb -> exit 2 (config_error)", () => {
 test("CLI: invalid --format -> exit 2 (config_error)", () => {
   const r = runCli("--carrier", fixture("pass.conformance.json"), "--format", "xml");
   assert.equal(r.status, 2, r.stderr);
+});
+
+test("CLI: --format json emits only parseable JSON on stdout (no summary leak)", () => {
+  const r = runCli("--carrier", fixture("pass.conformance.json"), "--format", "json");
+  assert.equal(r.status, 0, r.stderr);
+  // The whole stdout must parse; a trailing human summary would break this.
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.validation.carrier.schema, SUPPLY_CHAIN_CONFORMANCE_SCHEMA);
+});
+
+test("CLI: bare --out-dir (no value) -> exit 2 (config_error)", () => {
+  const r = runCli("--carrier", fixture("pass.conformance.json"), "--out-dir");
+  assert.equal(r.status, 2, r.stderr);
+});
+
+test("CLI: projection write failure -> exit 7 (ci_formatter)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "carrier-supply-chain-"));
+  try {
+    // Point --out-dir at an existing *file* so the projection mkdir/write fails.
+    const notADir = join(dir, "not-a-dir");
+    writeFileSync(notADir, "x");
+    const r = runCli("--carrier", fixture("pass.conformance.json"), "--out-dir", notADir);
+    assert.equal(r.status, 7, r.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
