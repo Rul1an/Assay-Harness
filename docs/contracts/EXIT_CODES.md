@@ -230,6 +230,23 @@ An `end_to_end: "declared"` row is **not** a failure; it is visible pending-proo
 is no `6` here: the matrix reports no producer-owned not-clean gate, it describes the
 suite contract.
 
+### `assay-harness evidence-pack create` / `assay-harness evidence-pack verify`
+
+The Evidence Pack (`suite.evidence_pack.v0`) is a deterministic, digest-bound bundle of a
+proven carrier recipe. It binds raw Assay carrier bytes, the Harness Markdown projection,
+the suite matrix, and the recipe provenance; it creates no new evidence and approves no
+policy. `verify` is strict and does artifact-contract only (the carrier gate already ran).
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Pack valid: the three v0 evidence roles present (each once) + the Markdown projection, manifest digest + sidecar match, file digests match, path-safe, every projection resolves to a source, provenance is a hermetic success, metadata cross-check holds, and the coherence invariant holds (carrier bytes == matrix proven row == provenance, on the same artifact + proof) | 0 |
+| Malformed manifest shape, missing/duplicated evidence role, unreadable / wrong schema / digest mismatch, file missing / file-digest mismatch / unlisted file (or unlisted symlink), unsafe path (`..` / absolute / symlink / escapes root) / duplicate path, projection without a resolvable source, provenance invalid or not a hermetic success, metadata or coherence mismatch, or `optional_private_reviews available:true` (unsupported in v0) | 3 |
+| Missing pack dir or bad CLI args | 2 |
+| (`create` only) projection/manifest write failure, or the freshly built pack fails self-verify | 7 |
+
+`created_at` is informational and excluded from the manifest digest, so identical evidence
+yields the same pack identity. No `6`.
+
 ### `assay-harness verify-runner`
 
 | Outcome | Exit Code |

@@ -1,0 +1,61 @@
+{
+  "schema": "suite.evidence_pack.v0",
+  "producer": {
+    "tool": "assay-harness",
+    "version": "0.8.0"
+  },
+  "subject": {
+    "kind": "assay_carrier_recipe",
+    "carrier": "assay.mcp_server_inventory.v0",
+    "assay_version": "v3.27.0",
+    "digest": "sha256:ded545cec4188e79c184f0a162e255661eb09d000b710d0b6a6e5b52566586ad"
+  },
+  "source_of_truth": [
+    {
+      "role": "assay_carrier",
+      "path": "carriers/assay.mcp_server_inventory.v0.json",
+      "schema": "assay.mcp_server_inventory.v0",
+      "digest": "sha256:ded545cec4188e79c184f0a162e255661eb09d000b710d0b6a6e5b52566586ad"
+    },
+    {
+      "role": "recipe_provenance",
+      "path": "provenance/recipe.provenance.json",
+      "schema": "suite.recipe_provenance.v0",
+      "digest": "sha256:86dc0bc1386fdb51e715fa6344c7f61fa9a56e87df37f4303f26d376b9a37906"
+    },
+    {
+      "role": "suite_matrix",
+      "path": "suite/suite.compatibility.v0.json",
+      "schema": "suite.compatibility.v0",
+      "digest": "sha256:3955ee83366fd0b1602c694a3fc6accd2085498a0919af85c1a779557e138d8c"
+    }
+  ],
+  "projections": [
+    {
+      "role": "harness_markdown",
+      "path": "harness/inventory.review.md",
+      "lossy": true,
+      "source_digest": "sha256:ded545cec4188e79c184f0a162e255661eb09d000b710d0b6a6e5b52566586ad",
+      "digest": "sha256:52d590457d6dc1d0cf8a8506743dc2c315e1617148e4111112c17ff0ff40ad93"
+    }
+  ],
+  "optional_private_reviews": [
+    {
+      "role": "plimsoll_review_digest",
+      "available": false
+    }
+  ],
+  "non_claims": [
+    "does not approve carrier semantics",
+    "does not prove policy compliance",
+    "does not prove provider trust",
+    "does not prove runtime truth",
+    "does not prove absence of shadow MCP servers outside scanned coverage",
+    "does not replace Plimsoll policy-aware review",
+    "projections are point-in-time renderings bound by digest, not faithful re-derivations"
+  ],
+  "manifest": {
+    "canonicalization": "jcs/rfc8785",
+    "digest": "sha256:83cf05f6a59b110f0871c1d6ff1359b1971d4aebc184d42ffacae59bd9498144"
+  }
+}

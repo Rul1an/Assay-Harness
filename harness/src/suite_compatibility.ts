@@ -160,7 +160,8 @@ export interface SuiteValidation {
 // rest of the suite's hashing discipline).
 // ---------------------------------------------------------------------------
 
-function canonicalize(value: unknown): string {
+// Exported so the Evidence Pack (suite.evidence_pack.v0) shares one JCS canonicalizer.
+export function canonicalize(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") {
