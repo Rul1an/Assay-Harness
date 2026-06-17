@@ -21,6 +21,14 @@ export interface RecipeProvenance {
   artifact: { path: string; digest: string };
   harness: { version: string; command: string };
   result: { exit_code: number; classification: string };
+  /**
+   * Optional (additive, v0-compatible): the released asset (e.g. the tarball) the recipe
+   * downloaded and verified via its published `.sha256` BEFORE extracting the binary. This is
+   * the honest bind point for an external GitHub artifact-attestation (H-next-4): GitHub attests
+   * the release asset, not the extracted binary. Kept separate from `assay.binary_digest` so the
+   * downloaded/attested artifact is never confused with the extracted binary.
+   */
+  release_asset?: { path: string; digest: string };
 }
 
 export interface ProvenanceError {
@@ -73,6 +81,14 @@ export function validateRecipeProvenance(raw: unknown): { valid: boolean; errors
   const result = obj(p.result);
   if (!result || typeof result.exit_code !== "number" || !nonEmptyString(result.classification)) {
     errors.push({ code: "PROVENANCE_FIELD_INVALID", message: "result must be { exit_code, classification }", path: "result" });
+  }
+  // Additive + optional (H-next-4 bind point): when present it must be { path, digest }; its
+  // absence stays valid so v0 / H-next-3 inventory packs are unaffected.
+  if (p.release_asset !== undefined) {
+    const ra = obj(p.release_asset);
+    if (!ra || !nonEmptyString(ra.path) || !nonEmptyString(ra.digest)) {
+      errors.push({ code: "PROVENANCE_FIELD_INVALID", message: "release_asset, when present, must be { path, digest }", path: "release_asset" });
+    }
   }
   return { valid: errors.length === 0, errors };
 }
