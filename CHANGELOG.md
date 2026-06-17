@@ -16,12 +16,15 @@ All notable changes to Assay Harness will be documented in this file.
     `assay mcp inventory --no-process-scan`, asserts the fixture server + frozen schema
     are present, and consumes it through `carrier inventory` (descriptive => exit 0),
     printing the proof metadata for the controlled matrix flip.
-  - Only `mcp_server_inventory.v0` is on the path to `end_to_end=proven` (its row carries
-    `awaiting_hosted_recipe_run`, owner harness); the four other carriers stay `declared`
-    with explicit producer-gap reasons (`no_released_binary_emitter` for supply-chain /
-    render-safety, `live_proxy_only` for token-passthrough, `requires_privileged_runtime`
-    for enforcement-health.v1), all owner `assay`. No change to exit codes; `declared`
-    remains non-failing.
+  - `mcp_server_inventory.v0` is now `end_to_end=proven`: the hosted recipe ran the
+    released v3.27.0 binary against the committed fixture and Harness consumed the
+    emitted carrier (run `27682711427`), and its row carries the hermetic provenance
+    (`hosted_run` + `artifact_digest` + `assay_version` + `assay_binary_digest` +
+    `fixture_digest` + `proof_scope{ambient_scan:false}`). The four other carriers stay
+    `declared` with explicit producer-gap reasons (`no_released_binary_emitter` for
+    supply-chain / render-safety, `live_proxy_only` for token-passthrough,
+    `requires_privileged_runtime` for enforcement-health.v1), all owner `assay`. No
+    change to exit codes; `declared` remains non-failing.
 
 - Fixed a public/private boundary leak in the suite compatibility matrix: the
   `reviews` block named the private reviewer's exact version (`min_version`). The

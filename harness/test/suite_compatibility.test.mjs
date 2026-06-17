@@ -44,9 +44,10 @@ test("real golden matrix validates", () => {
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
   assert.equal(r.recipe_count, 1);
-  // honest split: one recipe rail is e2e-proven; all five carriers are declared/pending
-  assert.equal(r.e2e_proven_count, 1);
-  assert.equal(r.e2e_declared_count, 5);
+  // honest split: the recipe rail + the inventory carrier are e2e-proven (H-next-2);
+  // the four other carriers remain declared/pending behind their producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 2);
+  assert.equal(r.e2e_declared_count, 4);
 });
 
 test("wrong schema id is rejected", () => {
@@ -113,12 +114,18 @@ test("an ill-shaped proof_scope is rejected", () => {
   assert.ok(v.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"));
 });
 
-test("the seed asset carries machine-readable end_to_end gap reasons (roadmap, not prose)", () => {
+test("inventory is hermetically e2e-proven; the declared carriers carry machine-readable gap reasons", () => {
   const m = buildSuiteReport(ASSET).validation.matrix;
+  // inventory flipped to proven (H-next-2) and carries the full hermetic provenance,
+  // no end_to_end_gap (it is no longer declared).
   const inv = m.carrier_rows.find((r) => r.carrier === "assay.mcp_server_inventory.v0");
-  assert.equal(inv.end_to_end_gap.reason_code, "awaiting_hosted_recipe_run");
-  assert.equal(inv.end_to_end_gap.owner, "harness");
+  assert.equal(inv.proof.end_to_end, "proven");
+  assert.ok(inv.proof.hosted_run && inv.proof.artifact_digest && inv.proof.assay_version && inv.proof.fixture_digest);
+  assert.equal(inv.proof_scope.ambient_scan, false, "the proof must be fixture-scoped, not ambient");
+  assert.equal(inv.end_to_end_gap, undefined);
+  // a still-declared carrier keeps its machine-readable producer-gap reason.
   const sc = m.carrier_rows.find((r) => r.carrier === "assay.supply_chain_conformance.v0");
+  assert.equal(sc.proof.end_to_end, "declared");
   assert.equal(sc.end_to_end_gap.reason_code, "no_released_binary_emitter");
   assert.equal(sc.end_to_end_gap.owner, "assay");
 });
