@@ -145,7 +145,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  *  never silently drift on a version bump. */
 const HARNESS_VERSION: string = (() => {
   try {
-    return JSON.parse(readFileSync(resolve(__dirname, "..", "package.json"), "utf-8")).version as string;
+    const v = JSON.parse(readFileSync(resolve(__dirname, "..", "package.json"), "utf-8")).version;
+    // A missing/non-string version does not throw, so validate it explicitly — otherwise an
+    // `undefined` would flow into producer.version and trip the metadata cross-check.
+    return typeof v === "string" && v.length > 0 ? v : "0.0.0";
   } catch {
     return "0.0.0";
   }
