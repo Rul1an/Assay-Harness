@@ -100,8 +100,17 @@ function validateProbe(value: unknown, errors: CarrierValidationError[]): void {
       errors.push({ code: "CARRIER_PROBE_FIELD_INVALID", message: `probe.${k} must be a non-empty string`, path: `probe.${k}` });
     }
   }
-  if (typeof value.blocked_port !== "number" || !Number.isInteger(value.blocked_port)) {
-    errors.push({ code: "CARRIER_PROBE_FIELD_INVALID", message: "probe.blocked_port must be an integer", path: "probe.blocked_port" });
+  if (
+    typeof value.blocked_port !== "number" ||
+    !Number.isInteger(value.blocked_port) ||
+    value.blocked_port < 0 ||
+    value.blocked_port > 65535
+  ) {
+    errors.push({
+      code: "CARRIER_PROBE_FIELD_INVALID",
+      message: "probe.blocked_port must be an integer in 0..65535 (a TCP port)",
+      path: "probe.blocked_port",
+    });
   }
   if (typeof value.listener_reached !== "boolean") {
     errors.push({ code: "CARRIER_PROBE_FIELD_INVALID", message: "probe.listener_reached must be a boolean", path: "probe.listener_reached" });

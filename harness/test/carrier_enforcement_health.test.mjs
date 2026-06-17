@@ -71,6 +71,21 @@ test("validate requires the probe key (null-over-absent discipline)", () => {
   assert.ok(v.errors.some((e) => e.code === "CARRIER_PROBE_MISSING"));
 });
 
+test("validate rejects an out-of-range probe.blocked_port", () => {
+  const v = validateEnforcementHealthV1({
+    schema: ENFORCEMENT_HEALTH_V1_SCHEMA, status: "active", mechanism: "landlock", scope: "x",
+    policy_semantics: "allowlist",
+    landlock: { abi: 4, no_new_privs_confirmed: true, restrict_self_confirmed: true },
+    probe: {
+      kind: "real_block", transport: "ipv4", blocked_action: "tcp_connect",
+      blocked_port: 70000, blocked_errno: "EACCES", listener_reached: false,
+    },
+    non_claims: [],
+  });
+  assert.equal(v.valid, false);
+  assert.ok(v.errors.some((e) => e.path === "probe.blocked_port"));
+});
+
 test("loadEnforcementHealthReport reports not_found for a missing path", () => {
   assert.equal(loadEnforcementHealthReport("/nonexistent/x.json").not_found, true);
 });
