@@ -634,6 +634,7 @@ jobs:
             if (p.ambient_scan !== false) fail("ambient_scan");
             const reqs = { assay: ["version", "binary_digest", "command"], release_asset: ["path", "digest"], fixture: ["path", "digest"], artifact: ["path", "digest"], harness: ["version", "command"] };
             for (const obj of Object.keys(reqs)) for (const k of reqs[obj]) if (typeof (p[obj] || {})[k] !== "string" || !p[obj][k]) fail(obj + "." + k);
+            if (!/^sha256:[0-9a-f]{64}$/.test(p.release_asset.digest)) fail("release_asset.digest (must be sha256:<64-hex>)");
             if (!p.result || p.result.exit_code !== 0 || p.result.classification !== "success") fail("result");
             console.log("provenance shape OK");
           '

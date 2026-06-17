@@ -88,6 +88,11 @@ export function validateRecipeProvenance(raw: unknown): { valid: boolean; errors
     const ra = obj(p.release_asset);
     if (!ra || !nonEmptyString(ra.path) || !nonEmptyString(ra.digest)) {
       errors.push({ code: "PROVENANCE_FIELD_INVALID", message: "release_asset, when present, must be { path, digest }", path: "release_asset" });
+    } else if (!/^sha256:[0-9a-f]{64}$/.test(ra.digest)) {
+      // Stricter than the other digest fields on purpose: release_asset.digest is the H-next-4
+      // bind target (it must equal an attestation's sha256:<64-hex> subject), so the format is
+      // checked here rather than only at bind time.
+      errors.push({ code: "PROVENANCE_FIELD_INVALID", message: "release_asset.digest must be sha256:<64 lowercase hex>", path: "release_asset.digest" });
     }
   }
   return { valid: errors.length === 0, errors };

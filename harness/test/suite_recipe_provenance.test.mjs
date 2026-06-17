@@ -50,6 +50,26 @@ test("release_asset present but missing digest is rejected", () => {
   assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
 });
 
+test("release_asset with a malformed (non-sha256) digest is rejected", () => {
+  const p = base();
+  p.release_asset = { path: "x.tar.gz", digest: "not-a-sha256" };
+  const r = validateRecipeProvenance(p);
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some((e) => e.path === "release_asset.digest"), JSON.stringify(r.errors));
+});
+
+test("release_asset with a wrong-length sha256 digest is rejected", () => {
+  const p = base();
+  p.release_asset = { path: "x.tar.gz", digest: "sha256:079492e5" };
+  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+});
+
+test("release_asset with a missing path is rejected", () => {
+  const p = base();
+  p.release_asset = { digest: "sha256:079492e5b5840accabd3c685fbc9cdfbccb324fc32e39490ec8cca39758072bc" };
+  assert.ok(codes(p).includes("PROVENANCE_FIELD_INVALID"));
+});
+
 test("release_asset present with empty digest is rejected", () => {
   const p = base();
   p.release_asset = { path: "x.tar.gz", digest: "" };
