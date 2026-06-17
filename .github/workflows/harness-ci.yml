@@ -535,6 +535,10 @@ jobs:
             --retry 5 --retry-all-errors --retry-delay 2 \
             --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
           sha256sum -c "${asset}.sha256"
+          # The verified release asset (tarball) is the honest bind point for the external GitHub
+          # attestation (H-next-4): GitHub attests this asset, NOT the extracted binary below.
+          echo "ASSAY_ASSET_NAME=$asset" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_PATH=/tmp/assay-release/$asset" >> "$GITHUB_ENV"
           tar -xzf "$asset"
           bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
           test -x "$bin"
@@ -559,6 +563,8 @@ jobs:
 
           fixture_digest="sha256:$(sha256sum "$fixture" | cut -d' ' -f1)"
           binary_digest="sha256:$(sha256sum "$ASSAY_BIN" | cut -d' ' -f1)"
+          # The verified release asset's digest (== the GitHub-attested subject for this tarball).
+          release_asset_digest="sha256:$(sha256sum "$ASSAY_ASSET_PATH" | cut -d' ' -f1)"
 
           # Emit the carrier from the RELEASED binary, scoped + deterministic
           # (--no-process-scan => process_scan is reported not_scanned, never partial).
@@ -609,6 +615,7 @@ jobs:
             "hosted": true,
             "ambient_scan": false,
             "assay": { "version": "${ASSAY_VERSION}", "binary_digest": "${binary_digest}", "command": "assay mcp inventory --no-process-scan --out /tmp/inventory.json" },
+            "release_asset": { "path": "${ASSAY_ASSET_NAME}", "digest": "${release_asset_digest}" },
             "fixture": { "path": "${fixture}", "digest": "${fixture_digest}" },
             "artifact": { "path": "carriers/assay.mcp_server_inventory.v0.json", "digest": "${artifact_digest}" },
             "harness": { "version": "${harness_version}", "command": "assay-harness carrier inventory --carrier carriers/assay.mcp_server_inventory.v0.json" },
@@ -625,8 +632,9 @@ jobs:
             for (const k of ["recipe", "hosted_run", "runner_os"]) if (typeof p[k] !== "string" || !p[k]) fail(k);
             if (p.hosted !== true) fail("hosted");
             if (p.ambient_scan !== false) fail("ambient_scan");
-            const reqs = { assay: ["version", "binary_digest", "command"], fixture: ["path", "digest"], artifact: ["path", "digest"], harness: ["version", "command"] };
+            const reqs = { assay: ["version", "binary_digest", "command"], release_asset: ["path", "digest"], fixture: ["path", "digest"], artifact: ["path", "digest"], harness: ["version", "command"] };
             for (const obj of Object.keys(reqs)) for (const k of reqs[obj]) if (typeof (p[obj] || {})[k] !== "string" || !p[obj][k]) fail(obj + "." + k);
+            if (!/^sha256:[0-9a-f]{64}$/.test(p.release_asset.digest)) fail("release_asset.digest (must be sha256:<64-hex>)");
             if (!p.result || p.result.exit_code !== 0 || p.result.classification !== "success") fail("result");
             console.log("provenance shape OK");
           '

@@ -4,6 +4,14 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Recipe provenance (`suite.recipe_provenance.v0`) gained an optional, additive `release_asset`
+  `{ path, digest }` section: the released asset (tarball) the hermetic recipe downloads and verifies
+  via its published `.sha256` before extracting the binary. It is recorded separately from
+  `assay.binary_digest` so the downloaded/attested artifact is never confused with the extracted
+  binary, and is the honest bind point for an external GitHub artifact-attestation (H-next-4). The
+  field is optional and append-only: provenance without it stays valid (existing v0 / Evidence Pack
+  packs are unaffected).
+
 - Added the **Evidence Pack** (`suite.evidence_pack.v0`, H-next-3): a deterministic,
   digest-bound bundle of a proven carrier recipe. It BINDS raw Assay carrier bytes, the
   Harness Markdown projection, the suite compatibility matrix, and the recipe provenance
