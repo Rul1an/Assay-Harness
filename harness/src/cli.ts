@@ -76,6 +76,13 @@ import {
   writeMcpInventoryProjections,
 } from "./carrier_inventory.js";
 import {
+  loadSuiteReport,
+  validateSuiteCompatibility,
+  driftAgainstRegistry,
+  formatSuiteMarkdown,
+  formatSuiteSummary,
+} from "./suite_compatibility.js";
+import {
   checkHonestHealth,
   detectInputMode,
   validateRunnerArchive,
@@ -1791,6 +1798,86 @@ function cmdCarrierInventory(args: Record<string, string | boolean>): void {
   process.exit(EXIT.SUCCESS);
 }
 
+function suiteMatrixPath(args: Record<string, string | boolean>): string {
+  const p = args.matrix;
+  if (typeof p !== "string" || p.length === 0) {
+    console.error("[config_error] --matrix <suite.compatibility.json> is required (must be a non-empty path)");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  return p;
+}
+
+function cmdSuite(args: Record<string, string | boolean>): void {
+  const subcommand = args._file as string | undefined;
+  if (subcommand === "check") {
+    cmdSuiteCheck(args);
+    return;
+  }
+  if (subcommand === "matrix") {
+    cmdSuiteMatrix(args);
+    return;
+  }
+  console.error("[config_error] unknown suite subcommand; expected: check | matrix");
+  console.error("Usage: suite check --matrix <path> [--against-registry]");
+  console.error("       suite matrix --matrix <path> [--format markdown|json]");
+  process.exit(EXIT.CONFIG_ERROR);
+}
+
+function cmdSuiteCheck(args: Record<string, string | boolean>): void {
+  const matrixPath = suiteMatrixPath(args);
+  const load = loadSuiteReport(matrixPath);
+  if (load.not_found) {
+    console.error(`[config_error] Suite compatibility matrix not found: ${matrixPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+  const errors = [...report.validation.errors];
+  // Drift vs the live carrier registry is opt-in, so matrix-only validation can
+  // run without coupling to the Harness registry internals.
+  if (args["against-registry"] === true && report.validation.matrix) {
+    errors.push(...driftAgainstRegistry(report.validation.matrix));
+  }
+  console.log(formatSuiteSummary(report));
+
+  // Exit routing (contract artifact, not a producer-valid carrier): a malformed
+  // matrix, unknown enum state, digest mismatch, a `proven` end-to-end claim
+  // without its hosted_run + artifact_digest, or (registry mode) drift is a
+  // contract error (3). `declared` end-to-end is NOT a failure; it is visible
+  // pending-proof. No `6` here. Missing file / bare --matrix -> config_error (2).
+  if (errors.length > 0) {
+    const codes = errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] suite check: matrix not consistent (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdSuiteMatrix(args: Record<string, string | boolean>): void {
+  const matrixPath = suiteMatrixPath(args);
+  const format = carrierFormat(args);
+  const load = loadSuiteReport(matrixPath);
+  if (load.not_found) {
+    console.error(`[config_error] Suite compatibility matrix not found: ${matrixPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  // `--format json` emits only the JSON document on stdout so it stays parseable
+  // (the matrix is later Evidence Pack input); the summary goes to the markdown path.
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatSuiteMarkdown(report).trimEnd());
+    console.log(formatSuiteSummary(report));
+  }
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] suite matrix: invalid matrix (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
 function cmdPolicy(args: Record<string, string | boolean>): void {
   const policyPath = (args.policy as string) ?? resolve(__dirname, "..", "policy.yaml");
   const toolName = args.tool as string;
@@ -1936,6 +2023,9 @@ switch (command) {
     break;
   case "carrier":
     cmdCarrier(args);
+    break;
+  case "suite":
+    cmdSuite(args);
     break;
   case "verify":
     cmdVerify(args);

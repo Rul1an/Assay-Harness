@@ -1,0 +1,169 @@
+{
+  "schema": "suite.compatibility.v0",
+  "generated": {
+    "harness_version": "0.8.0",
+    "assay_default": "v3.27.0",
+    "verified_on": "2026-06-17"
+  },
+  "carrier_rows": [
+    {
+      "carrier": "assay.supply_chain_conformance.v0",
+      "support_mode": "gating",
+      "backing": "private-consumer-backed",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier supply-chain"
+      },
+      "reviews": {
+        "reviewer": "plimsoll",
+        "availability": "private",
+        "min_version": "0.13.0"
+      },
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "limits": []
+    },
+    {
+      "carrier": "assay.render_safety_conformance.v0",
+      "support_mode": "gating",
+      "backing": "private-consumer-backed",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier render-safety"
+      },
+      "reviews": {
+        "reviewer": "plimsoll",
+        "availability": "private",
+        "min_version": "0.13.0"
+      },
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "limits": []
+    },
+    {
+      "carrier": "assay.token_passthrough_conformance.v0",
+      "support_mode": "gating",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier token-passthrough"
+      },
+      "reviews": null,
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "limits": []
+    },
+    {
+      "carrier": "assay.enforcement_health.v1",
+      "support_mode": "gating",
+      "backing": "private-consumer-backed",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier enforcement-health"
+      },
+      "reviews": {
+        "reviewer": "plimsoll",
+        "availability": "private",
+        "min_version": "0.13.0"
+      },
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
+      },
+      "limits": [
+        "assay.enforcement_health.v0 not covered by this adapter"
+      ]
+    },
+    {
+      "carrier": "assay.mcp_server_inventory.v0",
+      "support_mode": "descriptive",
+      "backing": "private-consumer-backed",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0",
+        "verb": "carrier inventory"
+      },
+      "reviews": {
+        "reviewer": "plimsoll",
+        "availability": "private",
+        "min_version": "0.13.0"
+      },
+      "proof": {
+        "harness_consumption": "proven",
+        "end_to_end": "declared",
+        "hosted_run": null,
+        "artifact_digest": null,
+        "note": "descriptive: valid inventory is clean; malformed/unknown-coverage is a contract error; no approval/shadow verdict (Plimsoll)"
+      },
+      "limits": []
+    }
+  ],
+  "recipe_rows": [
+    {
+      "recipe": "established release-compatibility recipe rail",
+      "support_mode": "recipe",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.27.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0"
+      },
+      "proof": {
+        "end_to_end": "proven",
+        "hosted_run": "27651437917",
+        "artifact_digest": "git:8eb28b953a693bccebf3831e6fb18c5ed0ce175e",
+        "run_date": "2026-06-16",
+        "note": "compat-recipes job is intermittent (skipped on regular main runs)"
+      }
+    }
+  ],
+  "manifest": {
+    "canonicalization": "jcs/rfc8785",
+    "digest": "sha256:ec2c4ede402638bd3b516cbc6d9e4154d60f05c4b148ccd8e9e46b727ffe8007"
+  }
+}

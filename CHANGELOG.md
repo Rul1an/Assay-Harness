@@ -4,6 +4,25 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added the **suite compatibility matrix** (`suite.compatibility.v0`): a checked-in,
+  versioned suite-contract artifact that records the relationship between the layers
+  (Assay emits, Harness consumes/projects/gates, Plimsoll reviews) without becoming a
+  producer carrier or a policy review. It is VSA-shaped (provenance over compat-proof)
+  but explicitly **not a SLSA VSA**, and Android-VINTF-style (compatibility is data +
+  a drift gate, not a README). The load-bearing honesty is a two-part proof split:
+  `harness_consumption` (Harness can validate/gate/project the carrier shape, proven by
+  this repo's tests over real golden bytes) vs `end_to_end` (the released Assay binary
+  emitted the carrier and Harness consumed it in a hosted run). Today the carrier family
+  is `declared / pending` end-to-end; only the established recipe rail is `proven`
+  (flipping the carriers to `proven` is the hosted-recipe follow-up). `suite check`
+  validates the matrix (digest recompute over JCS-canonicalized rows, known enum states,
+  proof fields, verb format) and, with `--against-registry`, drift vs the live carrier
+  registry; `suite matrix` projects Markdown/JSON. Exit codes reuse the frozen taxonomy:
+  malformed / unknown state / digest mismatch / `proven` without `hosted_run`+`artifact_digest`
+  / registry drift -> 3; missing file or bad args -> 2; consistent -> 0. `declared` is not
+  a failure. The checked-in seed is `harness/suite-compatibility.json`. No change to
+  existing verbs or the exit-code taxonomy.
+
 - Fixed `--format json` on every `carrier` projection verb (supply-chain,
   render-safety, token-passthrough, enforcement-health, inventory): the human
   summary was printed to stdout after the JSON document, so the output did not
