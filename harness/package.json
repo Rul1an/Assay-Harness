@@ -13,6 +13,7 @@
     "run:harness": "tsx src/cli.ts run",
     "run:verify": "tsx src/cli.ts verify",
     "test": "npm run build && node --test test/*.mjs",
+    "test:fuzz": "npm run build && node --test test/suite_evidence_pack_fuzz.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
