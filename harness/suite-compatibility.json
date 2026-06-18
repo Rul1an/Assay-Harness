@@ -34,7 +34,7 @@
         "fixture_digest": "sha256:a66661663a07739c5b6e5728b78706fe987894c6b12510812d67626b1c8d720d",
         "command": "assay registry supply-chain-conformance --input fixtures/suite-compatibility/supply-chain/input.example.json --out /tmp/supply-chain-conformance.json --offline",
         "runner_os": "ubuntu-latest",
-        "note": "hermetic E2E: released v3.28.0 binary emitted a valid carrier (policy_result=incomplete; offline, committed fixture) and Harness consumed/classified it via carrier supply-chain => exit 6 (valid, not-clean). Proves producer->consumer compatibility + incomplete-never-clean, NOT a clean supply-chain verdict."
+        "note": "hermetic E2E: released v3.28.0 binary emitted a valid carrier (policy_result=incomplete; offline, committed fixture) and Harness consumed/classified it via carrier supply-chain => exit 6 (valid, not-clean). Proves producer->consumer compatibility + incomplete-never-clean, NOT a clean supply-chain verdict. Additionally, a v3.29.0 DSSE recipe row proves a policy_result: pass carrier consumed by Harness with passed=true."
       },
       "limits": [],
       "proof_scope": {
@@ -192,10 +192,30 @@
         "run_date": "2026-06-16",
         "note": "compat-recipes job is intermittent (skipped on regular main runs)"
       }
+    },
+    {
+      "recipe": "supply-chain DSSE clean/pass recipe",
+      "support_mode": "recipe",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v3.29.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.8.0"
+      },
+      "proof": {
+        "end_to_end": "proven",
+        "hosted_run": "27748640402",
+        "artifact_digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64",
+        "run_date": "2026-06-18",
+        "note": "released v3.29.0 DSSE path -> policy_result=pass carrier consumed by Harness at exit 0 (passed=true)"
+      }
     }
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:0e0336310695e850df38020535186cebf8272ed407b1ce1ec028a031e9a50d37"
+    "digest": "sha256:ce7640673f9b6f1160e88378aea9f64ef77ae98074fdb067cf21492fcdfd8ea7"
   }
 }

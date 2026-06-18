@@ -1889,12 +1889,18 @@ function cmdSuiteMatrix(args: Record<string, string | boolean>): void {
     console.log(formatSuiteMarkdown(report).trimEnd());
     console.log(formatSuiteSummary(report));
   }
+  // Set exitCode and return rather than process.exit(): the JSON document can exceed the stdout
+  // pipe buffer (~8 KB), and process.exit() terminates before the async piped write drains, which
+  // would truncate machine-readable output while still exiting 0 (artifact-contract poison). The
+  // top-level dispatch has no further process.exit(), so the event loop flushes stdout, then Node
+  // exits with process.exitCode. (Other commands still process.exit(); they emit small output.)
   if (!report.validation.valid) {
     const codes = report.validation.errors.map((e) => e.code).join(",");
     console.error(`[artifact_contract] suite matrix: invalid matrix (${codes})`);
-    process.exit(EXIT.ARTIFACT_CONTRACT);
+    process.exitCode = EXIT.ARTIFACT_CONTRACT;
+    return;
   }
-  process.exit(EXIT.SUCCESS);
+  process.exitCode = EXIT.SUCCESS;
 }
 
 function evidencePackArg(args: Record<string, string | boolean>, name: string): string {

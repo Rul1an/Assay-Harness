@@ -43,11 +43,12 @@ test("real golden matrix validates", () => {
   const r = buildSuiteReport(ASSET);
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
-  assert.equal(r.recipe_count, 1);
-  // honest split: the recipe rail + the inventory carrier (H-next-2) + the supply_chain
-  // carrier (H-next-5a, released v3.28.0 emitter) are e2e-proven; three carriers remain
-  // declared/pending behind their producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 3);
+  assert.equal(r.recipe_count, 2);
+  // honest split: the release-compat recipe rail + the inventory carrier (H-next-2) + the
+  // supply_chain carrier (A5a-2, v3.28.0 valid-not-clean) + the supply-chain DSSE clean/pass
+  // recipe row (A5a-3, v3.29.0) are e2e-proven; three carriers remain declared/pending behind
+  // their producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 4);
   assert.equal(r.e2e_declared_count, 3);
 });
 
@@ -152,6 +153,38 @@ test("supply_chain is hermetically e2e-proven by the released v3.28.0 emitter, a
   // honesty: proven establishes producer->consumer compatibility, NOT a clean carrier.
   // The row documents that the carrier itself is not-clean (policy_result incomplete).
   assert.match(sc.proof.note, /not[ -]clean|incomplete/i);
+});
+
+test("A5a-3 appends a clean/pass DSSE recipe row and preserves the A5a-2 carrier-row proof", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const recipe = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe");
+  assert.ok(recipe, "the clean/pass DSSE recipe row must exist");
+  assert.equal(recipe.support_mode, "recipe");
+  assert.equal(recipe.proof.end_to_end, "proven");
+  // a proven recipe row needs hosted_run + artifact_digest (the emitted carrier digest); the full
+  // four-digest chain lives in the recipe_provenance sidecar, not the row.
+  assert.ok(recipe.proof.hosted_run, "recipe row needs a hosted_run");
+  assert.match(recipe.proof.artifact_digest, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(recipe.emits.min_version, "v3.29.0");
+  // public wording: policy_result pass / passed=true, never "clean supply-chain" / "secure".
+  assert.match(recipe.proof.note, /policy_result=pass|passed=true/);
+  assert.doesNotMatch(recipe.proof.note, /clean supply.?chain|secure|verified supply/i);
+
+  // A5a-2 preservation: the carrier-row proof is STILL the v3.28.0 valid-not-clean one (its
+  // artifact_digest differs from the clean/pass recipe's emitted carrier — it was not overwritten).
+  const sc = m.carrier_rows.find((r) => r.carrier === "assay.supply_chain_conformance.v0");
+  assert.equal(sc.proof.assay_version, "v3.28.0", "A5a-2 carrier proof must be preserved");
+  assert.notEqual(
+    sc.proof.artifact_digest,
+    recipe.proof.artifact_digest,
+    "the carrier-row proof must not become the clean/pass proof",
+  );
+  // the carrier note keeps the A5a-2 record AND gains the sober pass-recipe append (the only diff).
+  assert.match(sc.proof.note, /incomplete.*not-clean/i);
+  assert.match(
+    sc.proof.note,
+    /Additionally, a v3\.29\.0 DSSE recipe row proves a policy_result: pass carrier consumed by Harness with passed=true\./,
+  );
 });
 
 test("reviews must not leak a private min_version in the public matrix", () => {
@@ -273,4 +306,14 @@ test("CLI suite matrix: --format json emits only parseable JSON; bad format -> 2
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.validation.matrix.schema, SUITE_COMPATIBILITY_SCHEMA);
   assert.equal(runCli("matrix", "--matrix", ASSET, "--format", "xml").status, 2);
+});
+
+test("CLI suite matrix: --format json stays complete + parseable above the 8KB pipe buffer", () => {
+  // Regression: the matrix JSON exceeds the ~8KB stdout pipe buffer. The command must drain stdout
+  // before exiting (process.exitCode, not process.exit) — else a piped reader gets truncated JSON
+  // while the command still exits 0, which is artifact-contract poison for machine-readable output.
+  const r = runCli("matrix", "--matrix", ASSET, "--format", "json");
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.length > 8192, `matrix JSON must exceed the 8KB pipe buffer to guard the flush; got ${r.stdout.length} bytes`);
+  assert.doesNotThrow(() => JSON.parse(r.stdout), "piped stdout must be complete, parseable JSON (not truncated)");
 });

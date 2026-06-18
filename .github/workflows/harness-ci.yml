@@ -833,3 +833,169 @@ jobs:
             /tmp/sc.report.json
             /tmp/recipe.provenance.json
           if-no-files-found: warn
+
+  assay-supply-chain-dsse-recipe:
+    name: Assay Supply-Chain DSSE Clean/Pass Recipe (hermetic E2E)
+    # Dispatch-only, additive sibling of assay-supply-chain-recipe. Produces the end-to-end
+    # CLEAN/PASS proof: released Assay v3.29.0's DSSE provenance path emits a policy_result=pass
+    # carrier from a committed pinned-key DSSE fixture, and Harness consumes it at exit 0
+    # (passed=true). A controlled update folds this into a NEW recipe_row; it does NOT replace
+    # the A5a-2 valid-not-clean carrier-row proof. INVERSE of A5a-2: a pass carrier MUST consume
+    # at exit 0; exit 6 here is a contract failure.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Resolve + download released Assay binary
+        env:
+          ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
+        run: |
+          set -euo pipefail
+          # The DSSE provenance path shipped in v3.29.0; default there and FAIL CLOSED on any
+          # older version (the shared dispatch input defaults to v3.27.0, which has no DSSE path).
+          assay_version="${ASSAY_VERSION_INPUT:-v3.29.0}"
+          case "$assay_version" in v*) ;; *) assay_version="v${assay_version}" ;; esac
+          min_required="3.29.0"
+          resolved="${assay_version#v}"
+          if [ "$(printf '%s\n' "$min_required" "$resolved" | sort -V | head -n1)" != "$min_required" ]; then
+            echo "supply-chain DSSE recipe requires Assay >= v${min_required}; got ${assay_version}" >&2
+            exit 1
+          fi
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+          mkdir -p /tmp/assay-release && cd /tmp/assay-release
+          asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          echo "ASSAY_ASSET_NAME=$asset" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_PATH=/tmp/assay-release/$asset" >> "$GITHUB_ENV"
+          tar -xzf "$asset"
+          bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
+          test -x "$bin"
+          echo "ASSAY_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Hermetic DSSE clean/pass emit + Harness consume
+        working-directory: harness
+        run: |
+          set -x
+          set -euo pipefail
+          # Hermetic: the emitter reads ONLY the committed pinned-key DSSE fixture and runs
+          # --offline (no live registry/Sigstore/Rekor lookup, no ambient/process scan).
+          fixture="fixtures/suite-compatibility/supply-chain-dsse/input.dsse.example.json"
+          test -f "$fixture" || { echo "FIXTURE MISSING: $fixture (cwd=$PWD)"; exit 1; }
+
+          fixture_digest="sha256:$(sha256sum "$fixture" | cut -d' ' -f1)"
+          binary_digest="sha256:$(sha256sum "$ASSAY_BIN" | cut -d' ' -f1)"
+          release_asset_digest="sha256:$(sha256sum "$ASSAY_ASSET_PATH" | cut -d' ' -f1)"
+
+          emit_rc=0
+          "$ASSAY_BIN" registry supply-chain-conformance \
+            --input "$fixture" --out /tmp/supply-chain-conformance.dsse.json --offline || emit_rc=$?
+          echo "=== assay registry supply-chain-conformance exit=$emit_rc ==="
+          cat /tmp/supply-chain-conformance.dsse.json || { echo "(no carrier written)"; exit 1; }
+          [ "$emit_rc" -eq 0 ] || { echo "emit failed (exit $emit_rc)"; exit 1; }
+          artifact_digest="sha256:$(sha256sum /tmp/supply-chain-conformance.dsse.json | cut -d' ' -f1)"
+
+          # CLEAN/PASS assertions: the released DSSE path verifies the pinned-key envelope and the
+          # policy is satisfied, so the carrier is policy_result=pass (the inverse of A5a-2).
+          jq -e '.schema == "assay.supply_chain_conformance.v0"' /tmp/supply-chain-conformance.dsse.json >/dev/null \
+            || { echo "ASSERT FAIL: carrier schema id missing"; exit 1; }
+          policy_result="$(jq -r '.policy_result' /tmp/supply-chain-conformance.dsse.json)"
+          dsse_sig="$(jq -r '.checks.provenance.dsse_signature' /tmp/supply-chain-conformance.dsse.json)"
+          echo "=== carrier policy_result=$policy_result dsse_signature=$dsse_sig ==="
+          [ "$policy_result" = "pass" ] \
+            || { echo "ASSERT FAIL: expected policy_result=pass for the DSSE clean/pass fixture, got $policy_result"; exit 1; }
+          [ "$dsse_sig" = "verified" ] \
+            || { echo "ASSERT FAIL: expected dsse_signature=verified, got $dsse_sig"; exit 1; }
+
+          # Harness consumes/classifies it. We asserted policy_result=pass, so the gate MUST exit 0
+          # (clean). exit 6 here would mean a pass carrier read as not-clean (a regression) — the
+          # INVERSE of the A5a-2 incomplete recipe; {2,3,7} are config/contract/formatter failures.
+          consume_rc=0
+          npx tsx src/cli.ts carrier supply-chain \
+            --carrier /tmp/supply-chain-conformance.dsse.json --format json \
+            > /tmp/sc.dsse.report.json 2> /tmp/sc.dsse.err || consume_rc=$?
+          echo "=== carrier supply-chain exit=$consume_rc ==="
+          cat /tmp/sc.dsse.report.json || true
+          cat /tmp/sc.dsse.err || true
+          case "$consume_rc" in
+            0) : ;;
+            *) echo "FAIL: a policy_result=pass carrier must consume clean (exit 0); got exit $consume_rc"; exit 1 ;;
+          esac
+          jq -e '.validation.valid == true and .passed == true and .policy_result == "pass"' /tmp/sc.dsse.report.json >/dev/null \
+            || { echo "FAIL: consumer exit 0 without a valid passed=true/pass report -> artifact_contract"; exit 1; }
+          echo "=== consumption OK: exit=0 (clean), passed=true, policy_result=pass ==="
+
+          {
+            echo "## Supply-chain DSSE clean/pass recipe — hermetic end-to-end proof"
+            echo ""
+            echo "Released Assay ${ASSAY_VERSION} DSSE path emitted a policy_result=\`${policy_result}\` carrier;"
+            echo "Harness consumed it at exit \`${consume_rc}\` with passed=true. Additional clean/pass recipe"
+            echo "for the already-proven supply_chain row (does not replace the A5a-2 valid-not-clean proof)."
+            echo ""
+            echo "Fold these into a NEW recipe_row of \`suite-compatibility.json\`:"
+            echo "- \`recipe\`: \`supply-chain DSSE clean/pass recipe\`"
+            echo "- \`hosted_run\`: \`${GITHUB_RUN_ID}\`"
+            echo "- \`assay_version\`: \`${ASSAY_VERSION}\`"
+            echo "- \`artifact_digest\` (emitted carrier): \`${artifact_digest}\`"
+            echo "- \`assay_binary_digest\`: \`${binary_digest}\`"
+            echo "- \`fixture_digest\`: \`${fixture_digest}\`"
+            echo "- \`release_asset_digest\` (tarball): \`${release_asset_digest}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Emit suite.recipe_provenance.v0 for the clean/pass run. result records RECIPE-EXECUTION
+          # success; the pass verdict lives in the carrier (policy_result) and the report (passed).
+          harness_version="$(node -p "require('./package.json').version")"
+          cat > /tmp/recipe.provenance.dsse.json <<PROV
+          {
+            "schema": "suite.recipe_provenance.v0",
+            "recipe": "assay_supply_chain_conformance_dsse_clean_pass",
+            "hosted_run": "${GITHUB_RUN_ID}",
+            "runner_os": "ubuntu-latest",
+            "hosted": true,
+            "ambient_scan": false,
+            "assay": { "version": "${ASSAY_VERSION}", "binary_digest": "${binary_digest}", "command": "assay registry supply-chain-conformance --input ${fixture} --out /tmp/supply-chain-conformance.dsse.json --offline" },
+            "release_asset": { "path": "${ASSAY_ASSET_NAME}", "digest": "${release_asset_digest}" },
+            "fixture": { "path": "${fixture}", "digest": "${fixture_digest}" },
+            "artifact": { "path": "carriers/assay.supply_chain_conformance.v0.json", "digest": "${artifact_digest}" },
+            "harness": { "version": "${harness_version}", "command": "assay-harness carrier supply-chain --carrier carriers/assay.supply_chain_conformance.v0.json" },
+            "result": { "exit_code": 0, "classification": "success" }
+          }
+          PROV
+          node -e '
+            const p = JSON.parse(require("fs").readFileSync("/tmp/recipe.provenance.dsse.json", "utf-8"));
+            const fail = (m) => { console.error("provenance shape invalid: " + m); process.exit(1); };
+            if (p.schema !== "suite.recipe_provenance.v0") fail("schema");
+            for (const k of ["recipe", "hosted_run", "runner_os"]) if (typeof p[k] !== "string" || !p[k]) fail(k);
+            if (p.hosted !== true) fail("hosted");
+            if (p.ambient_scan !== false) fail("ambient_scan");
+            const reqs = { assay: ["version", "binary_digest", "command"], release_asset: ["path", "digest"], fixture: ["path", "digest"], artifact: ["path", "digest"], harness: ["version", "command"] };
+            for (const obj of Object.keys(reqs)) for (const k of reqs[obj]) if (typeof (p[obj] || {})[k] !== "string" || !p[obj][k]) fail(obj + "." + k);
+            if (!/^sha256:[0-9a-f]{64}$/.test(p.release_asset.digest)) fail("release_asset.digest (must be sha256:<64-hex>)");
+            if (!p.result || p.result.exit_code !== 0 || p.result.classification !== "success") fail("result");
+            console.log("provenance shape OK");
+          '
+
+      - name: Upload supply-chain DSSE carrier + provenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: supply-chain-dsse-carrier
+          path: |
+            /tmp/supply-chain-conformance.dsse.json
+            /tmp/sc.dsse.report.json
+            /tmp/recipe.provenance.dsse.json
+          if-no-files-found: warn
