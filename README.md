@@ -7,7 +7,7 @@ produces verify-before-diff comparisons of baseline vs candidate evidence.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.8.0 | **Status:** active development
+> **Version:** 0.9.0 | **Status:** active development
 
 ### What this is
 
@@ -300,7 +300,8 @@ An Evidence Pack (`suite.evidence_pack.v0`) is a deterministic, digest-bound bun
 proven carrier recipe. It binds raw Assay carrier bytes, the Harness Markdown projection,
 the suite compatibility matrix, and the recipe provenance (`suite.recipe_provenance.v0`) by
 digest. It creates no new evidence, approves no policy, and does not replace Plimsoll — it is
-VSA-shaped, not a SLSA VSA. v0 carries the proven inventory recipe only.
+VSA-shaped, not a SLSA VSA. v0 carries proven recipes — the inventory recipe and the
+released-binary supply-chain DSSE clean/pass recipe.
 
 ```bash
 # Build a pack from a proven recipe's outputs
@@ -318,9 +319,12 @@ npx tsx harness/src/cli.ts evidence-pack verify evidence-pack/
 `verify` separates source-of-truth (carrier, matrix, provenance) from lossy projections
 (every projection must resolve to a source digest), enforces path safety (no `..` / absolute
 / symlink / duplicate / unlisted / escaping paths), and holds the **coherence invariant**: the
-carrier bytes, the matrix's proven row, and the provenance must all agree on the same artifact
-and the same proof — covering the binary, command, fixture, runner, and hosting context, not
-just the artifact digest. A pack cannot be internally consistent by digest while lying about where the
+carrier bytes, the matrix, and the provenance must all agree on the same artifact and the same
+proof — covering the binary, command, fixture, runner, and hosting context, not just the artifact
+digest. The packed proof may live in the carrier's own matrix row (carrier-row-bound) or in exactly
+one recipe row (recipe-row-bound, matched on `end_to_end=proven` + `hosted_run` + `artifact_digest`);
+either way the subject's carrier row must exist and be proven, and `verify` reports which route bound
+via `coherence_binding`. A pack cannot be internally consistent by digest while lying about where the
 evidence came from. The manifest digest is deterministic over the evidence (volatile metadata
 excluded), so identical evidence yields the same pack identity.
 
