@@ -316,7 +316,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
     needs: [contract-validation, verify-evidence, regression-gate]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -362,13 +361,14 @@ jobs:
             fixtures/valid.assay.ndjson
             fixtures/failure.assay.ndjson
 
-      - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: results/sarif-valid.json
-          category: assay-harness
+      # Fixture-derived SARIF stays a CI artifact (see "Upload evidence artifacts") and is NOT
+      # uploaded to code-scanning: harness self-scan findings on test fixtures are not actionable
+      # repository risk and should not sit on the repo alert surface. Detection is still proven
+      # here as a CI assertion that both rule IDs fire on the valid fixture.
+      - name: Assert fixture self-scan findings (HARNESS-A001 / HARNESS-R001)
+        run: |
+          python3 -c "import json,sys; s=json.load(open('results/sarif-valid.json')); ids={r['ruleId'] for run in s['runs'] for r in run.get('results',[])}; miss={'HARNESS-A001','HARNESS-R001'}-ids; sys.exit('missing fixture findings: '+str(sorted(miss)) if miss else 0)"
+          echo "fixture self-scan detected HARNESS-A001 + HARNESS-R001 on fixtures/valid.assay.ndjson"
 
       - name: Job Summary
         if: always()
