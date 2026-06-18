@@ -648,3 +648,188 @@ jobs:
             /tmp/inventory.json
             /tmp/recipe.provenance.json
           if-no-files-found: warn
+
+  assay-supply-chain-recipe:
+    name: Assay Supply-Chain Recipe (hermetic E2E)
+    # Dispatch-only, like the inventory recipe: it produces the end-to-end proof
+    # (hosted_run + digests) that a controlled update folds into the suite matrix
+    # to flip the supply_chain row from declared -> proven. Not run on every PR.
+    #
+    # Assay v3.28.0's supply-chain emitter (v1) emits only none/unsupported provenance,
+    # so the carrier is honestly policy_result=incomplete and `carrier supply-chain` exits 6.
+    # That exit 6 is the EXPECTED, successful consumption for this proof: it shows
+    # Harness recognizes the carrier and refuses to read incomplete as clean. The
+    # proof establishes producer->consumer compatibility, NOT a clean carrier.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Resolve + download released Assay binary
+        env:
+          ASSAY_VERSION_INPUT: ${{ inputs.assay_version }}
+        run: |
+          set -euo pipefail
+          # Default to v3.28.0 (the first release with the one-shot supply-chain emitter) and
+          # FAIL CLOSED on any older version: the shared dispatch input defaults to v3.27.0,
+          # which has no emitter, and the proof binds min_version v3.28.0 — so a run against an
+          # emitter-less release must not silently produce a bogus proof.
+          assay_version="${ASSAY_VERSION_INPUT:-v3.28.0}"
+          case "$assay_version" in v*) ;; *) assay_version="v${assay_version}" ;; esac
+          min_required="3.28.0"
+          resolved="${assay_version#v}"
+          if [ "$(printf '%s\n' "$min_required" "$resolved" | sort -V | head -n1)" != "$min_required" ]; then
+            echo "supply-chain recipe requires Assay >= v${min_required}; got ${assay_version}" >&2
+            exit 1
+          fi
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+          mkdir -p /tmp/assay-release && cd /tmp/assay-release
+          asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
+          # Retry/timeout so a transient GitHub/CDN hiccup does not fail the proof run.
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          # The verified release asset (tarball) is the honest bind point for the external
+          # GitHub attestation (H-next-4): GitHub attests this asset, NOT the extracted binary.
+          echo "ASSAY_ASSET_NAME=$asset" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_PATH=/tmp/assay-release/$asset" >> "$GITHUB_ENV"
+          tar -xzf "$asset"
+          bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
+          test -x "$bin"
+          echo "ASSAY_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Hermetic supply-chain emit + Harness consume
+        working-directory: harness
+        run: |
+          set -x
+          set -euo pipefail
+          # Hermetic: the emitter reads ONLY the committed descriptor fixture and runs
+          # --offline (no live registry/Sigstore/Rekor lookup, no ambient/process scan).
+          fixture="fixtures/suite-compatibility/supply-chain/input.example.json"
+          test -f "$fixture" || { echo "FIXTURE MISSING: $fixture (cwd=$PWD)"; exit 1; }
+
+          fixture_digest="sha256:$(sha256sum "$fixture" | cut -d' ' -f1)"
+          binary_digest="sha256:$(sha256sum "$ASSAY_BIN" | cut -d' ' -f1)"
+          # The verified release asset's digest (== the GitHub-attested subject for this tarball).
+          release_asset_digest="sha256:$(sha256sum "$ASSAY_ASSET_PATH" | cut -d' ' -f1)"
+
+          # Emit the carrier from the RELEASED binary (offline, committed input). The emitter
+          # exits 0 emitting a VALID carrier even when policy_result is incomplete (carrier
+          # emitted != clean); capture rc so a non-zero emit is reported, not swallowed.
+          emit_rc=0
+          "$ASSAY_BIN" registry supply-chain-conformance \
+            --input "$fixture" --out /tmp/supply-chain-conformance.json --offline || emit_rc=$?
+          echo "=== assay registry supply-chain-conformance exit=$emit_rc ==="
+          cat /tmp/supply-chain-conformance.json || { echo "(no carrier written)"; exit 1; }
+          [ "$emit_rc" -eq 0 ] || { echo "emit failed (exit $emit_rc)"; exit 1; }
+          artifact_digest="sha256:$(sha256sum /tmp/supply-chain-conformance.json | cut -d' ' -f1)"
+
+          # Hermetic assertions: the released-binary output carries the frozen schema and the
+          # honest, EXPECTED v1 verdict (unsupported provenance => policy_result incomplete).
+          jq -e '.schema == "assay.supply_chain_conformance.v0"' /tmp/supply-chain-conformance.json >/dev/null \
+            || { echo "ASSERT FAIL: carrier schema id missing"; exit 1; }
+          policy_result="$(jq -r '.policy_result' /tmp/supply-chain-conformance.json)"
+          echo "=== carrier policy_result=$policy_result ==="
+          [ "$policy_result" = "incomplete" ] \
+            || { echo "ASSERT FAIL: expected policy_result=incomplete for the v1 (unsupported-provenance) fixture, got $policy_result"; exit 1; }
+
+          # Harness consumes/classifies it end-to-end. We asserted the carrier is
+          # policy_result=incomplete above, so the gate MUST exit 6 (incomplete => not-clean).
+          # Accepting exit 0 here would mask a regression that reads an incomplete carrier as
+          # clean, so for THIS proof exit 6 is the only valid outcome ({2,3,7} are
+          # config/contract/formatter failures; 0 would be incomplete-read-as-clean).
+          consume_rc=0
+          npx tsx src/cli.ts carrier supply-chain \
+            --carrier /tmp/supply-chain-conformance.json --format json \
+            > /tmp/sc.report.json 2> /tmp/sc.err || consume_rc=$?
+          echo "=== carrier supply-chain exit=$consume_rc ==="
+          cat /tmp/sc.report.json || true
+          cat /tmp/sc.err || true
+          case "$consume_rc" in
+            6) : ;;
+            *) echo "FAIL: an incomplete carrier must classify as not-clean (exit 6); got exit $consume_rc"; exit 1 ;;
+          esac
+          # exit 6 is only acceptable WITH a valid report whose policy_result matches the emitted incomplete.
+          jq -e '.validation.valid == true and .policy_result == "incomplete"' /tmp/sc.report.json >/dev/null \
+            || { echo "FAIL: consumer exit 6 without a valid incomplete report -> artifact_contract"; exit 1; }
+          echo "=== consumption OK: exit=$consume_rc (valid, not-clean), policy_result=incomplete ==="
+
+          # Proof metadata for the controlled matrix flip (declared -> proven).
+          {
+            echo "## Supply-chain recipe — hermetic end-to-end proof"
+            echo ""
+            echo "Producer->consumer path proven against released Assay ${ASSAY_VERSION}. The carrier is"
+            echo "policy_result=\`${policy_result}\` and the gate exited \`${consume_rc}\` (valid, not-clean):"
+            echo "this proves compatibility + incomplete-never-clean, NOT a clean supply-chain verdict."
+            echo ""
+            echo "Fold these into the supply_chain row of \`suite-compatibility.json\`:"
+            echo "- \`hosted_run\`: \`${GITHUB_RUN_ID}\`"
+            echo "- \`assay_version\`: \`${ASSAY_VERSION}\`"
+            echo "- \`assay_binary_digest\`: \`${binary_digest}\`"
+            echo "- \`fixture_digest\`: \`${fixture_digest}\`"
+            echo "- \`artifact_digest\` (emitted carrier): \`${artifact_digest}\`"
+            echo "- \`release_asset_digest\` (tarball): \`${release_asset_digest}\`"
+            echo "- \`command\`: \`assay registry supply-chain-conformance --input ${fixture} --out /tmp/supply-chain-conformance.json --offline\`"
+            echo "- \`runner_os\`: \`ubuntu-latest\`"
+            echo "- consumer exit: \`${consume_rc}\` (valid, policy_result=${policy_result})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Emit suite.recipe_provenance.v0. result records RECIPE-EXECUTION success (the
+          # pipeline emitted + validly consumed/classified the carrier), NOT carrier
+          # cleanliness: the not-clean verdict lives in the carrier (policy_result) above and
+          # in the projection. The Evidence Pack verifier requires result {0,"success"}.
+          harness_version="$(node -p "require('./package.json').version")"
+          cat > /tmp/recipe.provenance.json <<PROV
+          {
+            "schema": "suite.recipe_provenance.v0",
+            "recipe": "assay_supply_chain_conformance_e2e",
+            "hosted_run": "${GITHUB_RUN_ID}",
+            "runner_os": "ubuntu-latest",
+            "hosted": true,
+            "ambient_scan": false,
+            "assay": { "version": "${ASSAY_VERSION}", "binary_digest": "${binary_digest}", "command": "assay registry supply-chain-conformance --input ${fixture} --out /tmp/supply-chain-conformance.json --offline" },
+            "release_asset": { "path": "${ASSAY_ASSET_NAME}", "digest": "${release_asset_digest}" },
+            "fixture": { "path": "${fixture}", "digest": "${fixture_digest}" },
+            "artifact": { "path": "carriers/assay.supply_chain_conformance.v0.json", "digest": "${artifact_digest}" },
+            "harness": { "version": "${harness_version}", "command": "assay-harness carrier supply-chain --carrier carriers/assay.supply_chain_conformance.v0.json" },
+            "result": { "exit_code": 0, "classification": "success" }
+          }
+          PROV
+          # Validate provenance SHAPE (schema, required string fields, hermetic-success
+          # invariants) at emit time. verifyEvidencePack stays the authoritative validator.
+          node -e '
+            const p = JSON.parse(require("fs").readFileSync("/tmp/recipe.provenance.json", "utf-8"));
+            const fail = (m) => { console.error("provenance shape invalid: " + m); process.exit(1); };
+            if (p.schema !== "suite.recipe_provenance.v0") fail("schema");
+            for (const k of ["recipe", "hosted_run", "runner_os"]) if (typeof p[k] !== "string" || !p[k]) fail(k);
+            if (p.hosted !== true) fail("hosted");
+            if (p.ambient_scan !== false) fail("ambient_scan");
+            const reqs = { assay: ["version", "binary_digest", "command"], release_asset: ["path", "digest"], fixture: ["path", "digest"], artifact: ["path", "digest"], harness: ["version", "command"] };
+            for (const obj of Object.keys(reqs)) for (const k of reqs[obj]) if (typeof (p[obj] || {})[k] !== "string" || !p[obj][k]) fail(obj + "." + k);
+            if (!/^sha256:[0-9a-f]{64}$/.test(p.release_asset.digest)) fail("release_asset.digest (must be sha256:<64-hex>)");
+            if (!p.result || p.result.exit_code !== 0 || p.result.classification !== "success") fail("result");
+            console.log("provenance shape OK");
+          '
+
+      - name: Upload supply-chain carrier + provenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: supply-chain-carrier
+          path: |
+            /tmp/supply-chain-conformance.json
+            /tmp/sc.report.json
+            /tmp/recipe.provenance.json
+          if-no-files-found: warn
