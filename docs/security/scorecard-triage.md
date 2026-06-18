@@ -21,7 +21,7 @@ manufacture activity to move a score, or claim a badge that has not been earned.
 | Code-Review (#81) | Structural | Accepted single-maintainer limitation; all changes still go through PRs (branch protection blocks direct pushes) | reviews are not manufactured; two-party review needs a second maintainer |
 | Maintained (#82) | Age-gated | None — Scorecard flags repositories under 90 days old; it re-evaluates automatically as the repo ages | no code change; not influenced by artificial activity |
 | OpenSSF Best Practices badge (#83) | Deferred | Apply for the badge later, once the security basics are stable | governance/paperwork, no code impact |
-| Harness self-scan `HARNESS-A001` / `HARNESS-R001` (#36/#37) | Documented | `harness-ci` uploads the harness's scan of `fixtures/valid.assay.ndjson`; these are demonstration findings on a test fixture, not repository vulnerabilities | decision pending: scope the upload, or mark as test-fixture |
+| Harness self-scan `HARNESS-A001` / `HARNESS-R001` (#36/#37) | Resolved | Fixture-derived SARIF is kept as a CI artifact and no longer uploaded to code-scanning; the fixture and its detection stay, with a CI assertion that both rule IDs fire on `fixtures/valid.assay.ndjson` | test evidence stays in CI output; the repo alert surface carries only actionable repository risk |
 
 ## Notes
 
@@ -35,7 +35,9 @@ target is the Evidence Pack verifier's manifest and path handling. Scorecard det
 fuzzer integrations such as OSS-Fuzz, so a property test may not register on the check —
 that is an accepted trade-off in favour of covering the actual untrusted-input surface.
 
-**Harness self-scan (#36/#37)** are the harness's own findings on a valid sample trace,
-uploaded to code-scanning by `harness-ci`. They demonstrate the harness working, not a
-weakness in this repository; the open question is only whether to keep surfacing them as
-repo alerts or scope the upload.
+**Harness self-scan (#36/#37)** are the harness's own findings on a valid sample trace.
+They demonstrate the harness working, not a weakness in this repository, so they no longer
+belong on the repository alert surface. `harness-ci` still generates the SARIF and retains it
+as a CI artifact, and a CI assertion proves both rule IDs still fire on the fixture, but the
+SARIF is no longer uploaded to code-scanning. The two existing alerts are dismissed as
+"used in test" with a comment pointing to this note; they will not recur.
