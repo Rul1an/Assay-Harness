@@ -4,6 +4,37 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-18
+
+- Generalized the Evidence Pack **coherence target** (H-next-5b): a pack can now bind a proof recorded
+  in a **recipe row**, not only one carried by the carrier's own matrix row. When the carrier row's
+  proof is not the packed provenance, `verify` binds to exactly one `recipe_row` matched on
+  `end_to_end=proven` + `hosted_run` + `artifact_digest` (never the recipe's display name); the
+  subject's carrier row must still exist and be `proven`, so a recipe proof can never stand detached
+  from a proven carrier subject. Zero matches stay `PACK_COHERENCE_MATRIX`; more than one is the new,
+  specific `PACK_COHERENCE_AMBIGUOUS_RECIPE`. The verify result now reports `coherence_binding`
+  (`carrier_row_bound` | `recipe_row_bound`) — an internal observable, not a manifest field — so it is
+  always clear which route a pack passed by. This generalizes target selection only: digest checks,
+  source roles, projection requirements, and path safety are unchanged, and there is no schema `v2`.
+  Ships a golden recipe-row pack built from released Assay v3.29.0's clean/pass supply-chain proof,
+  plus per-carrier non-claims (the inventory set stays byte-identical; the supply-chain set disclaims
+  supply-chain safety, Sigstore/Rekor inclusion, and approval).
+
+- Added a released-binary **DSSE `policy_result: pass`** recipe for the `supply_chain` row (A5a-3),
+  recorded as an additional proven recipe row beside the existing valid-not-clean proof rather than a
+  replacement of it. A hosted run downloads and `sha256`-verifies the released Assay v3.29.0 tarball,
+  emits the carrier `--offline` from a committed DSSE descriptor fixture (pinned-key signature
+  verified, subject digest bound), and consumes it via `carrier supply-chain` at exit `0` /
+  `passed: true`. `policy_result: pass` is the producer's recipe outcome, not a safety or approval
+  verdict. Also fixed `suite matrix --format json` truncating piped output past ~8 KB (the command
+  exited before stdout finished draining).
+
+- Flipped the `supply_chain` compatibility row to **`end_to_end: proven`** (H-next-5a) from a real
+  hosted run: released Assay v3.28.0 emits the carrier and the Harness validly consumes and classifies
+  it. Because that emitter produces only `none`/`unsupported` provenance, the carrier is honestly
+  `policy_result: incomplete` and the consumer exits `6` — `proven` means a released binary's carrier
+  was validly consumed end to end, not that the supply chain is clean or safe.
+
 - Added **`suite.evidence_pack.v1`** (H-next-4): a strict superset of `v0` that binds one external
   GitHub artifact-attestation bundle + its `suite.external_attestation_source.v0` metadata as
   digest-bound cross-check evidence. `verify` runs every v0 check, then decodes the bundle's in-toto
