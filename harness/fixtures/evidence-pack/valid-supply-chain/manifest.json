@@ -1,0 +1,62 @@
+{
+  "schema": "suite.evidence_pack.v0",
+  "producer": {
+    "tool": "assay-harness",
+    "version": "0.8.0"
+  },
+  "subject": {
+    "kind": "assay_carrier_recipe",
+    "carrier": "assay.supply_chain_conformance.v0",
+    "assay_version": "v3.29.0",
+    "digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64"
+  },
+  "source_of_truth": [
+    {
+      "role": "assay_carrier",
+      "path": "carriers/assay.supply_chain_conformance.v0.json",
+      "schema": "assay.supply_chain_conformance.v0",
+      "digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64"
+    },
+    {
+      "role": "recipe_provenance",
+      "path": "provenance/recipe.provenance.json",
+      "schema": "suite.recipe_provenance.v0",
+      "digest": "sha256:6e4322dff13fce0b9107983614c98cb9391844e1ae2877f085d843a06afa017a"
+    },
+    {
+      "role": "suite_matrix",
+      "path": "suite/suite.compatibility.v0.json",
+      "schema": "suite.compatibility.v0",
+      "digest": "sha256:c94a55d641f7b9b0b32852939ad3a40d77c124c001f05738f9105059a27fca5b"
+    }
+  ],
+  "projections": [
+    {
+      "role": "harness_markdown",
+      "path": "harness/supply-chain.review.md",
+      "lossy": true,
+      "source_digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64",
+      "digest": "sha256:0ea3f68cb59d42c2b45502f7e7512d664ce2bb4be670ae27ad7c10abbf105859"
+    }
+  ],
+  "optional_private_reviews": [
+    {
+      "role": "plimsoll_review_digest",
+      "available": false
+    }
+  ],
+  "non_claims": [
+    "does not approve carrier semantics",
+    "does not prove policy compliance",
+    "does not prove provider trust",
+    "does not prove runtime truth",
+    "does not prove supply-chain safety, nor verify Sigstore/Rekor inclusion or issuer identity",
+    "a packed policy_result: pass is a producer/consumer recipe outcome, not a safety or approval verdict",
+    "does not replace Plimsoll policy-aware review",
+    "projections are point-in-time renderings bound by digest, not faithful re-derivations"
+  ],
+  "manifest": {
+    "canonicalization": "jcs/rfc8785",
+    "digest": "sha256:d12aa68eda0c6339cbb51ab003fbd906ccb512b81c007f947ec9f46f03d22a1d"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "schema": "assay.supply_chain_conformance.v0",
+  "subject": {
+    "name": "example-artifact",
+    "version": "1.0.0",
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "checks": {
+    "integrity": {
+      "artifact_digest": "verified",
+      "subject_digest_binding": "verified"
+    },
+    "provenance": {
+      "dsse_signature": "verified",
+      "slsa_provenance": "verified",
+      "builder_identity": "verified",
+      "sigstore_bundle": "not_applicable",
+      "rekor_inclusion": "not_applicable",
+      "cert_chain": "not_applicable",
+      "identity": "not_applicable",
+      "dsse_pae": "not_applicable",
+      "timestamp_freshness": "not_applicable",
+      "consistency": "not_applicable",
+      "witnessing": "not_applicable"
+    },
+    "pinning": {
+      "version_pinned": "verified",
+      "digest_pinned": "verified",
+      "lockfile_subject_matches_artifact": "verified",
+      "no_floating_source_ref": "verified",
+      "no_tag_only_container_ref": "not_applicable"
+    }
+  },
+  "declared": {
+    "required_slsa_build_level": "L1"
+  },
+  "verified": {
+    "slsa_build_level": "L2"
+  },
+  "policy_result": "pass",
+  "coverage": {
+    "sources_checked": [
+      "pack",
+      "lockfile",
+      "provenance"
+    ],
+    "limits": [
+      "transitive dependencies not re-fetched",
+      "PEP 740 / npm provenance adapters not verified in this slice",
+      "live transparency-log lookup not performed offline"
+    ]
+  },
+  "non_claims": [
+    "provenance verification does not prove code safety",
+    "verified provenance does not prove absence of malicious behaviour",
+    "verified signer identity is not a judgement that the provider is trustworthy",
+    "not_present is not a silent pass when policy requires provenance"
+  ]
+}
