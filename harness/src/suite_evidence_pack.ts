@@ -40,7 +40,10 @@ const KNOWN_BINDING_TARGETS: readonly string[] = [
 const SIGSTORE_V03_MEDIA = /^application\/vnd\.dev\.sigstore\.bundle\.v0\.3(\.\d+)?\+json$/;
 const SHA256_HEX = /^sha256:[0-9a-f]{64}$/;
 
-const NON_CLAIMS: readonly string[] = [
+// Non-claims are per subject carrier (builder content only; the verifier only checks they are
+// non-empty strings). Inventory keeps its exact original set (its golden pack stays byte-identical);
+// supply_chain gets supply-chain-appropriate non-claims (no inventory "shadow MCP servers" line).
+const INVENTORY_NON_CLAIMS: readonly string[] = [
   "does not approve carrier semantics",
   "does not prove policy compliance",
   "does not prove provider trust",
@@ -49,6 +52,19 @@ const NON_CLAIMS: readonly string[] = [
   "does not replace Plimsoll policy-aware review",
   "projections are point-in-time renderings bound by digest, not faithful re-derivations",
 ];
+const SUPPLY_CHAIN_NON_CLAIMS: readonly string[] = [
+  "does not approve carrier semantics",
+  "does not prove policy compliance",
+  "does not prove provider trust",
+  "does not prove runtime truth",
+  "does not prove supply-chain safety, nor verify Sigstore/Rekor inclusion or issuer identity",
+  "a packed policy_result: pass is a producer/consumer recipe outcome, not a safety or approval verdict",
+  "does not replace Plimsoll policy-aware review",
+  "projections are point-in-time renderings bound by digest, not faithful re-derivations",
+];
+function nonClaimsFor(carrierSchema: string): readonly string[] {
+  return carrierSchema === "assay.supply_chain_conformance.v0" ? SUPPLY_CHAIN_NON_CLAIMS : INVENTORY_NON_CLAIMS;
+}
 
 export interface SourceEntry { role: string; path: string; schema?: string; digest: string }
 export interface ProjectionEntry { role: string; path: string; lossy: boolean; source_digest: string; digest: string }
@@ -81,7 +97,11 @@ export interface PackManifest {
 }
 
 export interface PackError { code: string; message: string; path?: string }
-export interface PackVerifyResult { valid: boolean; errors: PackError[]; manifest?: PackManifest }
+// `coherence_binding` is an internal verify-result observable (NOT a manifest/schema field): it records
+// which coherence target the recipe_provenance bound to when the pack is coherent — so tests can prove a
+// pack passed via the intended branch (carrier-row vs recipe-row), never the wrong one. null = coherence
+// did not establish a binding (error path, or verification short-circuited before the cross-check).
+export interface PackVerifyResult { valid: boolean; errors: PackError[]; manifest?: PackManifest; coherence_binding?: "carrier_row_bound" | "recipe_row_bound" | null }
 
 // ---------------------------------------------------------------------------
 // Digest (deterministic over evidence content; volatile metadata excluded; arrays sorted)
@@ -147,7 +167,12 @@ export function buildEvidencePack(inputs: PackInputs, outDir: string): PackManif
   const carrierRel = `carriers/${basename(inputs.carrierPath)}`;
   const matrixRel = "suite/suite.compatibility.v0.json";
   const provRel = "provenance/recipe.provenance.json";
-  const mdRel = "harness/inventory.review.md";
+  // Projection path is per-subject-carrier — builder layout only; the verifier is role+digest based,
+  // never path-based (generalized from the inventory-only hardcode for the supply-chain pack).
+  const mdRel =
+    (carrier.schema ?? "") === "assay.supply_chain_conformance.v0"
+      ? "harness/supply-chain.review.md"
+      : "harness/inventory.review.md";
   copyFileSync(inputs.carrierPath, join(outDir, carrierRel));
   copyFileSync(inputs.suiteMatrixPath, join(outDir, matrixRel));
   copyFileSync(inputs.provenancePath, join(outDir, provRel));
@@ -172,7 +197,7 @@ export function buildEvidencePack(inputs: PackInputs, outDir: string): PackManif
       { role: "harness_markdown", path: mdRel, lossy: true, source_digest: carrierDigest, digest: sha256(mdBytes) },
     ].sort(byRolePath),
     optional_private_reviews: [{ role: "plimsoll_review_digest", available: false }],
-    non_claims: [...NON_CLAIMS],
+    non_claims: [...nonClaimsFor(carrier.schema ?? "")],
     manifest: { canonicalization: "jcs/rfc8785", digest: "" },
   };
 
@@ -270,6 +295,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 export function verifyEvidencePack(packDir: string): PackVerifyResult {
   const errors: PackError[] = [];
+  let coherenceBinding: "carrier_row_bound" | "recipe_row_bound" | null = null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(join(packDir, "manifest.json"), "utf-8"));
@@ -466,13 +492,18 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
         } else {
           const rows = (sv.matrix!.carrier_rows ?? []) as Array<Record<string, any>>;
           const row = rows.find((r) => r.carrier === manifest.subject.carrier);
+          // Coherence TARGET SELECTION (generalized; digest checks, source roles, projection requirements,
+          // and file/path safety below are unchanged). The recipe_provenance binds to EITHER the carrier
+          // row's own proof (carrier-row-bound: same hosted_run) OR exactly one recipe_row (recipe-row-bound).
           if (!row) {
             errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix has no row for subject carrier ${manifest.subject.carrier}`, path: "subject.carrier" });
-          } else {
+          } else if ((row.proof ?? {}).hosted_run === prov.hosted_run) {
+            // CARRIER-ROW-BOUND (e.g. inventory, A5a-2): the carrier row's OWN proof is this provenance,
+            // so every proof field must match it.
+            coherenceBinding = "carrier_row_bound";
             const p = row.proof ?? {};
             const ps = row.proof_scope ?? {};
             if (p.end_to_end !== "proven") errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix row for ${manifest.subject.carrier} is not end_to_end=proven`, path: "matrix.row" });
-            if (p.hosted_run !== prov.hosted_run) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix hosted_run != provenance.hosted_run`, path: "matrix.row.hosted_run" });
             if (p.assay_version !== prov.assay.version) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix assay_version != provenance.assay.version`, path: "matrix.row.assay_version" });
             if (p.assay_binary_digest !== prov.assay.binary_digest) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix assay_binary_digest != provenance.assay.binary_digest`, path: "matrix.row.assay_binary_digest" });
             if (p.command !== prov.assay.command) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix command != provenance.assay.command`, path: "matrix.row.command" });
@@ -483,6 +514,29 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
             if (ps.runner_os !== prov.runner_os) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.runner_os != provenance.runner_os`, path: "matrix.row.proof_scope" });
             if (ps.hosted !== prov.hosted) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.hosted != provenance.hosted`, path: "matrix.row.proof_scope" });
             if (ps.ambient_scan !== prov.ambient_scan) errors.push({ code: "PACK_COHERENCE_MATRIX", message: `matrix proof_scope.ambient_scan != provenance.ambient_scan`, path: "matrix.row.proof_scope" });
+          } else {
+            // RECIPE-ROW-BOUND (e.g. A5a-3 clean/pass): the proof lives in a recipe_row, not the carrier
+            // row. The carrier subject must STILL be a proven carrier row, and EXACTLY ONE recipe_row must
+            // carry this provenance's proof — matched only by end_to_end/hosted_run/artifact_digest (never
+            // note or recipe display name). artifact_digest == carrier digest (coherence part 1) binds the
+            // recipe row to this carrier subject without a recipe-name map or schema field.
+            const p = row.proof ?? {};
+            if (p.end_to_end !== "proven") {
+              errors.push({ code: "PACK_COHERENCE_MATRIX", message: `carrier row for ${manifest.subject.carrier} is not end_to_end=proven (a recipe-row-bound pack still requires a proven carrier subject)`, path: "matrix.row" });
+            }
+            const recipeRows = (sv.matrix!.recipe_rows ?? []) as Array<Record<string, any>>;
+            const recipeMatches = recipeRows.filter((rr) => {
+              const rp = (rr.proof ?? {}) as Record<string, any>;
+              return rp.end_to_end === "proven" && rp.hosted_run === prov.hosted_run && rp.artifact_digest === prov.artifact.digest;
+            });
+            if (recipeMatches.length === 0) {
+              errors.push({ code: "PACK_COHERENCE_MATRIX", message: `no carrier_row or recipe_row proof matches the recipe_provenance (hosted_run + artifact_digest)`, path: "matrix" });
+            } else if (recipeMatches.length > 1) {
+              errors.push({ code: "PACK_COHERENCE_AMBIGUOUS_RECIPE", message: `${recipeMatches.length} recipe_rows match the recipe_provenance (hosted_run + artifact_digest); the binding is ambiguous`, path: "matrix.recipe_rows" });
+            } else {
+              // exactly one match -> recipe_row_bound; coherent.
+              coherenceBinding = "recipe_row_bound";
+            }
           }
         }
         if (manifest.subject.carrier !== ((readJson(packDir, carrierSrc.path) as { schema?: string }).schema ?? "")) {
@@ -503,7 +557,9 @@ export function verifyEvidencePack(packDir: string): PackVerifyResult {
     verifyExternalEvidenceV1(packDir, manifest, digestCleanExternal, provReleaseAssetDigest, errors);
   }
 
-  return { valid: errors.length === 0, errors, manifest };
+  // A binding is only meaningful on a coherent pack; never report one alongside coherence errors.
+  const binding = errors.length === 0 ? coherenceBinding : null;
+  return { valid: errors.length === 0, errors, manifest, coherence_binding: binding };
 }
 
 // ---------------------------------------------------------------------------

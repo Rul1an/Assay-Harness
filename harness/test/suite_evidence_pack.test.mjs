@@ -336,3 +336,127 @@ test("a digest-mismatched source skips the cross-check (no misleading coherence 
   assert.ok(cs.includes("PACK_FILE_DIGEST_MISMATCH"));
   assert.ok(!cs.some((c) => c.startsWith("PACK_COHERENCE")), `coherence must be skipped for an unclean source; got ${cs}`);
 });
+
+// --- H-next-5b: recipe-row-bound coherence (supply-chain Evidence Pack) ---
+// Coherence target selection is generalized to bind the recipe_provenance to EITHER the carrier row's
+// own proof (carrier-row-bound: inventory, A5a-2) OR exactly one recipe_row (recipe-row-bound: A5a-3
+// clean/pass). The internal `coherence_binding` result field proves WHICH branch a pack passed via, so
+// neither family can silently pass through the wrong route. Digest checks, source roles, projection
+// requirements and file/path safety are unchanged.
+const VALID_SC = fileURLToPath(new URL("../fixtures/evidence-pack/valid-supply-chain", import.meta.url));
+const VALID_V1 = fileURLToPath(new URL("../fixtures/evidence-pack/valid-v1", import.meta.url));
+const SC_CARRIER = "assay.supply_chain_conformance.v0";
+const SC_RUN = "27748640402"; // A5a-3 hosted run; matches the "supply-chain DSSE clean/pass" recipe_row
+function mutatedSc(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "evpack-sc-"));
+  const pack = join(dir, "pack");
+  cpSync(VALID_SC, pack, { recursive: true });
+  fn(pack);
+  return pack;
+}
+const scRow = (m) => m.carrier_rows.find((r) => r.carrier === SC_CARRIER);
+const scRecipe = (m) => m.recipe_rows.find((rr) => rr.proof.hosted_run === SC_RUN);
+
+test("recipe-row-bound: golden supply-chain pack verifies AND binds via the recipe row", () => {
+  const r = verifyEvidencePack(VALID_SC);
+  assert.ok(r.valid, `expected valid; errors=${JSON.stringify(r.errors)}`);
+  assert.equal(r.coherence_binding, "recipe_row_bound");
+});
+
+test("carrier-row-bound: inventory pack still verifies AND binds via the carrier row", () => {
+  const r = verifyEvidencePack(VALID);
+  assert.ok(r.valid, `expected valid; errors=${JSON.stringify(r.errors)}`);
+  assert.equal(r.coherence_binding, "carrier_row_bound");
+});
+
+test("v1 external-attestation pack still verifies after the coherence generalization (H-next-4 path)", () => {
+  const r = verifyEvidencePack(VALID_V1);
+  assert.ok(r.valid, `expected valid; errors=${JSON.stringify(r.errors)}`);
+  assert.equal(r.coherence_binding, "carrier_row_bound");
+});
+
+test("recipe-row-bound: the carrier row's own proof deliberately does NOT match; only the recipe row does", () => {
+  // The supply_chain carrier row carries A5a-2's hosted run, not the A5a-3 provenance run, so the only
+  // route to a coherent pack is the recipe row. This is the constructed mismatch that pins the branch.
+  const m = readMatrix(VALID_SC);
+  assert.notEqual(scRow(m).proof.hosted_run, SC_RUN, "carrier row must not match the A5a-3 provenance run");
+  assert.equal(scRecipe(m).proof.hosted_run, SC_RUN, "the recipe row must match the A5a-3 provenance run");
+  assert.equal(verifyEvidencePack(VALID_SC).coherence_binding, "recipe_row_bound");
+});
+
+test("recipe-row-bound: removing the matching recipe row fails (carrier row proof alone is insufficient)", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack);
+    m.recipe_rows = m.recipe_rows.filter((rr) => rr.proof.hosted_run !== SC_RUN);
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+test("recipe-row-bound: no matching recipe row (hosted_run mismatch) -> PACK_COHERENCE_MATRIX", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack); scRecipe(m).proof.hosted_run = "99999999999";
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+test("recipe-row-bound: recipe row artifact_digest mismatch -> PACK_COHERENCE_MATRIX", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack); scRecipe(m).proof.artifact_digest = BOGUS(9);
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+test("recipe-row-bound: two recipe rows matching one provenance (different name/note) -> PACK_COHERENCE_AMBIGUOUS_RECIPE", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack);
+    const dup = JSON.parse(JSON.stringify(scRecipe(m))); // same hosted_run + artifact_digest + proven
+    dup.recipe = "a different display name for the same proof";
+    if (dup.note !== undefined) dup.note = "different note, identical hosted_run + artifact_digest";
+    m.recipe_rows.push(dup);
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  const cs = codes(p);
+  assert.ok(cs.includes("PACK_COHERENCE_AMBIGUOUS_RECIPE"), `expected ambiguous; got ${cs}`);
+  assert.ok(!cs.includes("PACK_COHERENCE_MATRIX"), "too-much-evidence must not read as a generic matrix mismatch");
+});
+
+test("recipe-row-bound: carrier row absent -> PACK_COHERENCE_MATRIX (a recipe proof cannot stand detached)", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack);
+    m.carrier_rows = m.carrier_rows.filter((r) => r.carrier !== SC_CARRIER);
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+test("recipe-row-bound: carrier row present but not proven -> PACK_COHERENCE_MATRIX", () => {
+  const p = mutatedSc((pack) => {
+    const m = readMatrix(pack);
+    const cr = scRow(m);
+    cr.proof.end_to_end = "declared";
+    cr.end_to_end_gap = { reason_code: "no_released_binary_emitter", owner: "assay" };
+    writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+});
+
+test("recipe-row-bound: provenance.artifact.digest != carrier digest -> PACK_COHERENCE_BYTES", () => {
+  const p = mutatedSc((pack) => {
+    const pr = readProv(pack); pr.artifact.digest = BOGUS(7); writeProv(pack, pr); reseal(pack, readManifest(pack));
+  });
+  assert.ok(codes(p).includes("PACK_COHERENCE_BYTES"));
+});
+
+test("recipe-row-bound: projection tamper -> PACK_FILE_DIGEST_MISMATCH (integrity unchanged)", () => {
+  const p = mutatedSc((pack) => appendFileSync(join(pack, "harness/supply-chain.review.md"), "\ntampered\n"));
+  assert.ok(codes(p).includes("PACK_FILE_DIGEST_MISMATCH"));
+});
+
+test("supply-chain pack carries supply-chain non-claims, not the inventory shadow-MCP line", () => {
+  const m = readManifest(VALID_SC);
+  assert.ok(m.non_claims.some((s) => s.includes("supply-chain safety")), "expected a supply-chain safety non-claim");
+  assert.ok(!m.non_claims.some((s) => s.includes("shadow MCP servers")), "inventory-specific non-claim must not appear");
+});
