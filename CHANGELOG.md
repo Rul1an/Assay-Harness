@@ -4,6 +4,8 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-24
+
 - Added a descriptive **coding-agent run evidence** carrier projection (`carrier coding-agent`): it validates
   an `assay.coding_agent.evidence_pack.v0` evidence event (declared scope, observed effects, per-surface
   coverage, source class, non-claims, hard content hash (`assaycontenthash` on the wire)) and projects a reviewer-facing Markdown/JSON review
