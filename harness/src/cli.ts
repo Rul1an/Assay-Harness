@@ -76,6 +76,12 @@ import {
   writeMcpInventoryProjections,
 } from "./carrier_inventory.js";
 import {
+  formatCodingAgentMarkdown,
+  formatCodingAgentSummary,
+  loadCodingAgentReport,
+  writeCodingAgentProjections,
+} from "./carrier_coding_agent.js";
+import {
   loadSuiteReport,
   validateSuiteCompatibility,
   driftAgainstRegistry,
@@ -179,6 +185,7 @@ Commands:
   carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]
   carrier check --carrier <conformance.json> [--format markdown|json]
   carrier inventory --carrier <mcp-server-inventory.json> [--out-dir <dir>] [--format markdown|json]
+  carrier coding-agent --carrier <coding-agent-evidence-event.json> [--out-dir <dir>] [--format markdown|json]
   baseline <update|show|path> [--from <path>] [--dir <path>]
   policy   --policy <path> --tool <name>
   run      --policy <path> --input <prompt> [--output <path>] [--auto-approve] [--auto-deny]
@@ -1454,6 +1461,10 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
     cmdCarrierInventory(args);
     return;
   }
+  if (subcommand === "coding-agent") {
+    cmdCarrierCodingAgent(args);
+    return;
+  }
   console.error(`[config_error] Unknown carrier subcommand: ${subcommand ?? "(none)"}`);
   console.error(
     "Usage:\n" +
@@ -1462,7 +1473,8 @@ function cmdCarrier(args: Record<string, string | boolean>): void {
       "  carrier token-passthrough --carrier <token-passthrough-conformance.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier enforcement-health --carrier <enforcement-health.json> [--out-dir <dir>] [--format markdown|json]\n" +
       "  carrier check --carrier <conformance.json> [--format markdown|json]\n" +
-      "  carrier inventory --carrier <mcp-server-inventory.json> [--out-dir <dir>] [--format markdown|json]",
+      "  carrier inventory --carrier <mcp-server-inventory.json> [--out-dir <dir>] [--format markdown|json]\n" +
+      "  carrier coding-agent --carrier <coding-agent-evidence-event.json> [--out-dir <dir>] [--format markdown|json]",
   );
   process.exit(EXIT.CONFIG_ERROR);
 }
@@ -1812,6 +1824,62 @@ function cmdCarrierInventory(args: Record<string, string | boolean>): void {
   if (!report.validation.valid) {
     const codes = report.validation.errors.map((e) => e.code).join(",");
     console.error(`[artifact_contract] carrier inventory: invalid carrier (${codes})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  process.exit(EXIT.SUCCESS);
+}
+
+function cmdCarrierCodingAgent(args: Record<string, string | boolean>): void {
+  const carrierArg = args.carrier;
+  const outDir = carrierOutDir(args);
+  const format = carrierFormat(args);
+
+  if (typeof carrierArg !== "string" || carrierArg.length === 0) {
+    console.error(
+      "[config_error] --carrier <coding-agent-evidence-event.json> is required (must be a non-empty path)",
+    );
+    console.error(
+      "Usage: carrier coding-agent --carrier <path> [--out-dir <dir>] [--format markdown|json]",
+    );
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const carrierPath = carrierArg;
+
+  const load = loadCodingAgentReport(carrierPath);
+  if (load.not_found) {
+    console.error(`[config_error] coding-agent evidence event file not found: ${carrierPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const report = load.report!;
+
+  if (typeof outDir === "string" && outDir.length > 0) {
+    try {
+      writeCodingAgentProjections(report, outDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ci_formatter] ${message}`);
+      process.exit(EXIT.CI_FORMATTER);
+    }
+  }
+
+  // `--format json` emits only the JSON document on stdout so it stays parseable; the human summary and
+  // the artifacts notice go to the markdown path / stderr.
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatCodingAgentMarkdown(report).trimEnd());
+    console.log(formatCodingAgentSummary(report));
+  }
+  if (typeof outDir === "string" && outDir.length > 0) {
+    console.error(`[carrier-coding-agent] artifacts: ${outDir}/coding-agent-review.md`);
+  }
+
+  // Exit routing (DESCRIPTIVE / non-gating): a valid event exits 0 regardless of contents; only a
+  // malformed / wrong-type / missing-required-field event is a contract error (3). The bounded verdict
+  // and effect-sufficiency are a separate downstream review consumer's job, not the Harness's.
+  if (!report.validation.valid) {
+    const codes = report.validation.errors.map((e) => e.code).join(",");
+    console.error(`[artifact_contract] carrier coding-agent: invalid carrier (${codes})`);
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   process.exit(EXIT.SUCCESS);

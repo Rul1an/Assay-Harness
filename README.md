@@ -245,6 +245,36 @@ The other descriptive Tier-2B carriers, `tool_decision_surface.v0` and
 `mcp_manifest_observed.v0`, are not yet adapted (no clean single-carrier golden to
 pin against); they are a tracked follow-up, not hidden debt.
 
+## Coding-agent run evidence (`carrier coding-agent`, descriptive)
+
+Assay (`crates/assay-evidence/src/coding_agent.rs`, `coding_agent_evidence_event`) emits an
+`assay.coding_agent.evidence_pack.v0` evidence event for one coding-agent run: declared scope, observed
+effects, per-surface coverage, source class, and non-claims, with a hard content hash (`assaycontenthash` on
+the wire) on the event. The
+Harness validates the frozen shape and projects a reviewer-facing review surfacing the signals a 2026
+agent-PR reviewer needs (what changed, what ran, what network/tools were touched, what was actually
+observed).
+
+```bash
+npx tsx harness/src/cli.ts carrier coding-agent \
+  --carrier path/to/coding-agent-evidence-event.json \
+  --out-dir results/coding-agent
+```
+
+This is **descriptive / non-gating**: a valid event exits 0 regardless of contents; only a malformed /
+wrong-type / missing-required-field event is a contract error (exit 3). The review surfaces declared-vs-
+observed scope deltas, coverage gaps on the core surfaces (`files`, `commands`, `network`, `mcp_tools`; an
+unobserved surface is a visible gap, never a clean result), the source-class basis (a self-attested class
+does not on its own support a clean review), and the producer's `content_hash` integrity anchor (surfaced,
+not re-verified here). It computes **no verdict** and no effect-sufficiency: the bounded judgment over these
+facts is a separate downstream review consumer's job. Unlike the schema-keyed carriers, the coding-agent evidence is
+an EvidenceEvent identified by `type`, so it has its own verb and is not in the `carrier check` registry.
+
+**Carrier projection only (intentional).** A full `suite.evidence_pack.v0` carrying this carrier is not built
+yet: that needs a *released* Assay with the primitive, a hermetic recipe that emits the carrier, and a
+*proven* suite-matrix row, so the pack's coherence invariant holds without fabricated provenance. The
+projection lands now; the coherence-bound pack follows once those exist.
+
 ## Carrier contract-drift check (`carrier check`)
 
 `carrier check` dispatches any conformance carrier by its `schema` id to the

@@ -4,6 +4,17 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Added a descriptive **coding-agent run evidence** carrier projection (`carrier coding-agent`): it validates
+  an `assay.coding_agent.evidence_pack.v0` evidence event (declared scope, observed effects, per-surface
+  coverage, source class, non-claims, hard content hash (`assaycontenthash` on the wire)) and projects a reviewer-facing Markdown/JSON review
+  surfacing declared-vs-observed scope deltas, core-surface coverage gaps, the source-class basis, and the
+  integrity anchor. Descriptive / non-gating (a valid event exits 0; malformed / wrong-type is exit 3); it
+  computes no verdict or effect-sufficiency (that stays a separate downstream review consumer's job). The input is an
+  EvidenceEvent identified by `type`, so it has its own verb and is not registered in the schema-keyed
+  `carrier check`. A full `suite.evidence_pack.v0` carrying this carrier is intentionally not built yet: it
+  requires a released Assay primitive, a hermetic recipe that emits the carrier, and a proven suite-matrix
+  row, so the pack's coherence invariant holds without fabricated provenance.
+
 ## [0.9.0] - 2026-06-18
 
 - Generalized the Evidence Pack **coherence target** (H-next-5b): a pack can now bind a proof recorded

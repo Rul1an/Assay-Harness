@@ -1,0 +1,46 @@
+{
+  "specversion": "1.0",
+  "type": "assay.coding_agent.evidence_pack.v0",
+  "source": "urn:assay:coding-agent",
+  "id": "run_demo:0",
+  "time": "2026-06-24T00:00:00Z",
+  "datacontenttype": "application/json",
+  "assayrunid": "run_demo",
+  "assayseq": 0,
+  "assayproducer": "assay",
+  "assayproducerversion": "3.30.0",
+  "assaygit": "unknown",
+  "assaypii": false,
+  "assaysecrets": false,
+  "assaycontenthash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "data": {
+    "declared_scope": {
+      "allowed_files": ["src/foo.py"],
+      "allowed_commands": ["pytest"],
+      "network": "denied",
+      "allowed_mcp_tools": ["fs.read"],
+      "expected_test_command": "pytest",
+      "authorized": true
+    },
+    "observed_effects": {
+      "files_changed": ["src/foo.py"],
+      "commands_executed": ["pytest"],
+      "network_attempts": [],
+      "mcp_tool_calls": ["fs.read"],
+      "test_observed": true
+    },
+    "coverage": {
+      "files": "observed",
+      "commands": "observed",
+      "network": "observed",
+      "mcp_tools": "observed",
+      "test": "observed"
+    },
+    "source_class": "boundary_observed",
+    "non_claims": [
+      "does_not_prove_code_correctness",
+      "does_not_prove_agent_intent",
+      "does_not_replace_human_review"
+    ]
+  }
+}
