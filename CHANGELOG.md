@@ -4,6 +4,15 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-06-27
+
+Refactor-only patch release for Harness source hygiene:
+
+- Splits the CLI, Runner archive validation, cross-runtime validation, carrier projections, and
+  evidence-pack helpers into focused modules while preserving existing CLI commands and outputs.
+- Adds a hotspot line-count gate to `npm test` so every `harness/src` source file stays under 600
+  lines.
+
 ## [0.10.0] - 2026-06-24
 
 - Added a descriptive **coding-agent run evidence** carrier projection (`carrier coding-agent`): it validates
