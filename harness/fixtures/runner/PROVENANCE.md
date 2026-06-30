@@ -11,6 +11,7 @@
 | Path | Source archive | Source commit | Live workflow run |
 |---|---|---|---|
 | [`slice3-arm-c-kernel-event-v0.tar.gz`](slice3-arm-c-kernel-event-v0.tar.gz) | `Rul1an/assay` `docs/experiments/runner-vs-otel-2026-05/runs/slice3-arm-c-kernel-event-v0/run_arm_c_20260526T090509Z_1/archive-contents/` | [`ee343650`](https://github.com/Rul1an/assay/commit/ee343650) (PR [#1377](https://github.com/Rul1an/assay/pull/1377)) | <https://github.com/Rul1an/assay/actions/runs/26442807783> |
+| [`v3.19.0-release-smoke.tar.gz`](v3.19.0-release-smoke.tar.gz) | `assay v3.19.0` release binary on local `assay-bpf-runner`: `assay runner-spike run --agent-shim none --run-id run_v319_release_smoke --output release-smoke.tar.gz -- bash -lc "printf smoke > work/output.txt"` | [`v3.19.0`](https://github.com/Rul1an/assay/releases/tag/v3.19.0) release asset `assay-v3.19.0-aarch64-unknown-linux-gnu.tar.gz` | Local Multipass run on 2026-06-07 |
 
 ## How it was produced upstream
 
@@ -39,6 +40,14 @@ produced once at vendor time. The repack:
 The Tier-1 validator (`validateRunnerArchive`) only checks file
 **contents** against the manifest, so the repack is contract-equivalent
 to the original `.tar.gz` artifact.
+
+The `v3.19.0-release-smoke.tar.gz` fixture is deliberately narrower. It is a
+release-binary smoke archive produced from the latest published ARM Linux
+binary, not from a checkout build and not with eBPF/kernel capture enabled. It
+proves the shipped `v3.19.0` archive shape still validates at Tier 1. Its
+honest-health verdict is expected to be degraded
+(`kernel_layer_not_complete:absent`, `cgroup_correlation_not_clean:partial`),
+so it must not be used as a Linux/eBPF acceptance signal.
 
 ## Refresh policy
 
@@ -75,7 +84,8 @@ upstream emission surfaces as a CI failure on this single smoke test.
 ## What this fixture does NOT prove
 
 - No Linux/eBPF acceptance signal here. The kernel capture happened
-  upstream; the fixture is a static byte snapshot.
+  upstream for `slice3-arm-c-kernel-event-v0.tar.gz`; the `v3.19.0`
+  release-binary smoke intentionally has no kernel capture.
 - No live measurement claims. This is a parser-contract smoke, not an
   overhead or behaviour test.
 - No Tier-2 diff or Tier-3 cross-runtime claims. Those tests live

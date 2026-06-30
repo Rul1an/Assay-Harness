@@ -4,6 +4,11 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- Release-binary compatibility target advanced to Assay `v3.19.0`.
+  `docs/ASSAY_COMPATIBILITY.md`, `README.md`, `ROADMAP.md`, and the manual
+  `Harness CI` `assay_version` default now use `v3.19.0` so post-`v3.14`
+  drift is not hidden by an older proof target.
+
 ## [0.7.0] - 2026-06-03
 
 Honors the network-endpoint claim scope that Assay `v3.15.0` now declares,

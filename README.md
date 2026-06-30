@@ -7,7 +7,7 @@ produces verify-before-diff comparisons of baseline vs candidate evidence.
 New denials, hash mismatches, or policy changes surface as structured
 regression output — reviewable by humans and consumable by CI.
 
-> **Version:** 0.6.1 | **Status:** active development
+> **Version:** 0.7.0 | **Status:** active development
 
 ### What this is
 
@@ -239,7 +239,7 @@ See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_
 for the artifact chain and boundary rules.
 
 These receipt recipes require the released Assay `v3.8.0` Trust Basis surface
-or a later compatible release. They are verified through Assay `v3.14.0` for
+or a later compatible release. They are verified through Assay `v3.19.0` for
 `assay.trust-basis.diff.v1`, Trust Card schema v5, and the 10-claim eval /
 decision / inventory family set, with machine-readable receipt contracts owned
 by Assay. See

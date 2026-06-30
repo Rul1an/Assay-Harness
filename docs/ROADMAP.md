@@ -1,18 +1,17 @@
 # Roadmap
 
-> Last updated: 2026-06-01
+> Last updated: 2026-06-07
 
 ## Main after v0.6.1 — current
 
-### Assay compatibility-line bump to v3.14.0 — done on main
-- Current target: Assay `v3.8.0` minimum / `v3.14.0` proof
-- The `Harness CI` release-binary compatibility job passed against the
-  `v3.14.0` binary in
-  [run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
-  on 2026-06-01
+### Assay compatibility-line bump to v3.19.0 — current
+- Current target: Assay `v3.8.0` minimum / `v3.19.0` proof target
+- The local release-binary compatibility matrix passed against the
+  `v3.19.0` binary on 2026-06-07. Record the hosted `Harness CI`
+  workflow-dispatch run after it completes.
 - Both [`ASSAY_COMPATIBILITY.md`](ASSAY_COMPATIBILITY.md) and the
-  workflow `assay_version` default were updated to record `v3.14.0` as
-  the latest proved compatibility binary
+  workflow `assay_version` default were updated to record `v3.19.0` as
+  the latest compatibility target
 - This is proof/docs only: no Harness gate/report semantics and no
   Runner schema-consumption tiers changed
 
@@ -93,8 +92,8 @@
 ## v0.3.2 — shipped
 
 ### Assay v3.8.0 minimum, v3.9.0 compatibility proof
-- Harness docs target Assay `v3.8.0` as the minimum exact tag for the current compatibility line
-- `Harness CI` includes a manual release-binary compatibility job with `assay_version` input, defaulting to the latest proved Assay tag, currently `v3.9.0`
+- Harness docs target Assay `v3.8.0` as the minimum exact tag for that compatibility line
+- `Harness CI` includes a manual release-binary compatibility job with `assay_version` input, defaulting to the latest proved Assay tag for that line, then `v3.9.0`
 - The compatibility job runs Promptfoo, OpenFeature, and CycloneDX recipes against a downloaded Assay release binary and uploads raw diff JSON, Markdown, and JUnit artifacts
 - This is release-truth and CI hardening only: no new Harness report semantics, Trust Basis semantics, or family-specific gate logic
 - The release gate passed in [`Harness CI` run 25105149901](https://github.com/Rul1an/Assay-Harness/actions/runs/25105149901)

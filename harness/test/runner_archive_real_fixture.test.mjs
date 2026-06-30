@@ -41,6 +41,13 @@ const FIXTURE_PATH = join(
   "runner",
   "slice3-arm-c-kernel-event-v0.tar.gz",
 );
+const RELEASE_SMOKE_FIXTURE_PATH = join(
+  __dirname,
+  "..",
+  "fixtures",
+  "runner",
+  "v3.19.0-release-smoke.tar.gz",
+);
 
 test("real Runner archive: Tier-1 validation passes", () => {
   const result = validateRunnerArchive(FIXTURE_PATH);
@@ -108,4 +115,41 @@ test("real Runner archive: honest-health gate passes", () => {
   );
   assert.deepEqual(verdict.structural_reasons, []);
   assert.deepEqual(verdict.measurement_health_reasons, []);
+});
+
+test("v3.19.0 release-binary Runner archive: Tier-1 validation passes", () => {
+  const result = validateRunnerArchive(RELEASE_SMOKE_FIXTURE_PATH);
+
+  assert.equal(result.recognised, true);
+  assert.equal(
+    result.manifest_valid,
+    true,
+    `manifest validation failed: ${JSON.stringify(result.manifest_errors)}`,
+  );
+  assert.deepEqual(result.manifest_errors, []);
+  assert.equal(result.manifest?.schema, RUNNER_ARCHIVE_MANIFEST_SCHEMA);
+  assert.equal(
+    result.capability_surface?.schema,
+    RUNNER_CAPABILITY_SURFACE_SCHEMA,
+  );
+  assert.equal(
+    result.observation_health?.schema,
+    RUNNER_OBSERVATION_HEALTH_SCHEMA,
+  );
+  assert.equal(
+    result.correlation_report?.schema,
+    RUNNER_CORRELATION_REPORT_SCHEMA,
+  );
+});
+
+test("v3.19.0 release-binary Runner archive: honest-health remains non-kernel proof", () => {
+  const validation = validateRunnerArchive(RELEASE_SMOKE_FIXTURE_PATH);
+  const verdict = checkHonestHealth(validation);
+
+  assert.equal(verdict.passed, false);
+  assert.deepEqual(verdict.structural_reasons, []);
+  assert.deepEqual(verdict.measurement_health_reasons, [
+    "kernel_layer_not_complete:absent",
+    "cgroup_correlation_not_clean:partial",
+  ]);
 });
