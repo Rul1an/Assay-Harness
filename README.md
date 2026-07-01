@@ -380,7 +380,9 @@ included and digest-bound, never asserted as trusted or verified.
 that a failure can be localized to a step, harness layer, and reason class. The
 planned diagnostic sufficiency layer keeps that boundary explicit:
 `artifact-valid` can still be `diagnostic_ambiguous` or
-`diagnostic_insufficient`. See
+`diagnostic_insufficient`, and `no_failure_observed` is treated as an absence
+claim that needs complete retained-boundary coverage plus source classes that
+can carry absence. See
 [`docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md).
 
 ## The PR Gate Flow

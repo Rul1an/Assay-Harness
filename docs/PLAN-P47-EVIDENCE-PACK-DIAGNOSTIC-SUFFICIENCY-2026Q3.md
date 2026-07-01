@@ -36,7 +36,7 @@ P47 keeps those predicates separate:
 ## Lab Finding
 
 The private lab probe `retained-pack-diagnostic-sufficiency-2026-07` generated
-12 fixture records and reproduced them with a clean-room implementation. The key
+15 fixture records and reproduced them with a clean-room implementation. The key
 result:
 
 > `artifact verifies` is an artifact-contract claim. It does not imply
@@ -50,6 +50,11 @@ The four states were:
 | `diagnostic_ambiguous` | The pack is artifact-valid, but multiple candidates or missing attribution fields prevent a single localization. |
 | `diagnostic_insufficient` | The pack is artifact-valid, but retained source bytes, coverage, or source class cannot carry localization. |
 | `invalid` | Shape, path, digest, or artifact-contract failure. Diagnostic semantics do not run. |
+
+The follow-up vectors explicitly model the occurrence/absence asymmetry from
+the source-class ceiling finding: a concrete failure localization is an
+occurrence claim, while `no_failure_observed` is an absence claim and is gated
+more strictly.
 
 ## Scope
 
@@ -90,6 +95,11 @@ The diagnostic layer may inspect only retained pack data:
   - `reason_class`,
   - `source_class`.
 
+A **failure atom** is a distinct `(step_id, layer, reason_class)` tuple after
+normalizing duplicate observations. Multiple observations of the same tuple are
+one atom; distinct tuples are multiple atoms and therefore ambiguous unless a
+later contract defines a deterministic dominance rule.
+
 ### Output
 
 The layer returns:
@@ -98,9 +108,11 @@ The layer returns:
 {
   "status": "diagnostic_localized",
   "ceiling": "step_layer_reason",
-  "reason_classes": ["ringbuf_drops_nonzero"],
+  "failure_reason_classes": ["ringbuf_drops_nonzero"],
+  "diagnostic_reasons": [],
   "non_claims": [
     "artifact_valid_does_not_imply_repair",
+    "diagnostic_localized_is_not_root_cause",
     "diagnostic_state_is_not_policy_approval",
     "diagnostic_state_is_not_provider_truth",
     "diagnostic_state_is_not_runtime_truth",
@@ -111,6 +123,14 @@ The layer returns:
 
 ### State Rules
 
+State precedence is:
+
+`invalid -> diagnostic_insufficient -> diagnostic_ambiguous -> diagnostic_localized`.
+
+`diagnostic_insufficient` beats `diagnostic_ambiguous` because an inadequate
+evidence class cannot carry a diagnostic claim at all. Ambiguity is evaluated
+only after the retained evidence class is strong enough to carry localization.
+
 1. Artifact-contract failure wins first:
    - malformed pack,
    - unsafe path,
@@ -120,7 +140,7 @@ The layer returns:
 
    Result: `invalid`.
 
-2. A pack can be `diagnostic_localized` only when all are true:
+2. A concrete failure can be `diagnostic_localized` only when all are true:
    - source bytes are retained;
    - the relevant layer has complete coverage;
    - there is exactly one failure atom;
@@ -138,26 +158,68 @@ The layer returns:
 6. SDK self-report can localize SDK-layer facts, but must not localize kernel,
    policy, or carrier-layer failures by itself.
 
-7. Complete no-failure evidence may render `diagnostic_localized` at a
-   `no_failure_observed` reason class only inside the declared retained boundary.
+7. `no_failure_observed` is an absence claim. It is stricter than concrete
+   failure localization and can be `diagnostic_localized` only when all are true:
+   - raw source bytes are retained;
+   - projections are not the only carrier of the clean state;
+   - coverage is complete over every layer in the declared retained boundary;
+   - each source class carrying the clean observation can carry absence for its
+     layer.
+
+   Projection-only, partial, or self-reported clean evidence is
+   `diagnostic_insufficient`, not localized.
+
+### Source Class x Layer Authority
+
+The source class must have vantage over the layer whose diagnostic claim it is
+carrying.
+
+| Source class | May localize | Must not localize by itself |
+|---|---|---|
+| `kernel_observed` / boundary-observed kernel stream | kernel-layer failures and no-failure absence inside kernel coverage | policy, SDK, carrier-layer failures |
+| `policy_observed` / policy-engine trace | policy-layer failures and policy-layer absence | kernel, SDK, carrier-layer failures |
+| `sdk_self_reported` | SDK-layer facts that the SDK itself reports | kernel, policy, carrier-layer failures; boundary-wide absence |
+| `carrier_observed` | carrier-layer failures and carrier-layer absence | kernel, policy, SDK-layer failures |
+| projection-only source | no localization claim | all layer-localized occurrence and absence claims |
+
+Cross-layer localization requires retained evidence from the relevant layer, not
+just a projection or a neighboring layer's self-report.
 
 ## Reason Classes
 
-Initial reason classes:
+The output keeps failure reasons separate from diagnostic-state reasons.
+`failure_reason_classes` name what failed when a failure is localized.
+`diagnostic_reasons` name why the pack is not localized or why the clean absence
+claim is allowed.
 
-| Reason class | State | Meaning |
-|---|---|---|
-| `no_failure_observed` | `diagnostic_localized` | Complete retained boundary has no failure atom. |
-| `ringbuf_drops_nonzero` | `diagnostic_localized` | Kernel observation layer reports dropped events. |
-| `policy_decision_mismatch` | `diagnostic_localized` | Policy layer contradicts the expected decision. |
-| `source_bytes_missing` | `diagnostic_insufficient` | Pack has projection but not retained source bytes. |
-| `projection_only` | `diagnostic_insufficient` | Localization would rely on a lossy projection. |
-| `layer_coverage_not_complete` | `diagnostic_insufficient` | The implicated layer is not fully covered. |
-| `self_reported_layer_cannot_localize` | `diagnostic_insufficient` | A self-reported source is being used outside its own layer. |
-| `multiple_failure_candidates` | `diagnostic_ambiguous` | More than one candidate failure atom remains. |
-| `missing_step_id` | `diagnostic_ambiguous` | Failure atom lacks step identity. |
-| `missing_layer` | `diagnostic_ambiguous` | Failure atom lacks layer identity. |
-| `missing_reason_class` | `diagnostic_ambiguous` | Failure atom lacks reason class. |
+Initial classes:
+
+| Class | Field | State | Meaning |
+|---|---|---|---|
+| `no_failure_observed` | `diagnostic_reasons` | `diagnostic_localized` | Complete retained boundary has no failure atom and absence is source-class-supported. |
+| `ringbuf_drops_nonzero` | `failure_reason_classes` | `diagnostic_localized` | Kernel observation layer reports dropped events. |
+| `policy_decision_mismatch` | `failure_reason_classes` | `diagnostic_localized` | Policy layer contradicts the expected decision. |
+| `source_bytes_missing` | `diagnostic_reasons` | `diagnostic_insufficient` | Pack has projection but not retained source bytes. |
+| `projection_only` | `diagnostic_reasons` | `diagnostic_insufficient` | Localization would rely on a lossy projection. |
+| `layer_coverage_not_complete` | `diagnostic_reasons` | `diagnostic_insufficient` | The implicated layer is not fully covered. |
+| `absence_source_class_insufficient` | `diagnostic_reasons` | `diagnostic_insufficient` | Clean absence is carried by a source class that cannot support absence. |
+| `self_reported_layer_cannot_localize` | `diagnostic_reasons` | `diagnostic_insufficient` | A self-reported source is being used outside its own layer. |
+| `multiple_failure_candidates` | `diagnostic_reasons` | `diagnostic_ambiguous` | More than one distinct failure atom remains. |
+| `missing_step_id` | `diagnostic_reasons` | `diagnostic_ambiguous` | Failure atom lacks step identity. |
+| `missing_layer` | `diagnostic_reasons` | `diagnostic_ambiguous` | Failure atom lacks layer identity. |
+| `missing_reason_class` | `diagnostic_reasons` | `diagnostic_ambiguous` | Failure atom lacks reason class. |
+
+## Ceilings
+
+| State | Ceiling |
+|---|---|
+| `diagnostic_localized` | `step_layer_reason` |
+| `diagnostic_ambiguous` | `artifact_contract` |
+| `diagnostic_insufficient` | `artifact_contract` |
+| `invalid` | `none` |
+
+`artifact_contract` means the pack may verify as an artifact, but the retained
+evidence does not support a single localized diagnostic conclusion.
 
 ## Acceptance
 
@@ -169,11 +231,13 @@ P47 is ready to implement only when these are true:
 - tests prove that an artifact-valid projection-only pack is not localized;
 - tests prove that two plausible failure atoms are ambiguous, not insufficient;
 - tests prove that partial layer coverage cannot localize a failure;
+- tests prove that `no_failure_observed` is gated as an absence claim;
+- tests prove that self-reported clean evidence cannot carry boundary absence;
 - tests prove that malformed/path/digest errors return invalid before diagnostic
   semantics run;
 - rendered output carries the non-claims above;
-- docs state that diagnostic sufficiency does not imply repair, policy approval,
-  provider truth, runtime truth, or safety.
+- docs state that diagnostic sufficiency does not imply repair, root cause,
+  policy approval, provider truth, runtime truth, or safety.
 
 ## Implementation Shape
 
@@ -197,5 +261,5 @@ considered only when a concrete workflow requires localized diagnostics.
 - HarnessFix: "From Failed Trajectories to Reliable LLM Agents: Diagnosing and
   Repairing Harness Flaws", arXiv:2606.06324, 4 Jun 2026.
   https://arxiv.org/abs/2606.06324
-- Private lab probe: `retained-pack-diagnostic-sufficiency-2026-07`, 12 vectors
+- Private lab probe: `retained-pack-diagnostic-sufficiency-2026-07`, 15 vectors
   with clean-room reproduction.

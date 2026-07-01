@@ -9,6 +9,8 @@
   artifact-valid is kept separate from failure-localized
 - Proposed states: `diagnostic_localized`, `diagnostic_ambiguous`,
   `diagnostic_insufficient`, and `invalid`
+- `no_failure_observed` is modeled as a stricter absence claim, not as a normal
+  failure-localization reason
 - Scope is docs/contract only for now: no exit-code change, no manifest digest
   change, no repair engine, and no policy or runtime-truth claim
 - See [`PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md)
