@@ -374,6 +374,15 @@ The Harness decodes and cross-checks the attestation subject against
 root, transparency-log (Rekor) inclusion, issuer identity, or policy compliance — the bundle is
 included and digest-bound, never asserted as trusted or verified.
 
+### Diagnostic sufficiency (planned)
+
+`evidence-pack verify` proves the artifact contract. It does not by itself prove
+that a failure can be localized to a step, harness layer, and reason class. The
+planned diagnostic sufficiency layer keeps that boundary explicit:
+`artifact-valid` can still be `diagnostic_ambiguous` or
+`diagnostic_insufficient`. See
+[`docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md).
+
 ## The PR Gate Flow
 
 ```

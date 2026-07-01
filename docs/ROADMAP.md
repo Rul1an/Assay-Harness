@@ -4,6 +4,15 @@
 
 ## Main after v0.6.1 — current
 
+### Evidence Pack diagnostic sufficiency - DoR staged
+- P47 defines a reviewer-facing diagnostic sufficiency layer for Evidence Packs:
+  artifact-valid is kept separate from failure-localized
+- Proposed states: `diagnostic_localized`, `diagnostic_ambiguous`,
+  `diagnostic_insufficient`, and `invalid`
+- Scope is docs/contract only for now: no exit-code change, no manifest digest
+  change, no repair engine, and no policy or runtime-truth claim
+- See [`PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md)
+
 ### MCP server inventory projector (`carrier inventory`) — added on main
 - New `carrier inventory` verb: descriptive (non-gating) projector for
   `assay.mcp_server_inventory.v0`; validates the frozen shape and projects reviewer
