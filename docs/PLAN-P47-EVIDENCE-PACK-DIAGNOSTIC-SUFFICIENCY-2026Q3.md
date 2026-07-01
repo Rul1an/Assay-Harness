@@ -1,6 +1,6 @@
 # P47 - Evidence Pack Diagnostic Sufficiency
 
-> **Status:** DoR, build-held until a named consumer or over-read incident
+> **Status:** DoR, producer build held; consumer contract pinned by Plimsoll
 > **Target repo:** `Rul1an/Assay-Harness`
 > **Source finding:** `retained-pack-diagnostic-sufficiency-2026-07`
 > **SOTA anchor:** HarnessFix, arXiv:2606.06324
@@ -9,9 +9,11 @@
 
 ## One-Line Goal
 
-Keep an implementation-ready contract for a reviewer-facing diagnostic
-sufficiency layer, without building it until a named consumer needs it or a real
-over-read incident proves the need.
+Keep an implementation-ready producer contract for a reviewer-facing diagnostic
+sufficiency layer. The first named consumer now exists: Plimsoll consumes
+`assay.retained_pack_diagnostic_sufficiency.v0` as a ceiling guard. Assay-Harness
+still does not emit the carrier until a workflow needs retained-pack diagnostic
+localization.
 
 ## Why This Is Banked
 
@@ -43,13 +45,38 @@ Do not implement this as Assay-Harness product surface merely because the lab
 finding is true or because the SOTA frontier is moving. Implementation requires
 at least one of:
 
-- a named consumer, such as a review surface or downstream verdict consumer, that
-  will read `diagnostic_*` states and make a different decision;
+- a named producer workflow in Assay-Harness that needs to emit retained-pack
+  diagnostic localization for Plimsoll or another downstream verdict consumer;
 - a real over-read incident where an artifact-valid pack was treated as a
   localized failure;
 - an explicit workflow owner asking for retained-pack diagnostic localization.
 
-Absent one of those, the correct state is: finding done, DoR ready, build held.
+Absent one of those, the correct state is: finding done, consumer contract
+pinned, Assay-Harness producer build held.
+
+## Consumer Contract Alignment
+
+Plimsoll is the first consumer of this contract. It pins the current carrier
+shape and guards these ceilings:
+
+- schema: `assay.retained_pack_diagnostic_sufficiency.v0`;
+- states: `diagnostic_localized`, `diagnostic_ambiguous`,
+  `diagnostic_insufficient`, and `invalid`;
+- ceilings: `step_layer_reason`, `artifact_contract`, and `none`;
+- split fields: `failure_reason_classes` for localized failures and
+  `diagnostic_reasons` for insufficiency, ambiguity, invalidity, and supported
+  clean absence;
+- `no_failure_observed` is an absence claim and is gated by source class;
+- diagnostic reasons such as `source_bytes_missing` are invalid when relabelled
+  as `failure_reason_classes`.
+
+Consumer-side coverage boundary: Plimsoll can check the declared state, source
+class, ceiling, and reason vocabulary. It does not recompute retained-layer
+coverage from raw Harness state. Therefore an Assay-Harness producer must carry
+coverage-completeness facts in the diagnostic carrier before clean absence or
+localized failure is emitted. Without those facts, emit
+`diagnostic_insufficient` with a diagnostic reason such as
+`layer_coverage_not_complete`.
 
 ## Lab Finding
 
@@ -124,8 +151,10 @@ The layer returns:
 
 ```json
 {
+  "schema": "assay.retained_pack_diagnostic_sufficiency.v0",
   "status": "diagnostic_localized",
   "ceiling": "step_layer_reason",
+  "source_class": "boundary_observed",
   "failure_reason_classes": ["ringbuf_drops_nonzero"],
   "diagnostic_reasons": [],
   "non_claims": [
@@ -227,6 +256,12 @@ Initial classes:
 | `missing_layer` | `diagnostic_reasons` | `diagnostic_ambiguous` | Failure atom lacks layer identity. |
 | `missing_reason_class` | `diagnostic_reasons` | `diagnostic_ambiguous` | Failure atom lacks reason class. |
 
+`failure_reason_classes` and `diagnostic_reasons` are disjoint vocabularies.
+A producer must not place an insufficiency or ambiguity reason such as
+`source_bytes_missing`, `projection_only`, or `multiple_failure_candidates` in
+`failure_reason_classes`. Consumers are expected to reject that as malformed
+because it would turn "cannot localize" into "localized failure."
+
 ## Ceilings
 
 | State | Ceiling |
@@ -241,15 +276,20 @@ evidence does not support a single localized diagnostic conclusion.
 
 ## Build Gate Acceptance
 
-If a build trigger appears, P47 is ready to implement only when these are true:
+If a producer build trigger appears, P47 is ready to implement only when these
+are true:
 
 - the diagnostic state machine is kept separate from `evidence-pack verify`;
 - existing valid/invalid pack behavior and exit codes stay unchanged;
 - fixtures include all four states: localized, ambiguous, insufficient, invalid;
+- fixtures include a malformed carrier where a diagnostic reason is wrongly
+  placed in `failure_reason_classes`;
 - tests prove that an artifact-valid projection-only pack is not localized;
 - tests prove that two plausible failure atoms are ambiguous, not insufficient;
 - tests prove that partial layer coverage cannot localize a failure;
 - tests prove that `no_failure_observed` is gated as an absence claim;
+- tests prove that absence requires complete retained-boundary coverage in the
+  carrier, not only an absence-capable source class;
 - tests prove that self-reported clean evidence cannot carry boundary absence;
 - tests prove that malformed/path/digest errors return invalid before diagnostic
   semantics run;
