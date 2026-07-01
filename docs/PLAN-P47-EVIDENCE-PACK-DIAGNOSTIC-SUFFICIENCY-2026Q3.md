@@ -1,6 +1,6 @@
 # P47 - Evidence Pack Diagnostic Sufficiency
 
-> **Status:** DoR, not implemented
+> **Status:** DoR, build-held until a named consumer or over-read incident
 > **Target repo:** `Rul1an/Assay-Harness`
 > **Source finding:** `retained-pack-diagnostic-sufficiency-2026-07`
 > **SOTA anchor:** HarnessFix, arXiv:2606.06324
@@ -9,11 +9,11 @@
 
 ## One-Line Goal
 
-Add a reviewer-facing diagnostic sufficiency layer for Evidence Packs so a valid
-pack is not over-read as a localized failure unless retained bytes support one
-step, one harness layer, and one reason class.
+Keep an implementation-ready contract for a reviewer-facing diagnostic
+sufficiency layer, without building it until a named consumer needs it or a real
+over-read incident proves the need.
 
-## Why Now
+## Why This Is Banked
 
 The July 2026 agent-harness frontier is moving from final-outcome scoring toward
 trace-guided diagnosis and harness repair. HarnessFix shows the strongest nearby
@@ -21,17 +21,35 @@ pattern: failed trajectories are useful only when trace evidence can be normaliz
 enough to attribute failures to responsible trajectory steps and harness layers
 before repair is attempted.
 
+That frontier movement validates the finding, not the product timing. P47 is
+therefore banked as a contract-ready DoR and explicitly held as a build until
+there is demand for the state in a real reviewer workflow.
+
 Assay-Harness already has a strong artifact contract for
 `suite.evidence_pack.v0` and `suite.evidence_pack.v1`: path safety, digest
 binding, projection-to-source coherence, provenance binding, and explicit
 non-claims. That is necessary, but it is not the same predicate as diagnostic
 localization.
 
-P47 keeps those predicates separate:
+P47 keeps those predicates separate if and when it is implemented:
 
 - `evidence-pack verify` remains artifact-contract verification.
 - Diagnostic sufficiency is an additional reviewer state over retained evidence.
 - A valid pack may still be diagnostically insufficient or ambiguous.
+
+## Build Gate
+
+Do not implement this as Assay-Harness product surface merely because the lab
+finding is true or because the SOTA frontier is moving. Implementation requires
+at least one of:
+
+- a named consumer, such as a review surface or downstream verdict consumer, that
+  will read `diagnostic_*` states and make a different decision;
+- a real over-read incident where an artifact-valid pack was treated as a
+  localized failure;
+- an explicit workflow owner asking for retained-pack diagnostic localization.
+
+Absent one of those, the correct state is: finding done, DoR ready, build held.
 
 ## Lab Finding
 
@@ -221,9 +239,9 @@ Initial classes:
 `artifact_contract` means the pack may verify as an artifact, but the retained
 evidence does not support a single localized diagnostic conclusion.
 
-## Acceptance
+## Build Gate Acceptance
 
-P47 is ready to implement only when these are true:
+If a build trigger appears, P47 is ready to implement only when these are true:
 
 - the diagnostic state machine is kept separate from `evidence-pack verify`;
 - existing valid/invalid pack behavior and exit codes stay unchanged;
@@ -239,9 +257,9 @@ P47 is ready to implement only when these are true:
 - docs state that diagnostic sufficiency does not imply repair, root cause,
   policy approval, provider truth, runtime truth, or safety.
 
-## Implementation Shape
+## Implementation Shelf
 
-Recommended minimal implementation:
+If the build gate fires, the recommended minimal implementation is:
 
 1. Add an internal diagnostic classifier next to Evidence Pack formatting, not
    inside the manifest digest calculation.
