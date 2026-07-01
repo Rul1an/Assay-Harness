@@ -374,6 +374,21 @@ The Harness decodes and cross-checks the attestation subject against
 root, transparency-log (Rekor) inclusion, issuer identity, or policy compliance — the bundle is
 included and digest-bound, never asserted as trusted or verified.
 
+### Diagnostic sufficiency (producer build-held DoR)
+
+`evidence-pack verify` proves the artifact contract. It does not by itself prove
+that a failure can be localized to a step, harness layer, and reason class. A
+held DoR defines a possible diagnostic sufficiency layer that keeps that
+boundary explicit for downstream consumers:
+`artifact-valid` can still be `diagnostic_ambiguous` or
+`diagnostic_insufficient`, and `no_failure_observed` is treated as an absence
+claim that needs complete retained-boundary coverage plus source classes that
+can carry absence. Plimsoll now pins the consumer-side ceiling guard for
+`assay.retained_pack_diagnostic_sufficiency.v0`; Assay-Harness still does not
+emit that carrier until a producer workflow needs retained-pack diagnostic
+localization. See
+[`docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md).
+
 ## The PR Gate Flow
 
 ```
