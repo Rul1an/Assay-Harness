@@ -4,6 +4,19 @@
 
 ## Main after v0.6.1 — current
 
+### Skill supply-chain review sufficiency - DoR held, producer build held
+- A held DoR defines a reviewer-facing sufficiency layer over retained skill
+  records: root skill inspected is kept separate from supply chain reviewed
+- Proposed verdicts: `review_complete`, `review_incomplete`, `review_ambiguous`,
+  `transitive_risk_present`, and `invalid`
+- Three ceilings stay separate: root-skill, dependency-coverage, and
+  transitive-risk; no aggregate score, no whole-skill safe/unsafe
+- "No reachable security signal" is modeled as an absence claim: it needs
+  complete coverage, an absence-capable source class, and a justification
+- Scope is carrier-contract only: no registry scanning, no malware detection,
+  no runtime-behavior claim; producer output held until a workflow needs it
+- See [`PLAN-SKILL-SUPPLY-CHAIN-SUFFICIENCY-2026Q3.md`](PLAN-SKILL-SUPPLY-CHAIN-SUFFICIENCY-2026Q3.md)
+
 ### Evidence Pack diagnostic sufficiency - consumer pinned, producer build held
 - P47 defines a possible reviewer-facing diagnostic sufficiency layer for
   Evidence Packs: artifact-valid is kept separate from failure-localized

@@ -389,6 +389,20 @@ emit that carrier until a producer workflow needs retained-pack diagnostic
 localization. See
 [`docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md`](docs/PLAN-P47-EVIDENCE-PACK-DIAGNOSTIC-SUFFICIENCY-2026Q3.md).
 
+### Skill supply-chain review sufficiency (producer build-held DoR)
+
+Inspecting a skill's root artifact does not review its supply chain: declared
+dependencies span skills, packages, and services, and reused skills can bring
+hidden inventory or reachable risk signals with them. A held DoR defines a
+carrier contract, `assay.skill_supply_chain.v0`, that keeps that boundary
+explicit: root-skill, dependency-coverage, and transitive-risk verdicts stay
+separate, occurrence findings report at any coverage level, and "no reachable
+security signal" is an absence claim that needs complete coverage plus an
+absence-capable source class with a justification. No registry scanning, no
+malware detection, no trust score. The producer stays held until a reviewer
+workflow needs these states. See
+[`docs/PLAN-SKILL-SUPPLY-CHAIN-SUFFICIENCY-2026Q3.md`](docs/PLAN-SKILL-SUPPLY-CHAIN-SUFFICIENCY-2026Q3.md).
+
 ## The PR Gate Flow
 
 ```
