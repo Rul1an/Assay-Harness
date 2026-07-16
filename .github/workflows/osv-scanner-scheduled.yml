@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
 
       - name: Run OSV scanner
-        uses: google/osv-scanner-action/osv-scanner-action@fa4ff678dd5d0a4fa3d628e57af8162873e93cd6 # v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@a82132c0bd6c7261ffcb78e754c46c70ab57ad9a # v2.3.8
         with:
           scan-args: |-
             --format=json
@@ -32,7 +32,7 @@ jobs:
         continue-on-error: true
 
       - name: Build advisory SARIF
-        uses: google/osv-scanner-action/osv-reporter-action@fa4ff678dd5d0a4fa3d628e57af8162873e93cd6 # v2.3.8
+        uses: google/osv-scanner-action/osv-reporter-action@a82132c0bd6c7261ffcb78e754c46c70ab57ad9a # v2.3.8
         with:
           scan-args: |-
             --output=osv-results.sarif
@@ -41,7 +41,7 @@ jobs:
             --fail-on-vuln=false
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           sarif_file: osv-results.sarif
           category: osv-scanner-npm
