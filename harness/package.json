@@ -19,12 +19,11 @@
   },
   "dependencies": {
     "@openai/agents": "^0.13.2",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^5.2.1",
     "openai": "^6.45.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.1.0",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3"
