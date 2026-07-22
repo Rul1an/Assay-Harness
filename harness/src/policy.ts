@@ -8,12 +8,12 @@
 
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import yaml from "js-yaml";
+import { load as loadYaml } from "js-yaml";
 import { z } from "zod";
 
 export type PolicyDecision = "allow" | "deny" | "require_approval";
 
-// Runtime schema for the on-disk policy.yaml. yaml.load returns `unknown`-shaped
+// Runtime schema for the on-disk policy.yaml. loadYaml returns `unknown`-shaped
 // data so a `as PolicyConfig` cast alone is unsafe: a malformed YAML file would
 // flow into `evaluateTool` and only fail at the .deny array iteration. Zod
 // validates the structure at load time and produces a precise error path.
@@ -116,7 +116,7 @@ export class PolicyEngine {
 
   static fromFile(path: string): PolicyEngine {
     const raw = readFileSync(path, "utf-8");
-    const parsed = yaml.load(raw);
+    const parsed = loadYaml(raw);
     const result = PolicyConfigSchema.safeParse(parsed);
     if (!result.success) {
       // zod includes the exact field path; surface it so a policy author can
