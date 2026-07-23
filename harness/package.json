@@ -18,14 +18,14 @@
     "check:hotspots": "node scripts/check-hotspot-loc.mjs"
   },
   "dependencies": {
-    "@openai/agents": "^0.13.2",
+    "@openai/agents": "^0.13.5",
     "js-yaml": "^5.2.1",
-    "openai": "^6.45.0",
+    "openai": "^6.48.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.1",
     "typescript": "^6.0.3"
   }
 }
