@@ -31,9 +31,15 @@ jobs:
         working-directory: harness
         run: npm ci
 
-      - name: Typecheck
+      - name: Verify release version contract
         working-directory: harness
-        run: npx tsc --noEmit
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/check-release-version.mjs "$RELEASE_TAG"
+
+      - name: Node contract and runtime tests
+        working-directory: harness
+        run: npm test
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

@@ -4,6 +4,19 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-07-27
+
+Maintenance release for the existing Harness contract:
+
+- Adopts the `js-yaml` 5 ESM API and updates the supported dependency/toolchain line without changing
+  the policy schema or CLI contract.
+- Updates `js-yaml` to 5.2.2, which fixes the flow-collection exponential-parse advisory affecting
+  5.2.1.
+- Restores approval-and-resume compatibility with the current OpenAI Agents SDK by passing the
+  approval item, rather than only its call id, back to `RunState`.
+- Hardens CI and release workflows with current pinned actions while preserving the existing
+  evidence-artifact and attestation outputs.
+
 ## [0.10.1] - 2026-06-27
 
 Refactor-only patch release for Harness source hygiene:
