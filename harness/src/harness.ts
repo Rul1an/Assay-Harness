@@ -167,10 +167,15 @@ export async function runHarness(
   // Decide: approve or reject
   if (autoDeny) {
     // Reject all
-    for (const interruption of boundedInterruptions) {
+    for (const [index, interruption] of boundedInterruptions.entries()) {
       rejected.push(interruption.tool_name);
-      state.reject(interruption.tool_call_id);
+      state.reject(interruptions[index]);
     }
+
+    // Resume so the SDK consumes the rejection and produces the final result.
+    // Rejected tools remain unexecuted; the compatibility test pins that
+    // boundary with an execution counter.
+    const resumedResult = await run(agent, state);
 
     evidence.emitResumedRun({
       resume_state_ref: resumeStateRef,
@@ -182,11 +187,21 @@ export async function runHarness(
       resumed_from_artifact_hash: approvalArtifactHash,
       active_agent_ref: agent.name,
     });
+
+    evidence.emitProcessSummary();
+    return {
+      evidence,
+      finalOutput: resumedResult.finalOutput ?? null,
+      interrupted: true,
+      denied,
+      approved,
+      rejected,
+    };
   } else if (autoApprove || autoApprove === undefined) {
     // Approve all (default for MVP testing)
-    for (const interruption of boundedInterruptions) {
+    for (const [index, interruption] of boundedInterruptions.entries()) {
       approved.push(interruption.tool_name);
-      state.approve(interruption.tool_call_id);
+      state.approve(interruptions[index]);
     }
 
     // Resume from the same state

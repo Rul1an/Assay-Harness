@@ -1,6 +1,6 @@
 {
   "name": "assay-harness",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Approval-aware resumable harness with Assay policy and evidence governance",
   "type": "module",
   "main": "dist/cli.js",
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@openai/agents": "^0.13.5",
-    "js-yaml": "^5.2.1",
+    "js-yaml": "^5.2.2",
     "openai": "^6.48.0",
     "zod": "^4.4.3"
   },
