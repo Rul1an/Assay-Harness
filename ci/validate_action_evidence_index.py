@@ -108,6 +108,27 @@ def _assert_safe_relpath(rel: str) -> None:
         raise ValidationError(f"unsafe path: {rel}")
 
 
+def _assert_no_symlink_components(root: Path, candidate: Path, rel: str) -> None:
+    """Reject any symlink in the declared index path before reading."""
+    try:
+        lexical = Path(os.path.relpath(candidate, start=root))
+    except ValueError as exc:
+        raise ValidationError(f"unsafe index path: {rel}") from exc
+    if lexical.is_absolute() or ".." in lexical.parts:
+        raise ValidationError(f"unsafe index path: {rel}")
+    current = root
+    for part in lexical.parts:
+        if part in {"", "."}:
+            continue
+        current = current / part
+        try:
+            is_link = current.is_symlink()
+        except OSError as exc:
+            raise ValidationError(f"unsafe index path: {rel}") from exc
+        if is_link:
+            raise ValidationError(f"index path has a symlink component: {rel}")
+
+
 def _read_bounded(path: Path, ceiling: int) -> bytes:
     try:
         with path.open("rb") as fh:
@@ -346,6 +367,7 @@ def validate_index(
         raise ValidationError(f"unsafe index path (escapes workspace): {index_rel}")
     if idx_candidate.is_symlink():
         raise ValidationError(f"index path is a symlink: {index_rel}")
+    _assert_no_symlink_components(root, idx_candidate, index_rel)
     if not idx_candidate.is_file():
         raise ValidationError(f"index file missing: {index_path}")
 

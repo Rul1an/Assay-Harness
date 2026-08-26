@@ -9,6 +9,7 @@ Run with:
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
@@ -19,8 +20,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
-import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -89,8 +88,31 @@ def _unbounded_read_bytes(_self):
     raise AssertionError("unbounded Path.read_bytes")
 
 
+_JS_YAML_LOAD = (
+    "import { load } from 'js-yaml';"
+    "import { readFileSync } from 'fs';"
+    "const doc = load(readFileSync(process.argv[1], 'utf8'));"
+    "process.stdout.write(JSON.stringify(doc));"
+)
+
+
 def _load_workflow():
-    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    """One structural parse via pinned harness js-yaml 5.2.2 (not PyYAML)."""
+    js_yaml = REPO_ROOT / "harness" / "node_modules" / "js-yaml"
+    if not js_yaml.is_dir():
+        raise AssertionError(
+            "js-yaml 5.2.2 is not installed; the Action Evidence Index job "
+            "must run ./.github/actions/setup-node-harness before tests"
+        )
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", _JS_YAML_LOAD, str(WORKFLOW_PATH)],
+        cwd=str(REPO_ROOT / "harness"),
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(f"js-yaml parse failed: {proc.stderr}")
+    return json.loads(proc.stdout)
 
 
 def _action_evidence_index_job(data=None):
@@ -146,7 +168,7 @@ class TestWorkflowCallsite(unittest.TestCase):
 
 
 class TestWorkflowStructuralGuard(unittest.TestCase):
-    """Parse harness-ci.yml with PyYAML and lock the Validate step funnel."""
+    """Parse harness-ci.yml with pinned js-yaml 5.2.2 and lock the Validate step funnel."""
 
     @classmethod
     def setUpClass(cls):
@@ -181,6 +203,43 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
             "--if-present",
         ):
             self.assertIn(flag, run)
+
+    def test_this_module_does_not_import_pyyaml(self):
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    self.assertNotEqual(alias.name, "yaml")
+                    self.assertFalse(alias.name.startswith("yaml."))
+            if isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                self.assertNotEqual(mod, "yaml")
+                self.assertFalse(mod.startswith("yaml."))
+
+    def test_load_workflow_uses_js_yaml_not_pyyaml(self):
+        self.assertIn("js-yaml", _JS_YAML_LOAD)
+        self.assertIn("from 'js-yaml'", _JS_YAML_LOAD)
+        helper = Path(__file__).read_text(encoding="utf-8")
+        start = helper.index("def _load_workflow(")
+        end = helper.index("def _action_evidence_index_job(")
+        body = helper[start:end]
+        self.assertIn("_JS_YAML_LOAD", body)
+        self.assertNotIn("safe_load", body)
+
+    def test_js_yaml_lockfile_is_5_2_2(self):
+        lock = json.loads(
+            (REPO_ROOT / "harness" / "package-lock.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(lock["packages"]["node_modules/js-yaml"]["version"], "5.2.2")
+
+    def test_job_installs_js_yaml_via_setup_node_harness_before_tests(self):
+        job = _action_evidence_index_job(self.data)
+        uses = [step.get("uses") for step in job["steps"]]
+        names = [step.get("name") for step in job["steps"]]
+        self.assertIn("./.github/actions/setup-node-harness", uses)
+        harness_i = uses.index("./.github/actions/setup-node-harness")
+        test_i = names.index("Run action evidence index tests")
+        self.assertLess(harness_i, test_i)
 
 
 class TestValidatorExportsAndPolicy(unittest.TestCase):
@@ -896,6 +955,32 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                     ws, str(link), digest, "absent", False, substring="symlink"
                 )
             self.assertNotIn(Path(real_path).resolve(), opened)
+
+    def test_symlinked_parent_dir_index_rejected(self):
+        """alias -> real plus alias/index.json is a second identity; reject before read."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            real_dir = ws / "real"
+            real_dir.mkdir()
+            index_path, digest = _write_index(
+                real_dir, _index_payload([], complete=True)
+            )
+            alias = ws / "alias"
+            alias.symlink_to(real_dir)
+            opened = []
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                opened.append(Path(self).resolve())
+                return real_open(self, *args, **kwargs)
+
+            with patch.object(Path, "open", spy_open):
+                self._expect_error(
+                    ws, "alias/index.json", digest, "absent", False, substring="symlink"
+                )
+            self.assertNotIn(Path(index_path).resolve(), opened)
+            # Positive pair: the canonical relative path still validates.
+            self._validate(ws, "real/index.json", digest, "absent", False)
 
     def test_two_mib_bundle_exceeds_per_bundle_ceiling(self):
         with tempfile.TemporaryDirectory() as tmp:
