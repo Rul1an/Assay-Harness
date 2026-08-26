@@ -388,6 +388,44 @@ jobs:
             echo "- failure: ${failure_events} events"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Existing jobs stay validation-if-present; requiring the index on every
+  # job is a later require-slice.
+  action-evidence-index:
+    name: Action Evidence Index
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Run action evidence index tests
+        run: python3 -m unittest tests.test_action_evidence_index -v
+
+      - name: Produce action evidence index
+        id: assay
+        uses: Rul1an/assay-action@184720a5cb051ebc2c1de7e52b113aa973f2c374
+        with:
+          sandbox-command: "true"
+          evidence_mode: required
+          sarif: false
+          comment_diff: false
+          upload_artifacts: false
+          fail_on: error
+
+      - name: Validate action evidence index
+        env:
+          INDEX_PATH: ${{ steps.assay.outputs.evidence_index_path }}
+          INDEX_DIGEST: ${{ steps.assay.outputs.evidence_index_digest }}
+          EVIDENCE_STATE: ${{ steps.assay.outputs.evidence_state }}
+          VERIFIED: ${{ steps.assay.outputs.verified }}
+        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED"
+
   assay-release-compatibility:
     name: Assay Release Compatibility Recipes
     if: github.event_name == 'workflow_dispatch'

@@ -4,6 +4,8 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- contracts: add a consumer-side action evidence index validator and a validation-if-present CI job (#177).
+
 ## [0.10.2] - 2026-07-27
 
 Maintenance release for the existing Harness contract:
