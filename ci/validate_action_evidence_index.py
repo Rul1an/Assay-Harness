@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -23,6 +24,10 @@ class ValidationError(Exception):
 # Bound RAW index bytes before JSON parse. This ceiling is Harness resource policy,
 # not a producer guarantee.
 CONSUMER_INDEX_BYTES_CEILING = 1024 * 1024
+
+# Fixed-size streaming chunks for listed-bundle hashes. Never Path.read_bytes.
+BUNDLE_HASH_CHUNK_BYTES = 65536
+
 
 SCHEMA_ID = "assay-action-evidence-index/v1"
 ALLOWED_TOP_LEVEL = frozenset({"bundles", "complete", "schema"})
@@ -75,6 +80,10 @@ def _object_pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def _assert_safe_relpath(rel: str) -> None:
     if not isinstance(rel, str) or rel == "":
         raise ValidationError("bundle path must be a non-empty workspace-relative path")
+    if "\x00" in rel:
+        raise ValidationError(f"unsafe path (NUL): {rel!r}")
+    if "\\" in rel:
+        raise ValidationError(f"unsafe path (backslash alias): {rel}")
     if ".." in rel:
         raise ValidationError(f"unsafe path (..): {rel}")
     if rel.startswith("/"):
@@ -83,19 +92,51 @@ def _assert_safe_relpath(rel: str) -> None:
         raise ValidationError(f"unsafe path: {rel}")
     if "://" in rel:
         raise ValidationError(f"unsafe path (URL): {rel}")
+    if len(rel) >= 2 and rel[1] == ":":
+        raise ValidationError(f"unsafe path (windows drive): {rel}")
     if len(rel) >= 3 and rel[1:3] == ":/":
         raise ValidationError(f"unsafe path (windows drive): {rel}")
     # Normalize only for safety checks; do not accept unsafe forms.
-    norm = os.path.normpath(rel.replace("\\", "/"))
-    if norm in {".", ""} or norm.startswith("..") or os.path.isabs(norm):
+    norm = posixpath.normpath(rel)
+    if norm in {".", ""} or norm.startswith("..") or posixpath.isabs(norm):
         raise ValidationError(f"unsafe path: {rel}")
+
+
+def _read_bounded(path: Path, ceiling: int) -> bytes:
+    try:
+        with path.open("rb") as fh:
+            data = fh.read(ceiling + 1)
+    except (OSError, ValueError) as exc:
+        raise ValidationError(f"cannot read index: {exc}") from exc
+    if len(data) > ceiling:
+        raise ValidationError(
+            f"index exceeds consumer ceiling of {ceiling} bytes"
+        )
+    return data
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as fh:
+            while True:
+                chunk = fh.read(BUNDLE_HASH_CHUNK_BYTES)
+                if not chunk:
+                    break
+                digest.update(chunk)
+    except (OSError, ValueError) as exc:
+        raise ValidationError(f"cannot hash bundle: {path}") from exc
+    return digest.hexdigest()
 
 
 def _listed_file(workspace: Path, rel: str) -> Path:
     _assert_safe_relpath(rel)
-    root = workspace.resolve()
-    candidate = root / rel
-    resolved = candidate.resolve(strict=False)
+    try:
+        root = workspace.resolve()
+        candidate = root / rel
+        resolved = candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError(f"unsafe path: {rel}") from exc
     if resolved != root and root not in resolved.parents:
         raise ValidationError(f"unsafe path (escapes workspace): {rel}")
     return candidate
@@ -106,7 +147,7 @@ def _in_scope_paths(workspace: Path) -> list[str]:
     for pattern in IN_SCOPE_GLOBS:
         for path in sorted(workspace.glob(pattern)):
             if path.is_file():
-                found.append(path.relative_to(workspace).as_posix())
+                found.append(posixpath.normpath(path.relative_to(workspace).as_posix()))
     exact = workspace / SANDBOX_COMMAND_EVIDENCE
     if exact.is_file():
         found.append(SANDBOX_COMMAND_EVIDENCE)
@@ -135,10 +176,13 @@ def _validate_bundle_row(row: Any, seen_paths: set[str]) -> dict[str, Any]:
         raise ValidationError("bundle sha256 must be 64 lowercase hex")
     if not isinstance(path, str):
         raise ValidationError("bundle path must be a string")
-    if path in seen_paths:
-        raise ValidationError(f"duplicate path: {path}")
-    seen_paths.add(path)
     _assert_safe_relpath(path)
+    canonical = posixpath.normpath(path)
+    if path != canonical:
+        raise ValidationError(f"non-canonical path: {path}")
+    if canonical in seen_paths:
+        raise ValidationError(f"duplicate path: {path}")
+    seen_paths.add(canonical)
     return row
 
 
@@ -236,16 +280,7 @@ def validate_index(
     if not idx.is_file():
         raise ValidationError(f"index file missing: {index_path}")
 
-    size = idx.stat().st_size
-    if size > CONSUMER_INDEX_BYTES_CEILING:
-        raise ValidationError(
-            f"index exceeds consumer ceiling of {CONSUMER_INDEX_BYTES_CEILING} bytes"
-        )
-    raw = idx.read_bytes()
-    if len(raw) > CONSUMER_INDEX_BYTES_CEILING:
-        raise ValidationError(
-            f"index exceeds consumer ceiling of {CONSUMER_INDEX_BYTES_CEILING} bytes"
-        )
+    raw = _read_bounded(idx, CONSUMER_INDEX_BYTES_CEILING)
 
     actual_digest = hashlib.sha256(raw).hexdigest()
     expected_digest = digest_text.lower()
@@ -295,11 +330,11 @@ def validate_index(
         listed = _listed_file(ws, row["path"])
         if not listed.is_file():
             raise ValidationError(f"missing listed file: {row['path']}")
-        actual = hashlib.sha256(listed.read_bytes()).hexdigest()
+        actual = _sha256_file(listed)
         if actual != row["sha256"]:
             raise ValidationError(f"bundle digest mismatch: {row['path']}")
 
-    unindexed = [rel for rel in _in_scope_paths(ws) if rel not in seen_paths]
+    unindexed = [rel for rel in _in_scope_paths(ws) if posixpath.normpath(rel) not in seen_paths]
     if unindexed:
         raise ValidationError(f"unindexed in-scope bundle: {unindexed}")
 

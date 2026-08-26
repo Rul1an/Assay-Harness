@@ -4,7 +4,7 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
-- contracts: add a consumer-side action evidence index validator and a validation-if-present CI job (#177).
+- contracts: add a consumer-side action evidence index validator and a validation-if-present CI job (#177). Bounded index read, stream hashes, canonical POSIX path identity, and explicit NUL/backslash/drive-alias refuse.
 
 ## [0.10.2] - 2026-07-27
 

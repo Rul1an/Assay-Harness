@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -80,6 +81,10 @@ def _write_index(workspace: Path, payload: dict, name: str = "index.json") -> tu
 def _plant_file(workspace: Path, rel: str, content: bytes = b"bundle-bytes") -> bytes:
     _write_bytes(workspace / rel, content)
     return content
+
+
+def _unbounded_read_bytes(_self):
+    raise AssertionError("unbounded Path.read_bytes")
 
 
 class TestWorkflowCallsite(unittest.TestCase):
@@ -581,6 +586,179 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(empty.returncode, 0, empty.stderr)
+
+
+    def test_index_reader_never_uses_path_read_bytes(self):
+        """A small valid absent index must validate without Path.read_bytes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            with patch.object(Path, "read_bytes", _unbounded_read_bytes):
+                self._validate(ws, index_path, digest, "absent", False)
+
+    def test_index_growth_after_stat_does_not_materialize_past_ceiling(self):
+        """Lying st_size must not cause an unbounded Path.read_bytes of a >1MiB index."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            raw = b"{" + (b" " * ONE_MIB) + b"}"
+            self.assertGreater(len(raw), ONE_MIB)
+            index_path = ws / "huge.json"
+            _write_bytes(index_path, raw)
+            index_stat = os.stat(index_path)
+            real_stat = Path.stat
+            real_read_bytes = Path.read_bytes
+            materialized: list[int] = []
+
+            def lying_stat(self, *args, **kwargs):
+                result = real_stat(self, *args, **kwargs)
+                if (result.st_dev, result.st_ino) == (index_stat.st_dev, index_stat.st_ino):
+                    vals = list(result)
+                    vals[6] = 64  # st_size
+                    return os.stat_result(vals)
+                return result
+
+            def spy_read_bytes(self):
+                data = real_read_bytes(self)
+                materialized.append(len(data))
+                return data
+
+            with patch.object(Path, "stat", lying_stat), patch.object(
+                Path, "read_bytes", spy_read_bytes
+            ):
+                self._expect_error(
+                    ws,
+                    index_path,
+                    _sha256_hex(raw),
+                    "absent",
+                    False,
+                    substring="ceiling",
+                )
+            self.assertTrue(
+                (not materialized) or all(n <= ONE_MIB + 1 for n in materialized),
+                f"materialized unbounded lengths: {materialized}",
+            )
+
+    def test_bundle_hashing_never_uses_path_read_bytes(self):
+        """Green discovered index + planted bundle must hash without Path.read_bytes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a.tar.gz",
+                    content,
+                    integrity="pending",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=False)
+            )
+            with patch.object(Path, "read_bytes", _unbounded_read_bytes):
+                self._validate(ws, index_path, digest, "discovered", False)
+
+    def test_dot_segment_pair_is_same_identity(self):
+        """evidence/a.tar.gz and evidence/./a.tar.gz are one identity; ./ is non-canonical."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            sha = _sha256_hex(content)
+            canon = {
+                "integrity": "pending",
+                "path": "evidence/a.tar.gz",
+                "sha256": sha,
+                "source": "discovered",
+            }
+            dotted = dict(canon, path="evidence/./a.tar.gz")
+            pair_path, pair_digest = _write_index(
+                ws, _index_payload([canon, dotted], complete=False)
+            )
+            self._expect_error(ws, pair_path, pair_digest, "discovered", False)
+            single_path, single_digest = _write_index(
+                ws,
+                _index_payload([dotted], complete=False),
+                name="index-dot.json",
+            )
+            self._expect_error(ws, single_path, single_digest, "discovered", False)
+
+    def test_nul_path_is_validation_error_not_valueerror(self):
+        """NUL in a JSON path is ValidationError (explicit), never bare ValueError / traceback."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            row = _bundle(
+                "evidence/a.tar.gz",
+                content,
+                integrity="pending",
+                source="discovered",
+            )
+            row["path"] = "evidence/a.tar.gz\u0000"
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            try:
+                self._validate(ws, index_path, digest, "discovered", False)
+            except self.mod.ValidationError as exc:
+                msg = str(exc)
+                self.assertNotIn("embedded null character", msg)
+                self.assertTrue("NUL" in msg or "unsafe path" in msg, msg)
+            except ValueError as exc:
+                self.fail(f"ValueError leaked: {exc}")
+            else:
+                self.fail("expected ValidationError")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--workspace",
+                    str(ws),
+                    "--index",
+                    str(index_path),
+                    "--digest",
+                    digest,
+                    "--evidence-state",
+                    "discovered",
+                    "--verified",
+                    "false",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertTrue(proc.stderr.strip())
+            self.assertNotIn("Traceback", proc.stderr)
+            self.assertNotIn("Traceback", proc.stdout)
+            self.assertNotIn("embedded null character", proc.stderr)
+            self.assertNotIn("embedded null character", proc.stdout)
+
+    def test_backslash_and_drive_aliases_refused(self):
+        """Backslash and drive-letter aliases are ValidationError, not ValueError."""
+        aliases = (
+            "evidence\\a.tar.gz",
+            "C:/evil.tar.gz",
+            "C:\\evil.tar.gz",
+        )
+        for rel in aliases:
+            with self.subTest(rel=rel), tempfile.TemporaryDirectory() as tmp:
+                ws = Path(tmp)
+                row = {
+                    "integrity": "pending",
+                    "path": rel,
+                    "sha256": "a" * 64,
+                    "source": "discovered",
+                }
+                index_path, digest = _write_index(
+                    ws, _index_payload([row], complete=False)
+                )
+                try:
+                    self._validate(ws, index_path, digest, "discovered", False)
+                except self.mod.ValidationError:
+                    pass
+                except ValueError as exc:
+                    self.fail(f"ValueError leaked for {rel!r}: {exc}")
+                else:
+                    self.fail(f"expected ValidationError for {rel!r}")
 
 
 if __name__ == "__main__":
