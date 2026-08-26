@@ -25,6 +25,10 @@ class ValidationError(Exception):
 # not a producer guarantee.
 CONSUMER_INDEX_BYTES_CEILING = 1024 * 1024
 
+# Per-bundle consumer ceiling. Same 1 MiB Harness resource policy as the index,
+# not a producer guarantee.
+CONSUMER_BUNDLE_BYTES_CEILING = 1024 * 1024
+
 # Fixed-size streaming chunks for listed-bundle hashes. Never Path.read_bytes.
 BUNDLE_HASH_CHUNK_BYTES = 65536
 
@@ -36,6 +40,8 @@ ALLOWED_SOURCES = frozenset({"discovered", "sandbox_command"})
 ALLOWED_INTEGRITIES = frozenset({"pending", "verified", "rejected"})
 CLOSED_EVIDENCE_STATES = frozenset({"absent", "discovered", "verified", "rejected"})
 MAX_BUNDLE_ROWS = 100
+# Derived aggregate: 100 rows * 1 MiB. No extra magic number.
+CONSUMER_BUNDLE_BYTES_AGGREGATE = MAX_BUNDLE_ROWS * CONSUMER_BUNDLE_BYTES_CEILING
 SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 IN_SCOPE_GLOBS = (
     ".assay/evidence/*.tar.gz",
@@ -84,7 +90,7 @@ def _assert_safe_relpath(rel: str) -> None:
         raise ValidationError(f"unsafe path (NUL): {rel!r}")
     if "\\" in rel:
         raise ValidationError(f"unsafe path (backslash alias): {rel}")
-    if ".." in rel:
+    if any(part == ".." for part in rel.split("/")):
         raise ValidationError(f"unsafe path (..): {rel}")
     if rel.startswith("/"):
         raise ValidationError(f"unsafe path (absolute): {rel}")
@@ -115,18 +121,31 @@ def _read_bounded(path: Path, ceiling: int) -> bytes:
     return data
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, aggregate_hashed: int = 0) -> tuple[str, int]:
     digest = hashlib.sha256()
+    hashed = 0
     try:
         with path.open("rb") as fh:
             while True:
                 chunk = fh.read(BUNDLE_HASH_CHUNK_BYTES)
                 if not chunk:
                     break
+                hashed += len(chunk)
+                if hashed > CONSUMER_BUNDLE_BYTES_CEILING:
+                    raise ValidationError(
+                        f"bundle exceeds consumer ceiling of {CONSUMER_BUNDLE_BYTES_CEILING} bytes"
+                    )
+                if aggregate_hashed + hashed > CONSUMER_BUNDLE_BYTES_AGGREGATE:
+                    raise ValidationError(
+                        "bundles exceed consumer aggregate of "
+                        f"{CONSUMER_BUNDLE_BYTES_AGGREGATE} bytes"
+                    )
                 digest.update(chunk)
+    except ValidationError:
+        raise
     except (OSError, ValueError) as exc:
         raise ValidationError(f"cannot hash bundle: {path}") from exc
-    return digest.hexdigest()
+    return digest.hexdigest(), hashed
 
 
 def _listed_file(workspace: Path, rel: str) -> Path:
@@ -139,6 +158,9 @@ def _listed_file(workspace: Path, rel: str) -> Path:
         raise ValidationError(f"unsafe path: {rel}") from exc
     if resolved != root and root not in resolved.parents:
         raise ValidationError(f"unsafe path (escapes workspace): {rel}")
+    canonical = resolved.relative_to(root).as_posix()
+    if rel != canonical:
+        raise ValidationError(f"non-canonical path (symlink alias): {rel}")
     return candidate
 
 
@@ -152,6 +174,21 @@ def _in_scope_paths(workspace: Path) -> list[str]:
     if exact.is_file():
         found.append(SANDBOX_COMMAND_EVIDENCE)
     return found
+
+
+def _assert_no_unindexed(workspace: Path, seen_paths: set[str]) -> None:
+    """Stop surplus enumeration at the first unindexed in-scope path."""
+    for pattern in IN_SCOPE_GLOBS:
+        for path in workspace.glob(pattern):
+            if path.is_file():
+                rel = posixpath.normpath(path.relative_to(workspace).as_posix())
+                if rel not in seen_paths:
+                    raise ValidationError(f"unindexed in-scope bundle: {rel}")
+    exact = workspace / SANDBOX_COMMAND_EVIDENCE
+    if exact.is_file():
+        rel = SANDBOX_COMMAND_EVIDENCE
+        if posixpath.normpath(rel) not in seen_paths:
+            raise ValidationError(f"unindexed in-scope bundle: {rel}")
 
 
 def _validate_bundle_row(row: Any, seen_paths: set[str]) -> dict[str, Any]:
@@ -276,11 +313,43 @@ def validate_index(
     if not ws.is_dir():
         raise ValidationError(f"workspace is not a directory: {workspace}")
 
-    idx = Path(index_path)
-    if not idx.is_file():
+    root = ws.resolve()
+    raw_index = _as_text(index_path)
+    given = Path(raw_index)
+    if given.is_absolute():
+        try:
+            given_resolved = given.resolve(strict=False)
+        except OSError as exc:
+            raise ValidationError(f"unsafe index path: {index_path}") from exc
+        if given_resolved != root and root not in given_resolved.parents:
+            raise ValidationError(
+                f"unsafe index path (escapes workspace): {raw_index}"
+            )
+        try:
+            index_rel = given_resolved.relative_to(root).as_posix()
+        except ValueError as exc:
+            raise ValidationError(
+                f"unsafe index path (escapes workspace): {raw_index}"
+            ) from exc
+        idx_candidate = given
+    else:
+        index_rel = raw_index
+        _assert_safe_relpath(index_rel)
+        idx_candidate = root / index_rel
+
+    _assert_safe_relpath(index_rel)
+    try:
+        idx_resolved = idx_candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError(f"unsafe index path: {index_rel}") from exc
+    if idx_resolved != root and root not in idx_resolved.parents:
+        raise ValidationError(f"unsafe index path (escapes workspace): {index_rel}")
+    if idx_candidate.is_symlink():
+        raise ValidationError(f"index path is a symlink: {index_rel}")
+    if not idx_candidate.is_file():
         raise ValidationError(f"index file missing: {index_path}")
 
-    raw = _read_bounded(idx, CONSUMER_INDEX_BYTES_CEILING)
+    raw = _read_bounded(idx_candidate, CONSUMER_INDEX_BYTES_CEILING)
 
     actual_digest = hashlib.sha256(raw).hexdigest()
     expected_digest = digest_text.lower()
@@ -326,17 +395,17 @@ def validate_index(
     if complete is not computed_complete:
         raise ValidationError("complete does not match row integrities")
 
+    aggregate_hashed = 0
     for row in rows:
         listed = _listed_file(ws, row["path"])
         if not listed.is_file():
             raise ValidationError(f"missing listed file: {row['path']}")
-        actual = _sha256_file(listed)
+        actual, hashed = _sha256_file(listed, aggregate_hashed=aggregate_hashed)
+        aggregate_hashed += hashed
         if actual != row["sha256"]:
             raise ValidationError(f"bundle digest mismatch: {row['path']}")
 
-    unindexed = [rel for rel in _in_scope_paths(ws) if posixpath.normpath(rel) not in seen_paths]
-    if unindexed:
-        raise ValidationError(f"unindexed in-scope bundle: {unindexed}")
+    _assert_no_unindexed(ws, seen_paths)
 
     _check_state_consistency(state_text, verified_bool, rows, complete)
 

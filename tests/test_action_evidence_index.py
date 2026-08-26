@@ -20,6 +20,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR_PATH = REPO_ROOT / "ci" / "validate_action_evidence_index.py"
@@ -87,6 +89,30 @@ def _unbounded_read_bytes(_self):
     raise AssertionError("unbounded Path.read_bytes")
 
 
+def _load_workflow():
+    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def _action_evidence_index_job(data=None):
+    data = data if data is not None else _load_workflow()
+    jobs = data["jobs"]
+    job = jobs.get("action-evidence-index")
+    if job is None:
+        for candidate in jobs.values():
+            if candidate.get("name") == "Action Evidence Index":
+                return candidate
+        raise AssertionError("missing action-evidence-index job")
+    return job
+
+
+def _validate_action_evidence_index_step(data=None):
+    job = _action_evidence_index_job(data)
+    for step in job["steps"]:
+        if step.get("name") == "Validate action evidence index":
+            return step
+    raise AssertionError("missing Validate action evidence index step")
+
+
 class TestWorkflowCallsite(unittest.TestCase):
     """Read harness-ci.yml as text and lock the #177 callsite contract."""
 
@@ -119,6 +145,44 @@ class TestWorkflowCallsite(unittest.TestCase):
         self.assertIn("later require-slice", self.text)
 
 
+class TestWorkflowStructuralGuard(unittest.TestCase):
+    """Parse harness-ci.yml with PyYAML and lock the Validate step funnel."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = _load_workflow()
+        cls.step = _validate_action_evidence_index_step(cls.data)
+
+    def test_validate_step_is_enabled(self):
+        if_val = self.step.get("if", None)
+        disabled = {False, "false", "False"}
+        self.assertTrue(if_val is None or if_val not in disabled, if_val)
+
+    def test_validate_step_env_bindings(self):
+        env = self.step["env"]
+        expected = {
+            "INDEX_PATH": "${{ steps.assay.outputs.evidence_index_path }}",
+            "INDEX_DIGEST": "${{ steps.assay.outputs.evidence_index_digest }}",
+            "EVIDENCE_STATE": "${{ steps.assay.outputs.evidence_state }}",
+            "VERIFIED": "${{ steps.assay.outputs.verified }}",
+        }
+        self.assertEqual(env, expected)
+        self.assertEqual(set(env), set(expected))
+
+    def test_validate_step_run_cli(self):
+        run = self.step["run"]
+        self.assertIn("python3 ci/validate_action_evidence_index.py", run)
+        for flag in (
+            "--workspace",
+            "--index",
+            "--digest",
+            "--evidence-state",
+            "--verified",
+            "--if-present",
+        ):
+            self.assertIn(flag, run)
+
+
 class TestValidatorExportsAndPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -127,6 +191,24 @@ class TestValidatorExportsAndPolicy(unittest.TestCase):
     def test_ceiling_constant_is_one_mib(self):
         self.assertEqual(self.mod.CONSUMER_INDEX_BYTES_CEILING, ONE_MIB)
         self.assertEqual(self.mod.CONSUMER_INDEX_BYTES_CEILING, 1024 * 1024)
+
+    def test_bundle_ceiling_constants(self):
+        self.assertTrue(hasattr(self.mod, "CONSUMER_BUNDLE_BYTES_CEILING"))
+        self.assertTrue(hasattr(self.mod, "CONSUMER_BUNDLE_BYTES_AGGREGATE"))
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, ONE_MIB)
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, 1024 * 1024)
+        self.assertEqual(
+            self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE,
+            self.mod.MAX_BUNDLE_ROWS * self.mod.CONSUMER_BUNDLE_BYTES_CEILING,
+        )
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE, 100 * ONE_MIB)
+
+    def test_containment_predicate_pinned_in_source(self):
+        src = VALIDATOR_PATH.read_text(encoding="utf-8")
+        self.assertTrue(
+            "escapes workspace" in src or "root not in resolved.parents" in src,
+            "containment predicate missing from validator source",
+        )
 
     def test_source_contains_harness_resource_policy_phrases(self):
         src = VALIDATOR_PATH.read_text(encoding="utf-8")
@@ -759,6 +841,257 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                     self.fail(f"ValueError leaked for {rel!r}: {exc}")
                 else:
                     self.fail(f"expected ValidationError for {rel!r}")
+
+
+    def test_absolute_index_path_rejected(self):
+        """Absolute index in a separate temp dir must fail before a successful read."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ws = base / "ws"
+            other = base / "other"
+            ws.mkdir()
+            other.mkdir()
+            index_path, digest = _write_index(other, _index_payload([], complete=True))
+            opened = []
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                opened.append(Path(self).resolve())
+                return real_open(self, *args, **kwargs)
+
+            with patch.object(Path, "open", spy_open):
+                self._expect_error(ws, str(index_path), digest, "absent", False)
+            outside = Path(index_path).resolve()
+            self.assertNotIn(outside, opened)
+
+    def test_outside_relative_index_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ws = base / "ws"
+            other = base / "other"
+            ws.mkdir()
+            other.mkdir()
+            _index_path, digest = _write_index(other, _index_payload([], complete=True))
+            self._expect_error(
+                ws, "../other/index.json", digest, "absent", False, substring="unsafe"
+            )
+
+    def test_symlinked_index_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            real_path, digest = _write_index(
+                ws, _index_payload([], complete=True), name="real.json"
+            )
+            link = ws / "link.json"
+            link.symlink_to(real_path)
+            opened = []
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                opened.append(Path(self).resolve())
+                return real_open(self, *args, **kwargs)
+
+            with patch.object(Path, "open", spy_open):
+                self._expect_error(
+                    ws, str(link), digest, "absent", False, substring="symlink"
+                )
+            self.assertNotIn(Path(real_path).resolve(), opened)
+
+    def test_two_mib_bundle_exceeds_per_bundle_ceiling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = b"B" * (2 * ONE_MIB)
+            _plant_file(ws, "evidence/a.tar.gz", content)
+            row = _bundle(
+                "evidence/a.tar.gz", content, integrity="pending", source="discovered"
+            )
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            exc = self._expect_error(ws, index_path, digest, "discovered", False)
+            msg = str(exc).lower()
+            self.assertTrue("ceiling" in msg or "bundle" in msg, str(exc))
+
+    def test_bundle_hash_stops_at_per_bundle_ceiling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = b"C" * (2 * ONE_MIB)
+            rel = "evidence/a.tar.gz"
+            bundle_path = ws / rel
+            _plant_file(ws, rel, content)
+            row = _bundle(rel, content, integrity="pending", source="discovered")
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            bytes_read = [0]
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                fh = real_open(self, *args, **kwargs)
+                try:
+                    same = Path(self).resolve() == bundle_path.resolve()
+                except OSError:
+                    same = False
+                if same:
+                    inner = fh.read
+
+                    def spy_read(n=-1):
+                        data = inner(n)
+                        bytes_read[0] += len(data)
+                        return data
+
+                    fh.read = spy_read
+                return fh
+
+            with patch.object(Path, "open", spy_open):
+                with self.assertRaises(self.mod.ValidationError):
+                    self._validate(ws, index_path, digest, "discovered", False)
+            chunk = self.mod.BUNDLE_HASH_CHUNK_BYTES
+            self.assertLessEqual(bytes_read[0], ONE_MIB + chunk)
+
+    def test_unindexed_stops_without_full_enumeration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, ".assay/evidence/listed.tar.gz")
+            _plant_file(ws, ".assay/evidence/u1.tar.gz", b"u1")
+            _plant_file(ws, "evidence/u2.tar.gz", b"u2")
+            bundles = [
+                _bundle(
+                    ".assay/evidence/listed.tar.gz",
+                    content,
+                    integrity="pending",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=False)
+            )
+            glob_patterns = []
+            real_glob = Path.glob
+
+            def spy_glob(self, pattern, **kwargs):
+                glob_patterns.append(pattern)
+                return real_glob(self, pattern, **kwargs)
+
+            with patch.object(Path, "glob", spy_glob):
+                exc = self._expect_error(
+                    ws, index_path, digest, "discovered", False, substring="unindexed"
+                )
+            msg = str(exc)
+            self.assertNotIn("u2.tar.gz", msg)
+            self.assertLess(len(msg), 400)
+            self.assertNotIn("evidence/*.tar.gz", glob_patterns)
+
+    def test_escaping_symlink_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ws = base / "ws"
+            ws.mkdir()
+            secret = base / "secret.tar.gz"
+            payload = b"secret-bytes"
+            secret.write_bytes(payload)
+            link = ws / "evidence" / "link.tar.gz"
+            link.parent.mkdir(parents=True)
+            link.symlink_to(secret)
+            row = {
+                "integrity": "pending",
+                "path": "evidence/link.tar.gz",
+                "sha256": _sha256_hex(payload),
+                "source": "discovered",
+            }
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            hashed = []
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                fh = real_open(self, *args, **kwargs)
+                try:
+                    resolved = Path(self).resolve()
+                except OSError:
+                    resolved = Path(self)
+                if resolved == secret.resolve():
+                    hashed.append(True)
+                return fh
+
+            with patch.object(Path, "open", spy_open):
+                self._expect_error(
+                    ws,
+                    index_path,
+                    digest,
+                    "discovered",
+                    False,
+                    substring="unsafe",
+                )
+            self.assertFalse(hashed, "must not follow/hash the outside file")
+
+    def test_in_workspace_symlink_alias_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "other/real.tar.gz")
+            link = ws / "evidence" / "link.tar.gz"
+            link.parent.mkdir(parents=True)
+            link.symlink_to(ws / "other" / "real.tar.gz")
+            row = _bundle(
+                "evidence/link.tar.gz",
+                content,
+                integrity="pending",
+                source="discovered",
+            )
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            self._expect_error(ws, index_path, digest, "discovered", False)
+
+    def test_regular_evidence_bundle_accepted(self):
+        """Positive pair: a regular (non-symlink) evidence/a.tar.gz is accepted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a.tar.gz",
+                    content,
+                    integrity="pending",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=False)
+            )
+            self._validate(ws, index_path, digest, "discovered", False)
+
+    def test_safe_double_dot_filename_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a..b.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a..b.tar.gz",
+                    content,
+                    integrity="pending",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=False)
+            )
+            self._validate(ws, index_path, digest, "discovered", False)
+
+    def test_unsafe_path_dotdot_component_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            row = {
+                "integrity": "pending",
+                "path": "evidence/../x.tar.gz",
+                "sha256": "a" * 64,
+                "source": "discovered",
+            }
+            index_path, digest = _write_index(
+                ws, _index_payload([row], complete=False)
+            )
+            self._expect_error(ws, index_path, digest, "discovered", False)
 
 
 if __name__ == "__main__":

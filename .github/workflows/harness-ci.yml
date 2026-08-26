@@ -424,7 +424,7 @@ jobs:
           INDEX_DIGEST: ${{ steps.assay.outputs.evidence_index_digest }}
           EVIDENCE_STATE: ${{ steps.assay.outputs.evidence_state }}
           VERIFIED: ${{ steps.assay.outputs.verified }}
-        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED"
+        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED" --if-present
 
   assay-release-compatibility:
     name: Assay Release Compatibility Recipes
