@@ -151,6 +151,12 @@ test("mutation: post-run workflow edit fails closed", async () => {
   });
 });
 
+test("mutation: post-run policy edit fails closed", async () => {
+  await mustFail("policy edit", "measurement_surface_changed", {
+    changedPaths: async () => ["harness/fixtures/suite-compatibility/enforcement-health/probe-policy.yaml"],
+  });
+});
+
 test("mutation: wrong row digest fails closed", async () => {
   await mustFail("wrong row digest", "digest_mismatch", {}, { artifact_digest: WRONG_DIGEST });
 });

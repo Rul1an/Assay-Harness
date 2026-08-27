@@ -15,6 +15,7 @@ export const PROBE_JOB_NAME = "Assay Enforcement Health Probe";
 export const MEASUREMENT_SURFACE_PATHS = [
   ".github/workflows/harness-ci.yml",
   "harness/scripts/probe-v54-enforcement-health.mjs",
+  "harness/fixtures/suite-compatibility/enforcement-health/probe-policy.yaml",
 ] as const;
 export const CARRIER_FILE = "enforcement-health.json";
 export const PROVENANCE_FILE = "recipe.provenance.json";
