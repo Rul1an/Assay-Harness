@@ -80,7 +80,23 @@ function siblingHarnessVersion(matrixPath: string): string | null {
   }
 }
 
+const SUITE_GENERATE_KEYS = new Set(["_command", "_file", "matrix", "check"]);
+
+function rejectSuiteGenerateArgs(args: Record<string, string | boolean>): void {
+  for (const key of Object.keys(args)) {
+    if (!SUITE_GENERATE_KEYS.has(key)) {
+      console.error(`[config_error] suite generate: unknown argument --${key}`);
+      process.exit(EXIT.CONFIG_ERROR);
+    }
+  }
+  if ("check" in args && args.check !== true) {
+    console.error("[config_error] suite generate: --check must be a bare flag");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+}
+
 function cmdSuiteGenerate(args: Record<string, string | boolean>): void {
+  rejectSuiteGenerateArgs(args);
   const matrixPath = suiteMatrixPath(args);
   const checkOnly = args.check === true;
   let rawText: string;

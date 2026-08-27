@@ -311,12 +311,12 @@ the first is proven but the second is not yet, so it renders as pending, never a
 
 The top-level `generated` object is a derived projection, not a hand-kept claim about the
 present. `harness_version` comes from `harness/package.json`. `last_verified_assay` is the
-highest `proof.assay_version` already recorded in the matrix — an event fact, not a
-current recommendation or a supported range. `assay_default` is a deprecated generated
+highest explicitly recorded `proof.assay_version` in the matrix — not necessarily the
+highest underlying version used by every proof. `assay_default` is a deprecated generated
 alias of `last_verified_assay` (kept so public v0 readers do not break). `verified_on`
-is the committed historical event date and is never rewritten from the current clock.
-Regenerating `generated` does not change `carrier_rows`, `recipe_rows`, proofs, or
-`manifest.digest`.
+is the retained historical projection date and may predate later row runs; it is never
+rewritten from the current clock. Regenerating `generated` does not change `carrier_rows`,
+`recipe_rows`, proofs, or `manifest.digest`.
 
 ```bash
 # Validate the matrix shape + digest only

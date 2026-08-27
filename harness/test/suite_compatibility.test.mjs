@@ -24,7 +24,19 @@ const fixture = (name) =>
 const ASSET = fileURLToPath(new URL("../suite-compatibility.json", import.meta.url));
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
+const COMPAT_DOC = fileURLToPath(new URL("../../docs/ASSAY_COMPATIBILITY.md", import.meta.url));
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const READONLY_GENERATE_CHECK = "npx tsx src/cli.ts suite generate --matrix suite-compatibility.json --check";
+
+function isReadOnlyGenerateCheck(run) {
+  return (
+    typeof run === "string" &&
+    run.includes("suite generate") &&
+    run.includes("suite-compatibility.json") &&
+    /(?:^|\s)--check(?:\s|$)/.test(run) &&
+    !/--check=/.test(run)
+  );
+}
 
 test("schema constant is the frozen suite id", () => {
   assert.equal(SUITE_COMPATIBILITY_SCHEMA, "suite.compatibility.v0");
@@ -483,17 +495,57 @@ test("Harness CI invokes read-only suite generate --check (removing it must fail
   const runs = Object.values(workflow.jobs ?? {}).flatMap((job) =>
     (job.steps ?? []).map((step) => step.run).filter((run) => typeof run === "string"),
   );
-  const invocation = runs.find(
-    (run) =>
-      run.includes("suite generate") &&
-      run.includes("--check") &&
-      run.includes("suite-compatibility.json"),
-  );
+  const invocation = runs.find(isReadOnlyGenerateCheck);
   assert.ok(
     invocation,
     "harness-ci.yml must invoke `suite generate --matrix suite-compatibility.json --check` in a job step run, not a comment",
   );
-  assert.doesNotMatch(invocation, /(?<!-)--write\b/);
+  assert.equal(invocation.trim(), READONLY_GENERATE_CHECK);
+  assert.doesNotMatch(invocation, /--check=/);
+});
+
+test("workflow generate --check guard rejects the --check=true write-mode spelling", () => {
+  const workflowText = readFileSync(WORKFLOW, "utf8");
+  assert.ok(isReadOnlyGenerateCheck(READONLY_GENERATE_CHECK));
+  assert.equal(
+    isReadOnlyGenerateCheck(READONLY_GENERATE_CHECK.replace(/(?:^|\s)--check(?:\s|$)/, " --check=true")),
+    false,
+    "replacing --check with --check=true must fail the read-only invocation guard",
+  );
+  const mutated = workflowText.replace(
+    /npx tsx src\/cli\.ts suite generate --matrix suite-compatibility\.json --check\b/,
+    "npx tsx src/cli.ts suite generate --matrix suite-compatibility.json --check=true",
+  );
+  const workflow = loadYaml(mutated);
+  const runs = Object.values(workflow.jobs ?? {}).flatMap((job) =>
+    (job.steps ?? []).map((step) => step.run).filter((run) => typeof run === "string"),
+  );
+  assert.equal(runs.find(isReadOnlyGenerateCheck), undefined);
+});
+
+test("CLI suite generate rejects non-exact --check spellings on a drifted matrix without rewriting", () => {
+  const spellings = [
+    ["--check=true"],
+    ["--check", "true"],
+    ["--chek"],
+    ["--check-only"],
+  ];
+  for (const extra of spellings) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+      matrix.generated.harness_version = "0.0.0-DRIFTED";
+    });
+    const before = readFileSync(matrixPath);
+    const r = runCli("generate", "--matrix", matrixPath, ...extra);
+    assert.equal(r.status, 2, `${extra.join(" ")} must be config_error: ${r.stderr}`);
+    assert.deepEqual(readFileSync(matrixPath), before, `${extra.join(" ")} must not rewrite`);
+  }
+});
+
+test("ASSAY_COMPATIBILITY.md does not overclaim last_verified_assay as the last version a row proved", () => {
+  const docs = readFileSync(COMPAT_DOC, "utf8");
+  assert.doesNotMatch(docs, /the last Assay version a row actually proved/i);
+  assert.match(docs, /explicitly recorded/);
+  assert.match(docs, /may predate later row runs/i);
 });
 
 const EXACT_RELEASE_TAGS = ["v0.8.0", "v3.9.0", "v3.27.0", "v3.28.0", "v9.9.9"];
