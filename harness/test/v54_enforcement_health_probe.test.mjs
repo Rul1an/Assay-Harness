@@ -350,31 +350,41 @@ function omitKey(record, key) {
 }
 
 test("executeLocalProducer refuses well-formed but invalid producer records", () => {
-  const control = stageGreen(tempDir());
-  assert.doesNotThrow(() => executeLocalProducer(control), "valid fake producer must stay green");
+  const parent = tempDir();
+  try {
+    const controlDir = join(parent, "control");
+    mkdirSync(controlDir);
+    const control = stageGreen(controlDir);
+    assert.doesNotThrow(() => executeLocalProducer(control), "valid fake producer must stay green");
 
-  const cases = [
-    ["probe null", { ...ACTIVE_HEALTH, probe: null }, /probe/i],
-    ["probe absent", omitKey(ACTIVE_HEALTH, "probe"), /probe/i],
-    ["listener true", patchProbe({ listener_reached: true }), /listener_reached/i],
-    ["errno EPERM", patchProbe({ blocked_errno: "EPERM" }), /EACCES|blocked_errno/i],
-    ["errno null", patchProbe({ blocked_errno: null }), /EACCES|blocked_errno/i],
-    ["kind synthetic", patchProbe({ kind: "synthetic" }), /kind|real_block/i],
-    ["transport ipv6", patchProbe({ transport: "ipv6" }), /transport|ipv4/i],
-    ["blocked_action bind", patchProbe({ blocked_action: "bind" }), /blocked_action|tcp_connect/i],
-    ["blocked_port 443", patchProbe({ blocked_port: FIXED_ALLOWED_PORT }), /blocked_port|allowlist|denied/i],
-    ["status failed", { ...ACTIVE_HEALTH, status: "failed" }, /failed|not clean|unavailable|active/i],
-    ["status unavailable", { ...ACTIVE_HEALTH, status: "unavailable" }, /failed|not clean|unavailable|active/i],
-    ["abi 3", patchLandlock({ abi: 3 }), /abi/i],
-    ["mechanism seccomp", { ...ACTIVE_HEALTH, mechanism: "seccomp" }, /mechanism|landlock/i],
-  ];
-  for (const [name, health, match] of cases) {
-    assert.throws(
-      () => executeLocalProducer(stageGreen(tempDir(), { health })),
-      match,
-      name,
-    );
+    const cases = [
+      ["probe null", { ...ACTIVE_HEALTH, probe: null }, /probe/i],
+      ["probe absent", omitKey(ACTIVE_HEALTH, "probe"), /probe/i],
+      ["listener true", patchProbe({ listener_reached: true }), /listener_reached/i],
+      ["errno EPERM", patchProbe({ blocked_errno: "EPERM" }), /EACCES|blocked_errno/i],
+      ["errno null", patchProbe({ blocked_errno: null }), /EACCES|blocked_errno/i],
+      ["kind synthetic", patchProbe({ kind: "synthetic" }), /kind|real_block/i],
+      ["transport ipv6", patchProbe({ transport: "ipv6" }), /transport|ipv4/i],
+      ["blocked_action bind", patchProbe({ blocked_action: "bind" }), /blocked_action|tcp_connect/i],
+      ["blocked_port 443", patchProbe({ blocked_port: FIXED_ALLOWED_PORT }), /blocked_port|allowlist|denied/i],
+      ["status failed", { ...ACTIVE_HEALTH, status: "failed" }, /failed|not clean|unavailable|active/i],
+      ["status unavailable", { ...ACTIVE_HEALTH, status: "unavailable" }, /failed|not clean|unavailable|active/i],
+      ["abi 3", patchLandlock({ abi: 3 }), /abi/i],
+      ["mechanism seccomp", { ...ACTIVE_HEALTH, mechanism: "seccomp" }, /mechanism|landlock/i],
+    ];
+    for (const [i, [name, health, match]] of cases.entries()) {
+      const caseDir = join(parent, `case-${i}`);
+      mkdirSync(caseDir);
+      assert.throws(
+        () => executeLocalProducer(stageGreen(caseDir, { health })),
+        match,
+        name,
+      );
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
+  assert.equal(existsSync(parent), false, "table-test parent fixture dir must be removed");
 });
 
 test("no-op control: measured successful shape is accepted by the shared validator", () => {
