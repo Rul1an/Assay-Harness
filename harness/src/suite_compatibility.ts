@@ -6,22 +6,9 @@
  * consumes/projects/gates, Plimsoll reviews) and gates on its own internal
  * consistency, never on organization policy.
  *
- * SOTA grounding (June 2026):
- *  - VSA-shaped, not a SLSA VSA: each proven cell carries provenance over the
- *    compat-proof (the hosted run + a content anchor), the way a SLSA
- *    Verification Summary Attestation lets a downstream consumer trust a summary
- *    without re-evaluating raw evidence. We do NOT emit a signed VSA predicate.
- *  - Android VINTF/FCM style: compatibility is data + a drift gate, not a README.
- *  - Declared-vs-observed: every claim distinguishes `proven` (a hosted run +
- *    content anchor exists) from `declared` (documented intent, not proof).
- *    Absence of proof never reads as "works"; unknown is never clean.
- *
- * The matrix splits the proof claim in two, which is the load-bearing honesty:
- *  - `harness_consumption`: Harness can validate/gate/project the carrier shape
- *    (proven by this repo's test suite over real producer golden bytes).
- *  - `end_to_end`: the released Assay binary emitted the carrier AND Harness
- *    consumed it in a hosted run (the H-next-2 target). Today this is `declared`
- *    for the carrier family; only the established recipe rail is `proven`.
+ * VSA-shaped, not a SLSA VSA. Declared-vs-observed: `proven` needs a hosted run
+ * plus content anchor; `declared` is intent, never "works". The matrix splits
+ * `harness_consumption` from released-binary `end_to_end`.
  */
 
 import { readFileSync } from "node:fs";
@@ -180,14 +167,72 @@ export function canonicalize(value: unknown): string {
   throw new Error(`unsupported value type in canonicalization: ${typeof value}`);
 }
 
-/**
- * The matrix digest is `sha256` over JCS-canonicalized `{carrier_rows,
- * recipe_rows}` ONLY — excluding `generated` (date churn) and `manifest` itself.
- * Same rows in any key order produce the same digest; a changed row changes it.
- */
+/** sha256(JCS({carrier_rows, recipe_rows})); excludes generated and manifest. */
 export function computeMatrixDigest(rows: { carrier_rows: unknown; recipe_rows: unknown }): string {
   const subject = { carrier_rows: rows.carrier_rows ?? [], recipe_rows: rows.recipe_rows ?? [] };
   return "sha256:" + createHash("sha256").update(canonicalize(subject), "utf-8").digest("hex");
+}
+
+export interface GeneratedProjection {
+  harness_version: string;
+  last_verified_assay: string;
+  assay_default: string;
+  verified_on: string;
+}
+
+const ASSAY_RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+export function parseAssayReleaseTag(value: unknown): [number, number, number] | null {
+  if (typeof value !== "string") return null;
+  const match = ASSAY_RELEASE_TAG.exec(value);
+  if (!match) return null;
+  const parts: [number, number, number] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return parts.every((n) => Number.isSafeInteger(n)) ? parts : null;
+}
+
+function proofAssayVersions(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  const versions: string[] = [];
+  for (const row of rows) {
+    const version = row && typeof row === "object" ? (row as { proof?: { assay_version?: unknown } }).proof?.assay_version : undefined;
+    if (version == null || version === "") continue;
+    if (!parseAssayReleaseTag(version)) throw new Error(`invalid proof.assay_version ${JSON.stringify(version)}`);
+    versions.push(version as string);
+  }
+  return versions;
+}
+
+function maxAssayVersion(versions: string[]): string {
+  if (versions.length === 0) throw new Error("no proof.assay_version values to derive last_verified_assay");
+  return versions.reduce((best, current) => {
+    const left = parseAssayReleaseTag(best)!;
+    const right = parseAssayReleaseTag(current)!;
+    for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return right[i] > left[i] ? current : best;
+    return best;
+  });
+}
+
+function assertCanonicalCalendarDate(value: string): void {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new Error("generated.verified_on must be a canonical YYYY-MM-DD calendar date");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) {
+    throw new Error("generated.verified_on must be a canonical YYYY-MM-DD calendar date");
+  }
+}
+
+export function deriveGenerated(input: {
+  harnessVersion: string;
+  carrier_rows: unknown;
+  recipe_rows: unknown;
+  verifiedOn: string;
+}): GeneratedProjection {
+  assertCanonicalCalendarDate(input.verifiedOn);
+  const lastVerified = maxAssayVersion([...proofAssayVersions(input.carrier_rows), ...proofAssayVersions(input.recipe_rows)]);
+  return { harness_version: input.harnessVersion, last_verified_assay: lastVerified, assay_default: lastVerified, verified_on: input.verifiedOn };
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +254,9 @@ function validateProof(
     return;
   }
   const p = proof as Record<string, unknown>;
+  if (p.assay_version != null && p.assay_version !== "" && !parseAssayReleaseTag(p.assay_version)) {
+    errors.push({ code: "SUITE_ASSAY_VERSION_INVALID", message: `${path}.proof.assay_version must be vMAJOR.MINOR.PATCH; got ${JSON.stringify(p.assay_version)}`, path: `${path}.proof.assay_version` });
+  }
   const fields = opts.requireHarnessConsumption ? ["harness_consumption", "end_to_end"] : ["end_to_end"];
   for (const f of fields) {
     if (!KNOWN_PROOF_STATES.includes(p[f] as string)) {

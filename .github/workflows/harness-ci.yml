@@ -40,6 +40,10 @@ jobs:
         working-directory: harness
         run: npm test
 
+      - name: Check suite generated projection
+        working-directory: harness
+        run: npx tsx src/cli.ts suite generate --matrix suite-compatibility.json --check
+
   contract-validation:
     name: Contract Validation
     runs-on: ubuntu-latest

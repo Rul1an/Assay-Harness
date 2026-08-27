@@ -1,13 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXIT } from "./cli_exit.js";
 import {
+  deriveGenerated,
   driftAgainstRegistry,
   formatSuiteMarkdown,
   formatSuiteSummary,
   loadSuiteReport,
-  validateSuiteCompatibility,
 } from "./suite_compatibility.js";
 import {
   buildEvidencePack,
@@ -59,10 +59,135 @@ export function cmdSuite(args: Record<string, string | boolean>): void {
     cmdSuiteMatrix(args);
     return;
   }
-  console.error("[config_error] unknown suite subcommand; expected: check | matrix");
+  if (subcommand === "generate") {
+    cmdSuiteGenerate(args);
+    return;
+  }
+  console.error("[config_error] unknown suite subcommand; expected: check | matrix | generate");
   console.error("Usage: suite check --matrix <path> [--against-registry]");
   console.error("       suite matrix --matrix <path> [--format markdown|json]");
+  console.error("       suite generate --matrix <path> [--check]");
   process.exit(EXIT.CONFIG_ERROR);
+}
+
+function siblingHarnessVersion(matrixPath: string): string | null {
+  try {
+    const version = JSON.parse(readFileSync(resolve(dirname(matrixPath), "package.json"), "utf-8")).version;
+    return typeof version === "string" && version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+const SUITE_GENERATE_KEYS = new Set(["_command", "_file", "matrix", "check"]);
+
+const GENERATED_KEYS = ["assay_default", "harness_version", "last_verified_assay", "verified_on"] as const;
+
+function generatedProjectionMatches(
+  committed: Record<string, unknown> | null,
+  expected: { assay_default: string; harness_version: string; last_verified_assay: string; verified_on: string },
+): boolean {
+  if (committed === null) return false;
+  const keys = Object.keys(committed);
+  if (keys.length !== GENERATED_KEYS.length) return false;
+  for (const key of GENERATED_KEYS) {
+    if (!Object.hasOwn(committed, key) || committed[key] !== expected[key]) return false;
+  }
+  return true;
+}
+
+function rejectSuiteGenerateArgs(args: Record<string, string | boolean>): void {
+  for (const key of Object.keys(args)) {
+    if (!SUITE_GENERATE_KEYS.has(key)) {
+      console.error(`[config_error] suite generate: unknown argument --${key}`);
+      process.exit(EXIT.CONFIG_ERROR);
+    }
+  }
+  if ("check" in args && args.check !== true) {
+    console.error("[config_error] suite generate: --check must be a bare flag");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+}
+
+function cmdSuiteGenerate(args: Record<string, string | boolean>): void {
+  rejectSuiteGenerateArgs(args);
+  const matrixPath = suiteMatrixPath(args);
+  const checkOnly = args.check === true;
+  let rawText: string;
+  try {
+    rawText = readFileSync(matrixPath, "utf-8");
+  } catch {
+    console.error(`[config_error] Suite compatibility matrix not found: ${matrixPath}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  let parsedUnknown: unknown;
+  try {
+    parsedUnknown = JSON.parse(rawText) as unknown;
+  } catch (error) {
+    console.error(`[artifact_contract] suite generate: cannot parse matrix (${(error as Error).message})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (typeof parsedUnknown !== "object" || parsedUnknown === null || Array.isArray(parsedUnknown)) {
+    console.error("[artifact_contract] suite generate: matrix must be a JSON object");
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  const parsed = parsedUnknown as Record<string, unknown>;
+  const harnessVersion = siblingHarnessVersion(matrixPath);
+  if (!harnessVersion) {
+    console.error("[config_error] suite generate: sibling package.json version is required");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  const committedGenerated =
+    typeof parsed.generated === "object" && parsed.generated !== null && !Array.isArray(parsed.generated)
+      ? (parsed.generated as Record<string, unknown>)
+      : null;
+  const verifiedOn = committedGenerated?.verified_on;
+  if (typeof verifiedOn !== "string" || verifiedOn.length === 0) {
+    console.error("[artifact_contract] suite generate: generated.verified_on is a required historical event date");
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  let expected;
+  try {
+    expected = deriveGenerated({
+      harnessVersion,
+      carrier_rows: parsed.carrier_rows,
+      recipe_rows: parsed.recipe_rows,
+      verifiedOn,
+    });
+  } catch (error) {
+    console.error(`[artifact_contract] suite generate: ${(error as Error).message}`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  if (checkOnly) {
+    if (!generatedProjectionMatches(committedGenerated, expected)) {
+      console.error("[artifact_contract] suite generate --check: generated projection drifted (SUITE_GENERATED_DRIFT)");
+      process.exit(EXIT.ARTIFACT_CONTRACT);
+    }
+    process.exit(EXIT.SUCCESS);
+  }
+  writeGeneratedMatrix(matrixPath, parsed, expected);
+  process.exit(EXIT.SUCCESS);
+}
+
+function writeGeneratedMatrix(
+  matrixPath: string,
+  parsed: Record<string, unknown>,
+  expected: { assay_default: string; harness_version: string; last_verified_assay: string; verified_on: string },
+): void {
+  parsed.generated = expected;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parsed, null, 2) + "\n";
+  } catch (error) {
+    console.error(`[artifact_contract] suite generate: cannot serialize matrix (${(error as Error).message})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  try {
+    writeFileSync(matrixPath, serialized);
+  } catch (error) {
+    console.error(`[ci_formatter] suite generate: cannot write matrix (${(error as Error).message})`);
+    process.exit(EXIT.CI_FORMATTER);
+  }
 }
 
 function cmdSuiteCheck(args: Record<string, string | boolean>): void {

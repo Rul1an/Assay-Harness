@@ -5,22 +5,33 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness `v0.8.0` requires the released Assay `v3.8.0` contract line or
-later binaries that still emit the same Trust Basis diff schema v1, Trust Card
-schema v5, and 10-claim Trust Basis surface.
+Assay Harness requires the released Assay `v3.8.0` contract line or later
+binaries that still emit the same Trust Basis diff schema v1, Trust Card
+schema v5, and 10-claim Trust Basis surface. The consumer version comes from the
+sibling `package.json` of `--matrix`; do not restate it by hand.
 
-> **Upstream state (2026-06-17):** `Rul1an/assay` is on `v3.27.0`
-> (released 2026-06-16). The Trust Basis contract surface (diff schema
-> v1, Trust Card schema v5, 10 frozen claims) is unchanged from v3.15
-> through v3.27.0; the principal compatibility line still holds.
+The suite matrix `generated` object is a derived projection, not a present-tense
+recommendation. `generated.last_verified_assay` is the highest explicitly recorded
+`proof.assay_version` in the suite matrix. That is not necessarily the highest
+underlying Assay version used by every proof — a recipe row can prove a later
+binary without carrying `proof.assay_version` — and it is not a supported range
+or a claim that current Assay is covered.
+`generated.assay_default` is a deprecated alias of `last_verified_assay`.
+`generated.verified_on` is the retained historical projection date
+(`2026-06-17`) and may predate later row runs; it is never regenerated from the
+current clock.
+
+> **Upstream note (historical, 2026-06-17):** the Trust Basis contract surface
+> (diff schema v1, Trust Card schema v5, 10 frozen claims) was unchanged from
+> v3.15 through v3.27.0; the principal Trust Basis line still holds.
 > The v3.20-v3.27 releases add additive interop surfaces that do NOT touch that
 > contract: sandbox evidence-bundle events (`assay.sandbox.*`), OTel GenAI
 > `execute_tool` emit carrying the claim-class outcome, an in-toto/DSSE
 > evidence-bundle attestation, and the top-level OWASP conformance carriers
 > (supply-chain, render-safety, token-passthrough, MCP inventory). The Harness
-> already consumes the claim-class outcomes via `runner_claims.ts`; consuming the
-> new top-level conformance carriers is tracked as a separate design line. v3.27.0
-> is the current compatibility target and latest proved release-binary line.
+> already consumes the claim-class outcomes via `runner_claims.ts`. Carrier-row
+> proofs in the suite matrix are last-verified event facts, not a refresh of
+> current Assay support.
 
 | Contract | Expected surface |
 |---|---|
@@ -30,8 +41,9 @@ schema v5, and 10-claim Trust Basis surface.
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
-Use Assay `v3.8.0` as the minimum exact tag for this compatibility line. The new
-compatibility target is Assay `v3.27.0`, the latest proved release binary.
+Use Assay `v3.8.0` as the minimum exact tag for this Trust Basis compatibility
+line. The suite matrix last-verified Assay pin is derived from recorded proofs
+and is not a current-support claim.
 
 ## Release-Binary Proof
 
