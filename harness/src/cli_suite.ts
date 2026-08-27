@@ -165,9 +165,29 @@ function cmdSuiteGenerate(args: Record<string, string | boolean>): void {
     }
     process.exit(EXIT.SUCCESS);
   }
-  parsed.generated = expected;
-  writeFileSync(matrixPath, JSON.stringify(parsed, null, 2) + "\n");
+  writeGeneratedMatrix(matrixPath, parsed, expected);
   process.exit(EXIT.SUCCESS);
+}
+
+function writeGeneratedMatrix(
+  matrixPath: string,
+  parsed: Record<string, unknown>,
+  expected: { assay_default: string; harness_version: string; last_verified_assay: string; verified_on: string },
+): void {
+  parsed.generated = expected;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parsed, null, 2) + "\n";
+  } catch (error) {
+    console.error(`[artifact_contract] suite generate: cannot serialize matrix (${(error as Error).message})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  try {
+    writeFileSync(matrixPath, serialized);
+  } catch (error) {
+    console.error(`[artifact_contract] suite generate: cannot write matrix (${(error as Error).message})`);
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
 }
 
 function cmdSuiteCheck(args: Record<string, string | boolean>): void {

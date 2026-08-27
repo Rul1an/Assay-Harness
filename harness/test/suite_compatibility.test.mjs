@@ -93,6 +93,13 @@ function stageRawMatrix(contents) {
   return matrixPath;
 }
 
+function stageDeepLimitsMatrix(depth = 12000) {
+  const matrix = committedMatrix();
+  matrix.carrier_rows[0].limits = "__NEST__";
+  const nest = '{"n":'.repeat(depth) + "{}" + "}".repeat(depth);
+  return stageRawMatrix(JSON.stringify(matrix).replace('"__NEST__"', nest) + "\n");
+}
+
 test("schema constant is the frozen suite id", () => {
   assert.equal(SUITE_COMPATIBILITY_SCHEMA, "suite.compatibility.v0");
 });
@@ -568,6 +575,37 @@ test("CLI suite generate --check rejects extra generated fields without a canoni
     assert.equal(r.status, 3, r.stderr);
     assert.doesNotMatch(r.stderr, /TypeError|RangeError|at canonicalize|Maximum call stack/);
     assert.deepEqual(readFileSync(matrixPath), before, "--check must not rewrite extra generated fields");
+  }
+});
+
+test("CLI suite generate write routes unserializable row data as artifact_contract without rewriting", () => {
+  const { matrixPath: cleanPath } = stageGeneratedWorkspace(() => {});
+  const cleanBefore = readFileSync(cleanPath);
+  const clean = runCli("generate", "--matrix", cleanPath);
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.deepEqual(readFileSync(cleanPath), cleanBefore);
+
+  const matrixPath = stageDeepLimitsMatrix();
+  const before = readFileSync(matrixPath);
+  const r = runCli("generate", "--matrix", matrixPath);
+  assert.equal(r.status, 3, r.stderr);
+  assert.match(r.stderr, /\[artifact_contract\] suite generate:/);
+  assert.doesNotMatch(r.stderr, /TypeError|RangeError|at cmdSuiteGenerate|at JSON\.stringify/);
+  assert.deepEqual(readFileSync(matrixPath), before, "failed serialize must not rewrite");
+});
+
+test("CLI suite generate --check rejects a non-object generated field without a stack trace", () => {
+  for (const generated of [null, [1.5], "x", 1.5]) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+      matrix.generated = generated;
+    });
+    const before = readFileSync(matrixPath);
+    const r = runCli("generate", "--matrix", matrixPath, "--check");
+    assert.equal(r.status, 3, `${JSON.stringify(generated)} must be artifact_contract: ${r.stderr}`);
+    assert.match(r.stderr, /\[artifact_contract\] suite generate:/);
+    assert.equal(r.stderr.trim().split("\n").length, 1, `${JSON.stringify(generated)} must emit one routed line`);
+    assert.doesNotMatch(r.stderr, /TypeError|RangeError|at cmdSuiteGenerate|Maximum call stack/);
+    assert.deepEqual(readFileSync(matrixPath), before, `${JSON.stringify(generated)} must not rewrite`);
   }
 });
 
