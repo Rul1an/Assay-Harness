@@ -19,6 +19,16 @@ const RECIPE_JOBS = [
   "assay-supply-chain-recipe",
   "assay-supply-chain-dsse-recipe",
 ];
+// Jobs that host a required contract check. `node-tests` runs `npm test` (every
+// contract test in this file included) and the `suite generate --check` drift
+// gate, so a guard living inside it cannot report its own absence: disabling the
+// job removes the gate and the guard together, in a green run. This list is the
+// subject `requireUnconditionalRequiredJob` is asserted over; emptying it must
+// fail rather than vacuously pass.
+const REQUIRED_CONTRACT_JOBS = ["node-tests"];
+// This contract file must also run from a job other than the one it guards.
+const CONTRACT_TEST_FILE = "enforcement_health_probe_workflow.test.mjs";
+
 const RECIPE_IF = "github.event_name == 'workflow_dispatch' && !inputs.probe_only";
 const PROBE_IF = "github.event_name == 'workflow_dispatch' && inputs.probe_only";
 const MINIMAL_POLICY = `api_version: "assay/v1"
@@ -43,6 +53,49 @@ function job(workflow, id) {
   const found = workflow.jobs?.[id];
   assert.ok(found, `missing job ${id}`);
   return found;
+}
+
+// One rule: a job hosting a required contract check must be unconditionally
+// reachable on pull_request and push to main, and must not be non-blocking.
+// Trigger reachability lives here rather than in a sibling test so a job can
+// never be "reachable" under one assertion and disabled under another.
+function requireUnconditionalRequiredJob(workflow, id) {
+  const target = job(workflow, id);
+  assert.equal(Object.hasOwn(target, "if"), false, `${id} must not be conditional`);
+  assert.equal(
+    Object.hasOwn(target, "continue-on-error"),
+    false,
+    `${id} must not be non-blocking`,
+  );
+  for (const event of ["pull_request", "push"]) {
+    const trigger = workflow.on?.[event];
+    assert.ok(trigger, `${id} requires an automatic ${event} trigger`);
+    assert.ok(
+      (trigger.branches ?? []).includes("main"),
+      `${id} requires ${event} on main`,
+    );
+  }
+}
+
+// A guard that runs only inside the job it guards cannot report its own
+// absence: GitHub reports a job disabled with `if: false` as skipped, and a
+// skipped required context satisfies branch protection. This rule pins at
+// least one invocation of the contract file from a different job, and holds
+// that job to the same reachability rule.
+function requireIndependentContractInvocation(workflow, file, guardedJobs) {
+  const runsFile = (definition) =>
+    (definition?.steps ?? []).some((step) => String(step?.run ?? "").includes(file));
+  const hosts = Object.keys(workflow.jobs ?? {}).filter(
+    (id) => !guardedJobs.includes(id) && runsFile(workflow.jobs[id]),
+  );
+  assert.ok(
+    hosts.length > 0,
+    `${file} must be invoked from a job outside ${guardedJobs.join(", ")}`,
+  );
+  for (const id of hosts) {
+    requireUnconditionalRequiredJob(workflow, id);
+  }
+  return hosts;
 }
 
 function reachableOn(expr, eventName, probeOnly) {
@@ -211,4 +264,72 @@ test("promotion fetches PR objects without materializing a PR working tree", () 
   assert.doesNotMatch(body, /pr-data|allow-unsafe-pr-checkout/);
   assert.doesNotMatch(body, /git (?:checkout|switch|worktree|reset|restore)\b/);
   assert.doesNotMatch(readFileSync(PROMOTION_WORKFLOW, "utf8"), /\bsecrets\b/);
+});
+
+test("required contract jobs are unconditionally reachable and blocking", () => {
+  assert.ok(REQUIRED_CONTRACT_JOBS.length > 0, "no required contract job is declared");
+  const workflow = loadWorkflow();
+  for (const id of REQUIRED_CONTRACT_JOBS) {
+    requireUnconditionalRequiredJob(workflow, id);
+  }
+});
+
+test("the required-job rule rejects a disabled, non-blocking or unreachable job", () => {
+  const base = loadWorkflow();
+  const clone = () => JSON.parse(JSON.stringify(base));
+
+  const disabled = clone();
+  disabled.jobs["node-tests"].if = false;
+  assert.throws(() => requireUnconditionalRequiredJob(disabled, "node-tests"), /must not be conditional/);
+
+  const conditional = clone();
+  conditional.jobs["node-tests"].if = "github.event_name == 'workflow_dispatch'";
+  assert.throws(() => requireUnconditionalRequiredJob(conditional, "node-tests"), /must not be conditional/);
+
+  const nonBlocking = clone();
+  nonBlocking.jobs["node-tests"]["continue-on-error"] = true;
+  assert.throws(() => requireUnconditionalRequiredJob(nonBlocking, "node-tests"), /must not be non-blocking/);
+
+  for (const event of ["pull_request", "push"]) {
+    const dropped = clone();
+    delete dropped.on[event];
+    assert.throws(
+      () => requireUnconditionalRequiredJob(dropped, "node-tests"),
+      new RegExp(`requires an automatic ${event} trigger`),
+    );
+  }
+
+  const missing = clone();
+  delete missing.jobs["node-tests"];
+  assert.throws(() => requireUnconditionalRequiredJob(missing, "node-tests"), /missing job node-tests/);
+});
+
+test("the reachability contract is invoked from a job it does not guard", () => {
+  const hosts = requireIndependentContractInvocation(
+    loadWorkflow(),
+    CONTRACT_TEST_FILE,
+    REQUIRED_CONTRACT_JOBS,
+  );
+  assert.ok(hosts.includes("hardening"), `expected hardening among ${hosts.join(", ")}`);
+});
+
+test("the independent-invocation rule rejects a self-hosted-only contract", () => {
+  const base = loadWorkflow();
+  const clone = () => JSON.parse(JSON.stringify(base));
+
+  const selfHostedOnly = clone();
+  selfHostedOnly.jobs.hardening.steps = selfHostedOnly.jobs.hardening.steps.filter(
+    (step) => !String(step?.run ?? "").includes(CONTRACT_TEST_FILE),
+  );
+  assert.throws(
+    () => requireIndependentContractInvocation(selfHostedOnly, CONTRACT_TEST_FILE, REQUIRED_CONTRACT_JOBS),
+    /must be invoked from a job outside/,
+  );
+
+  const disabledHost = clone();
+  disabledHost.jobs.hardening.if = false;
+  assert.throws(
+    () => requireIndependentContractInvocation(disabledHost, CONTRACT_TEST_FILE, REQUIRED_CONTRACT_JOBS),
+    /must not be conditional/,
+  );
 });
