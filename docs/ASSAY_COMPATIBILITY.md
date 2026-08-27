@@ -5,10 +5,18 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 ## Current Compatibility Target
 
-Assay Harness requires the released Assay `v3.8.0` contract line or later
-binaries that still emit the same Trust Basis diff schema v1, Trust Card
-schema v5, and 10-claim Trust Basis surface. The consumer version comes from the
-sibling `package.json` of `--matrix`; do not restate it by hand.
+Assay Harness consumes the Trust Basis contract line first proven on released
+Assay `v3.8.0` and re-measured at Assay `v5.4.0` peel
+`bbb5e7fe4b03bc6160d18e2966e75a7586c062ef`. That peel still emits Trust Basis
+diff schema `assay.trust-basis.diff.v1`, Trust Card `schema_version = 5`, ten
+frozen claims, and eval / decision / inventory receipt families. The consumer
+version comes from the sibling `package.json` of `--matrix`; do not restate it
+by hand.
+
+The v5.4.0 GitHub tag is mutable. Contract revalidation binds the published
+Linux CLI bytes `assay-v5.4.0-x86_64-unknown-linux-gnu.tar.gz` at
+`sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3`, not
+the tag string.
 
 The suite matrix `generated` object is a derived projection, not a present-tense
 recommendation. `generated.last_verified_assay` is the highest explicitly recorded
@@ -21,17 +29,16 @@ or a claim that current Assay is covered.
 (`2026-06-17`) and may predate later row runs; it is never regenerated from the
 current clock.
 
-> **Upstream note (historical, 2026-06-17):** the Trust Basis contract surface
-> (diff schema v1, Trust Card schema v5, 10 frozen claims) was unchanged from
-> v3.15 through v3.27.0; the principal Trust Basis line still holds.
-> The v3.20-v3.27 releases add additive interop surfaces that do NOT touch that
-> contract: sandbox evidence-bundle events (`assay.sandbox.*`), OTel GenAI
-> `execute_tool` emit carrying the claim-class outcome, an in-toto/DSSE
-> evidence-bundle attestation, and the top-level OWASP conformance carriers
-> (supply-chain, render-safety, token-passthrough, MCP inventory). The Harness
-> already consumes the claim-class outcomes via `runner_claims.ts`. Carrier-row
-> proofs in the suite matrix are last-verified event facts, not a refresh of
-> current Assay support.
+> **Upstream note (measured, 2026-08-27):** the Trust Basis contract surface
+> still holds at the v5.4.0 peel. Honest producer gaps remain:
+> `render_safety_conformance.v0` has no released one-shot CLI emitter;
+> `token_passthrough_conformance.v0` remains live-proxy-only.
+> Landlock `assay sandbox --probe-enforcement` is the unprivileged
+> `assay.enforcement_health.v1` emitter (schema id measured with an underscore
+> at the peel writer). A Darwin skip is not a pass, and an unavailable
+> Linux/Landlock host is not a clean result. The probe does not claim universal host support.
+> The earlier `requires_privileged_runtime` premise is
+> stale for this Landlock path; matrix gap rows stay frozen until PR2a.
 
 | Contract | Expected surface |
 |---|---|
@@ -41,11 +48,20 @@ current clock.
 | Receipt families visible in Trust Basis | eval, decision, inventory |
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
-Use Assay `v3.8.0` as the minimum exact tag for this Trust Basis compatibility
-line. The suite matrix last-verified Assay pin is derived from recorded proofs
-and is not a current-support claim.
+Assay `v3.8.0` remains the minimum exact tag that opened this Trust Basis
+compatibility line. The suite matrix last-verified Assay pin is derived from
+recorded proofs and is not a current-support claim. PR2b revalidates the
+contract and adds a digest-bound local-asset probe; it does not move evidence
+rows or `manifest.digest`.
 
 ## Release-Binary Proof
+
+PR2b adds `harness/scripts/probe-v54-enforcement-health.mjs`: a digest-bound
+local-asset path that verifies `sha256` before extraction and runs
+`assay sandbox --enforce --enforce-net --probe-enforcement --enforcement-health <out> --policy <policy> -- true`.
+It parses exactly one `assay.enforcement_health.v1` record. There is no
+network fallback, no source build, and no best-effort parse. This is not a
+hosted Linux runtime proof on Darwin.
 
 The `Harness CI` workflow has a manual `workflow_dispatch` compatibility job.
 It downloads the selected Assay release binary, verifies its checksum, and runs
