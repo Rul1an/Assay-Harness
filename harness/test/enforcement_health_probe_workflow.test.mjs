@@ -158,6 +158,7 @@ test("promotion runs from a base-owned pull_request_target workflow with least p
   const promotion = job(workflow, "enforcement-health-promotion");
   assert.equal(promotion["runs-on"], "ubuntu-latest");
   assert.equal(promotion["timeout-minutes"], 10);
+  assert.equal(Object.hasOwn(promotion, "continue-on-error"), false);
   assert.deepEqual(promotion.permissions, { contents: "read", actions: "read" });
 
   const body = (promotion.steps ?? []).map((step) => `${step.uses ?? ""}\n${step.run ?? ""}`).join("\n");
@@ -194,6 +195,6 @@ test("promotion fetches PR objects without materializing a PR working tree", () 
   assert.match(body, /git show/);
   assert.match(body, /--repo-root \.\.$/m);
   assert.doesNotMatch(body, /pr-data|allow-unsafe-pr-checkout/);
-  assert.doesNotMatch(body, /git (?:checkout|switch|worktree|reset)\b/);
+  assert.doesNotMatch(body, /git (?:checkout|switch|worktree|reset|restore)\b/);
   assert.doesNotMatch(readFileSync(PROMOTION_WORKFLOW, "utf8"), /\bsecrets\b/);
 });
