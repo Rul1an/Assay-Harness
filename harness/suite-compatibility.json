@@ -1,7 +1,7 @@
 {
   "schema": "suite.compatibility.v0",
   "generated": {
-    "harness_version": "0.10.2",
+    "harness_version": "0.10.3",
     "last_verified_assay": "v5.4.0",
     "assay_default": "v5.4.0",
     "verified_on": "2026-06-17"
