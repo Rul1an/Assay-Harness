@@ -64,8 +64,12 @@ PR2b adds `harness/scripts/probe-v54-enforcement-health.mjs`: a digest-bound
 local-asset path that verifies `sha256` before extraction and runs
 `assay sandbox --enforce --enforce-net --probe-enforcement --enforcement-health <out> --policy <policy> -- true`.
 It parses exactly one `assay.enforcement_health.v1` record. There is no
-network fallback, no source build, and no best-effort parse. This is not a
-hosted Linux runtime proof on Darwin.
+network fallback, no source build, and no best-effort parse. Extraction also
+applies fixed expanded-byte and entry ceilings (32 MiB / 8 entries) with
+symlink/hardlink refusal; that is a resource ceiling, not a claim the published
+v5.4.0 archive is malicious or oversized. This is not a hosted Linux runtime
+proof on Darwin. The frozen probe script changed for those bounds, so a later
+promotion needs a fresh hosted proof.
 
 The `Harness CI` workflow has a manual `workflow_dispatch` compatibility job.
 It downloads the selected Assay release binary, verifies its checksum, and runs
@@ -114,4 +118,10 @@ gates, and projects the raw Assay Trust Basis diff contract.
 
 For this line, Assay Harness is a GitHub release and repository CLI. The npm
 package metadata is used for local Node tooling and release bookkeeping; it is
-not a claim that the Harness CLI is published to npm.
+not a claim that the Harness CLI is published to npm. `exports`/`files` now
+advertise only the CLI entry (`dist/cli.js`) and omit
+`scripts/probe-v54-enforcement-health.mjs` from the packed surface. That is
+formally deep-import-breaking; there are zero known consumers and the package
+is not on the public registry on this line. Tests and the workflow still run
+the script via repository checkout. This is not a claim that `dist/` already
+ships in today's pack — only that the CLI remains installable once built.

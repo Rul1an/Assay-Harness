@@ -73,7 +73,7 @@ after(() => {
 
 function ownedProbeTemps() {
   return readdirSync(tmpdir())
-    .filter((name) => name.startsWith("v54-enforcement-health-"))
+    .filter((name) => name.startsWith(`v54-enforcement-health-${process.pid}-`))
     .map((name) => join(tmpdir(), name));
 }
 

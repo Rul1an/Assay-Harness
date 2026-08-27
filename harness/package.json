@@ -7,6 +7,20 @@
   "bin": {
     "assay-harness": "dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "src",
+    "scripts",
+    "test",
+    "suite-compatibility.json",
+    "policy.yaml",
+    "tsconfig.json",
+    "!scripts/probe-v54-enforcement-health.mjs"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "tsx src/cli.ts",

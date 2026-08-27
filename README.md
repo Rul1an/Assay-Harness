@@ -646,7 +646,9 @@ Markdown and JUnit projections only. Trust Basis recipes do not emit SARIF.
 
 For this line, Assay Harness is distributed as the repository CLI and GitHub
 release artifacts. The `harness/package.json` version tracks release metadata;
-it is not an npm publication claim.
+it is not an npm publication claim. The package `exports`/`files` map advertises
+`dist/cli.js` and does not ship `scripts/probe-v54-enforcement-health.mjs` as a
+package-path import.
 
 ---
 
