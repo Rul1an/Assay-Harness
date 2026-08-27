@@ -28,7 +28,7 @@ const PINNED_SCHEMA = "assay.enforcement_health.v1";
 const DOTTED_SCHEMA = "assay.enforcement.health.v1";
 const PINNED_ASSET_DIGEST = "sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3";
 const PINNED_PEEL = "bbb5e7fe4b03bc6160d18e2966e75a7586c062ef";
-const PINNED_MATRIX_DIGEST = "sha256:ce7640673f9b6f1160e88378aea9f64ef77ae98074fdb067cf21492fcdfd8ea7";
+const PINNED_MATRIX_DIGEST = "sha256:6aba502f9aca3fc5d78c35eaa72560bfc4a82f535628554fc2a01836f76c4da2";
 const LAYOUT = "assay-v5.4.0-x86_64-unknown-linux-gnu";
 const PEEL_CLAIM = `${PINNED_SCHEMA} active at peel ${PINNED_PEEL}`;
 const FIXED_ALLOWED_PORT = 443;
@@ -457,13 +457,16 @@ test("public docs pin measured v5.4.0 facts and honest limits", () => {
   assert.doesNotMatch(readme, /Current runtime support is deferred to PR2b/);
 });
 
-test("committed matrix rows, proofs, generated, and digest stay frozen", () => {
+test("committed matrix pins the hosted v5.4.0 enforcement-health fold", () => {
   const raw = readFileSync(MATRIX, "utf8");
   const matrix = JSON.parse(raw);
   assert.equal(matrix.manifest.digest, PINNED_MATRIX_DIGEST);
-  assert.equal(matrix.generated.last_verified_assay, "v3.28.0");
+  assert.equal(matrix.generated.last_verified_assay, "v5.4.0");
+  assert.equal(matrix.generated.verified_on, "2026-06-17");
   const enforcement = matrix.carrier_rows.find((row) => row.carrier === PINNED_SCHEMA);
   assert.ok(enforcement);
-  assert.equal(enforcement.end_to_end_gap.reason_code, "requires_privileged_runtime");
-  assert.match(raw, /"digest": "sha256:ce7640673f9b6f1160e88378aea9f64ef77ae98074fdb067cf21492fcdfd8ea7"/);
+  assert.equal(enforcement.proof.end_to_end, "proven");
+  assert.equal(enforcement.proof.hosted_run, "33080407473");
+  assert.equal(enforcement.end_to_end_gap, undefined);
+  assert.match(raw, /"digest": "sha256:6aba502f9aca3fc5d78c35eaa72560bfc4a82f535628554fc2a01836f76c4da2"/);
 });

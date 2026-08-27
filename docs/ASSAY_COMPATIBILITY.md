@@ -38,7 +38,10 @@ current clock.
 > at the peel writer). A Darwin skip is not a pass, and an unavailable
 > Linux/Landlock host is not a clean result. The probe does not claim universal host support.
 > The earlier `requires_privileged_runtime` premise is
-> stale for this Landlock path; matrix gap rows stay frozen until PR2a.
+> stale for this Landlock path. The hosted x86_64 `assay.enforcement_health.v1`
+> proof is folded from `Harness CI` run `33080407473` (carrier JSON digest, not
+> the Actions zip and not the published tarball). `generated.verified_on` stays
+> the historical `2026-06-17`. This is not an aarch64 measurement.
 
 | Contract | Expected surface |
 |---|---|
@@ -50,9 +53,10 @@ current clock.
 
 Assay `v3.8.0` remains the minimum exact tag that opened this Trust Basis
 compatibility line. The suite matrix last-verified Assay pin is derived from
-recorded proofs and is not a current-support claim. PR2b revalidates the
-contract and adds a digest-bound local-asset probe; it does not move evidence
-rows or `manifest.digest`.
+recorded proofs and is not a current-support claim. The enforcement-health
+carrier row is now `end_to_end=proven` at Assay `v5.4.0` on hosted
+`ubuntu-latest`; render-safety and token-passthrough remain declared producer
+gaps. The local-asset probe is not itself the hosted proof.
 
 ## Release-Binary Proof
 

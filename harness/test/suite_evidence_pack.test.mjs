@@ -208,7 +208,11 @@ test("coherence: matrix fixture_digest != provenance.fixture.digest -> fail", ()
 });
 test("coherence: matrix proof_scope.ambient_scan != provenance.ambient_scan -> fail", () => {
   const p = mutated((pack) => { const m = readMatrix(pack); invRow(m).proof_scope.ambient_scan = true; writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack)); });
-  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+  const cs = codes(p);
+  assert.ok(
+    cs.includes("PACK_MATRIX_INVALID") || cs.includes("PACK_COHERENCE_MATRIX"),
+    `ambient_scan=true must fail-closed before or at pack coherence; got ${cs}`,
+  );
 });
 test("coherence: matrix end_to_end not proven -> fail", () => {
   const p = mutated((pack) => { const m = readMatrix(pack); invRow(m).proof.end_to_end = "declared"; invRow(m).end_to_end_gap = { reason_code: "no_released_binary_emitter", owner: "harness" }; writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack)); });
@@ -326,7 +330,11 @@ test("coherence: matrix proof_scope.runner_os != provenance.runner_os -> fail", 
 test("coherence: matrix proof_scope.hosted != provenance.hosted -> fail", () => {
   // Mutate the matrix side (provenance.hosted must stay true to keep the hermetic-success check clean).
   const p = mutated((pack) => { const m = readMatrix(pack); invRow(m).proof_scope.hosted = false; writeMatrix(pack, m); resealMatrix(pack); reseal(pack, readManifest(pack)); });
-  assert.ok(codes(p).includes("PACK_COHERENCE_MATRIX"));
+  const cs = codes(p);
+  assert.ok(
+    cs.includes("PACK_MATRIX_INVALID") || cs.includes("PACK_COHERENCE_MATRIX"),
+    `hosted=false must fail-closed before or at pack coherence; got ${cs}`,
+  );
 });
 
 // --- cross-check gating (CodeRabbit Critical): only read digest-clean sources ---
