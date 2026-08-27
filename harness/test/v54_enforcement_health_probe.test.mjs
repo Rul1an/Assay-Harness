@@ -1,11 +1,11 @@
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import {
   MAX_ASSET_BYTES,
   MAX_OUTPUT_BYTES,
@@ -61,9 +61,15 @@ function sha256File(path) {
   return "sha256:" + createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+const FIXTURE_ROOT = mkdtempSync(join(tmpdir(), "v54-probe-fixture-"));
+
 function tempDir() {
-  return mkdtempSync(join(tmpdir(), "v54-probe-fixture-"));
+  return mkdtempSync(join(FIXTURE_ROOT, "case-"));
 }
+
+after(() => {
+  rmSync(FIXTURE_ROOT, { recursive: true, force: true });
+});
 
 function ownedProbeTemps() {
   return readdirSync(tmpdir())
@@ -371,6 +377,10 @@ test("executeLocalProducer refuses well-formed but invalid producer records", ()
       ["status unavailable", { ...ACTIVE_HEALTH, status: "unavailable" }, /failed|not clean|unavailable|active/i],
       ["abi 3", patchLandlock({ abi: 3 }), /abi/i],
       ["mechanism seccomp", { ...ACTIVE_HEALTH, mechanism: "seccomp" }, /mechanism|landlock/i],
+      ["scope not landlock port", { ...ACTIVE_HEALTH, scope: "process" }, /scope|tcp_connect_landlock_port/i],
+      ["policy_semantics denylist", { ...ACTIVE_HEALTH, policy_semantics: "denylist" }, /policy_semantics|allowlist/i],
+      ["handled_access_net without connect_tcp", patchLandlock({ handled_access_net: ["bind_tcp"] }), /handled_access_net|connect_tcp/i],
+      ["restrict_self_confirmed false", patchLandlock({ restrict_self_confirmed: false }), /restrict_self_confirmed/i],
     ];
     for (const [i, [name, health, match]] of cases.entries()) {
       const caseDir = join(parent, `case-${i}`);
@@ -385,6 +395,27 @@ test("executeLocalProducer refuses well-formed but invalid producer records", ()
     rmSync(parent, { recursive: true, force: true });
   }
   assert.equal(existsSync(parent), false, "table-test parent fixture dir must be removed");
+});
+
+test("oversized asset fails both MAX_ASSET_BYTES enforcement points without buffering the file", () => {
+  const dir = tempDir();
+  const asset = join(dir, "oversized.tar.gz");
+  writeFileSync(asset, "sparse-head\n");
+  truncateSync(asset, MAX_ASSET_BYTES + 1);
+  assert.equal(statSync(asset).size, MAX_ASSET_BYTES + 1);
+  const dest = join(dir, "snapshot.tar.gz");
+  assert.throws(
+    () => snapshotAssetWhileHashing(asset, dest, MAX_ASSET_BYTES),
+    /too large|max-asset-bytes/i,
+  );
+  const r = runProbe([
+    "--asset", asset,
+    "--expected-digest", PINNED_ASSET_DIGEST,
+    "--out", join(dir, "out.json"),
+  ]);
+  assert.notEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /too large|max-asset-bytes/i);
+  assert.doesNotMatch(r.stdout, /active at peel/);
 });
 
 test("no-op control: measured successful shape is accepted by the shared validator", () => {
