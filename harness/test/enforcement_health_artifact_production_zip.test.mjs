@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -20,21 +20,23 @@ const PROVENANCE = Buffer.from('{"schema":"suite.recipe_provenance.v0"}\n');
 const LIST_UNZIP = `async listEntries(zipPath) {
             const listed = spawnSync("unzip", ["-Z1", zipPath], {
                 encoding: "utf8",
+                timeout: ZIP_PROCESS_TIMEOUT_MS,
+                killSignal: "SIGKILL",
+                stdio: ["ignore", "pipe", "pipe"],
                 maxBuffer: MAX_ZIP_LIST_BYTES,
             });
-            if (listed.status !== 0) {
-                throw new Error(listed.stderr || "zip list failed");
-            }
+            assertZipProcessSucceeded(listed, "zip list", "zip list failed");
             return listed.stdout.split("\\n").map((line) => line.trim()).filter(Boolean);
         }`;
 const EXTRACT_UNZIP = `async extractEntry(zipPath, name, maxBytes) {
             const extracted = spawnSync("unzip", ["-p", zipPath, name], {
                 encoding: "buffer",
+                timeout: ZIP_PROCESS_TIMEOUT_MS,
+                killSignal: "SIGKILL",
+                stdio: ["ignore", "pipe", "pipe"],
                 maxBuffer: maxBytes,
             });
-            if (extracted.status !== 0) {
-                throw new Error(extracted.stderr?.toString() || \`\${name} exceeds expanded cap\`);
-            }
+            assertZipProcessSucceeded(extracted, "zip extract", \`\${name} exceeds expanded cap\`);
             const buf = Buffer.isBuffer(extracted.stdout) ? extracted.stdout : Buffer.from(extracted.stdout);
             if (buf.length > maxBytes) {
                 throw new Error(\`\${name} exceeds expanded cap\`);
@@ -146,12 +148,49 @@ async function loadScratch(mutate) {
   return import(pathToFileURL(scratch).href);
 }
 
+async function withBlockingUnzip(body) {
+  const bin = mkdtempSync(join(ROOT, "fake-bin-"));
+  const unzip = join(bin, "unzip");
+  writeFileSync(unzip, "#!/bin/sh\nsleep 2\n");
+  chmodSync(unzip, 0o755);
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${bin}:${previousPath ?? ""}`;
+  try {
+    await body();
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
+}
+
 test("production unzip is present", () => {
   const probe = spawnSync("unzip", ["-v"], { encoding: "utf8" });
   if (probe.error) {
     throw new Error(`production unzip must be present (${probe.error.message}); refusing to skip`);
   }
   assert.equal(probe.status, 0);
+});
+
+test("productionZipIo bounds a blocked unzip listing", { timeout: 5000 }, async () => {
+  await withBlockingUnzip(async () => {
+    const started = Date.now();
+    await assert.rejects(
+      () => productionZipIo().listEntries(dest()),
+      /zip list timed out after 1000ms/,
+    );
+    assert.ok(Date.now() - started < 1800, "listing must fail before the fake unzip exits");
+  });
+});
+
+test("productionZipIo bounds a blocked unzip extraction", { timeout: 5000 }, async () => {
+  await withBlockingUnzip(async () => {
+    const started = Date.now();
+    await assert.rejects(
+      () => productionZipIo().extractEntry(dest(), "enforcement-health.json", MAX_CARRIER_FILE_BYTES),
+      /zip extract timed out after 1000ms/,
+    );
+    assert.ok(Date.now() - started < 1800, "extraction must fail before the fake unzip exits");
+  });
 });
 
 test("productionZipIo valid two-root zip roundtrips exact bytes", async () => {
