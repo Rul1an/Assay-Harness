@@ -193,12 +193,14 @@ export interface GeneratedProjection {
   verified_on: string;
 }
 
-const ASSAY_RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
+const ASSAY_RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export function parseAssayReleaseTag(value: unknown): [number, number, number] | null {
   if (typeof value !== "string") return null;
   const match = ASSAY_RELEASE_TAG.exec(value);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+  if (!match) return null;
+  const parts: [number, number, number] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return parts.every((n) => Number.isSafeInteger(n)) ? parts : null;
 }
 
 function proofAssayVersions(rows: unknown): string[] {
