@@ -1,0 +1,8 @@
+api_version: "assay/v1"
+fs:
+  allow: []
+  deny: []
+net:
+  allow:
+    - "443"
+  deny: []

@@ -11,6 +11,11 @@ on:
         description: "Assay release tag to run receipt recipes against"
         required: false
         default: "v3.27.0"
+      probe_only:
+        description: "Run only the hosted x86_64 enforcement-health probe (skip the four recipe jobs)"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -436,7 +441,7 @@ jobs:
 
   assay-release-compatibility:
     name: Assay Release Compatibility Recipes
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe_only
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -550,7 +555,7 @@ jobs:
     # (hosted_run + digests) that a controlled update folds into the suite matrix
     # to flip the inventory row from declared -> proven. It is not run on every
     # unrelated PR (keeping the proof rail small and predictable).
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe_only
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -706,7 +711,7 @@ jobs:
     # That exit 6 is the EXPECTED, successful consumption for this proof: it shows
     # Harness recognizes the carrier and refuses to read incomplete as clean. The
     # proof establishes producer->consumer compatibility, NOT a clean carrier.
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe_only
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -888,7 +893,7 @@ jobs:
     # (passed=true). A controlled update folds this into a NEW recipe_row; it does NOT replace
     # the A5a-2 valid-not-clean carrier-row proof. INVERSE of A5a-2: a pass carrier MUST consume
     # at exit 0; exit 6 here is a contract failure.
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe_only
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1045,3 +1050,131 @@ jobs:
             /tmp/sc.dsse.report.json
             /tmp/recipe.provenance.dsse.json
           if-no-files-found: warn
+
+  assay-enforcement-health-probe:
+    name: Assay Enforcement Health Probe
+    # Probe-only dispatch on hosted ubuntu x86_64. Not pull_request: a prior
+    # PR-first trigger would have made every PR run this measurement.
+    if: github.event_name == 'workflow_dispatch' && inputs.probe_only
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Download pinned v5.4.0 x86_64 release asset
+        run: |
+          set -euo pipefail
+          assay_version="v5.4.0"
+          expected_asset_digest="sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3"
+          mkdir -p /tmp/assay-release && cd /tmp/assay-release
+          asset="assay-${assay_version}-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/Rul1an/assay/releases/download/${assay_version}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}"
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 15 --max-time 180 -O "${base}/${asset}.sha256"
+          sha256sum -c "${asset}.sha256"
+          actual="sha256:$(sha256sum "$asset" | cut -d' ' -f1)"
+          [ "$actual" = "$expected_asset_digest" ] || {
+            echo "release asset digest mismatch: $actual" >&2
+            exit 1
+          }
+          tar -xzf "$asset"
+          bin="/tmp/assay-release/assay-${assay_version}-x86_64-unknown-linux-gnu/assay"
+          test -x "$bin"
+          binary_digest="sha256:$(sha256sum "$bin" | cut -d' ' -f1)"
+          [ "$binary_digest" != "$actual" ] || {
+            echo "extracted binary digest must be distinct from release asset digest" >&2
+            exit 1
+          }
+          echo "ASSAY_VERSION=$assay_version" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_NAME=$asset" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_PATH=/tmp/assay-release/$asset" >> "$GITHUB_ENV"
+          echo "ASSAY_ASSET_DIGEST=$actual" >> "$GITHUB_ENV"
+          echo "ASSAY_BIN=$bin" >> "$GITHUB_ENV"
+          echo "ASSAY_BINARY_DIGEST=$binary_digest" >> "$GITHUB_ENV"
+
+      - name: Run pinned enforcement-health probe
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          policy="fixtures/suite-compatibility/enforcement-health/probe-policy.yaml"
+          test -f "$policy"
+          node scripts/probe-v54-enforcement-health.mjs \
+            --asset "$ASSAY_ASSET_PATH" \
+            --expected-digest "$ASSAY_ASSET_DIGEST" \
+            --out /tmp/enforcement-health.json \
+            --policy "$policy"
+          npx tsx src/cli.ts carrier enforcement-health --carrier /tmp/enforcement-health.json
+          fixture_digest="sha256:$(sha256sum "$policy" | cut -d' ' -f1)"
+          artifact_digest="sha256:$(sha256sum /tmp/enforcement-health.json | cut -d' ' -f1)"
+          echo "FIXTURE_DIGEST=$fixture_digest" >> "$GITHUB_ENV"
+          echo "ARTIFACT_DIGEST=$artifact_digest" >> "$GITHUB_ENV"
+
+      - name: Record recipe provenance
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          npx tsx src/enforcement_health_record_cli.ts \
+            --hosted-run "$GITHUB_RUN_ID" \
+            --runner-os ubuntu-latest \
+            --assay-version "$ASSAY_VERSION" \
+            --binary-digest "$ASSAY_BINARY_DIGEST" \
+            --release-asset-path "$ASSAY_ASSET_NAME" \
+            --release-asset-digest "$ASSAY_ASSET_DIGEST" \
+            --fixture-path fixtures/suite-compatibility/enforcement-health/probe-policy.yaml \
+            --fixture-digest "$FIXTURE_DIGEST" \
+            --artifact-path carriers/assay.enforcement_health.v1.json \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --out /tmp/recipe.provenance.json
+
+      - name: Upload enforcement-health carrier + provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: enforcement-health-carrier
+          path: |
+            /tmp/enforcement-health.json
+            /tmp/recipe.provenance.json
+          if-no-files-found: error
+
+  enforcement-health-promotion:
+    name: Enforcement Health Promotion
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base-tree
+
+      - uses: ./.github/actions/setup-node-harness
+
+      - name: Verify enforcement-health promotion
+        working-directory: harness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          PROMOTING_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          npx tsx src/enforcement_health_promotion_cli.ts \
+            --base-matrix ../base-tree/harness/suite-compatibility.json \
+            --head-matrix suite-compatibility.json \
+            --promoting-head "$PROMOTING_HEAD" \
+            --repo-root ..
