@@ -388,8 +388,10 @@ jobs:
             echo "- failure: ${failure_events} events"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Existing jobs stay validation-if-present; requiring the index on every
-  # job is a later require-slice.
+  # Only validator callsite. There is no later require-slice.
+  # sandbox-command: true proves index/bundle integrity only (not a whole-action verdict).
+  # A future Windows producer can hard-fail via assay-action#37
+  # (Windows drive-letter / index_abs); that is a non-claim, not a code path.
   action-evidence-index:
     name: Action Evidence Index
     runs-on: ubuntu-latest
@@ -426,7 +428,7 @@ jobs:
           INDEX_DIGEST: ${{ steps.assay.outputs.evidence_index_digest }}
           EVIDENCE_STATE: ${{ steps.assay.outputs.evidence_state }}
           VERIFIED: ${{ steps.assay.outputs.verified }}
-        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED" --if-present
+        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED" --require-verified
 
   assay-release-compatibility:
     name: Assay Release Compatibility Recipes

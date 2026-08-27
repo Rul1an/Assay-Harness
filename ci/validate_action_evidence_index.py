@@ -307,12 +307,18 @@ def validate_index(
     evidence_state: Any,
     verified: Any,
     if_present: bool = False,
+    require_verified: bool = False,
 ) -> None:
     state_text = _as_text(evidence_state).strip() if isinstance(evidence_state, str) else evidence_state
     digest_text = _as_text(digest).strip() if not _is_empty(digest) else ""
     verified_value = verified
     if isinstance(verified, str):
         verified_value = verified.strip()
+
+    if if_present and require_verified:
+        raise ValidationError(
+            "--if-present and --require-verified are incompatible"
+        )
 
     empties = (
         _is_empty(index_path),
@@ -420,6 +426,9 @@ def validate_index(
 
     _check_state_consistency(state_text, verified_bool, rows, complete)
 
+    if require_verified and state_text != "verified":
+        raise ValidationError("evidence_state must be verified")
+
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
@@ -436,6 +445,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-state", default="")
     parser.add_argument("--verified", default="")
     parser.add_argument("--if-present", action="store_true")
+    parser.add_argument("--require-verified", action="store_true")
     try:
         args = parser.parse_args(argv)
         validate_index(
@@ -445,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
             args.evidence_state,
             args.verified,
             if_present=args.if_present,
+            require_verified=args.require_verified,
         )
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)

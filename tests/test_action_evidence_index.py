@@ -166,8 +166,21 @@ class TestWorkflowCallsite(unittest.TestCase):
     def test_verify_evidence_job_remains(self):
         self.assertIn("name: Verify Evidence", self.text)
 
-    def test_later_require_slice_comment(self):
-        self.assertIn("later require-slice", self.text)
+    def test_live_job_require_slice_comment(self):
+        """Pin only-callsite wording; reject leftover later-require implication."""
+        self.assertIn("Only validator callsite", self.text)
+        self.assertIn("no later require-slice", self.text)
+        self.assertIn(
+            "sandbox-command: true proves index/bundle integrity only",
+            self.text,
+        )
+        self.assertIn("not a whole-action verdict", self.text)
+        leftover = self.text.replace("no later require-slice", "")
+        leftover = leftover.replace("There is no later require-slice", "")
+        leftover = leftover.replace("there is no later require-slice", "")
+        self.assertNotIn("later require-slice", leftover)
+        self.assertNotIn("Other jobs stay unchanged", self.text)
+        self.assertNotIn("do not broaden the consumer to every job", self.text)
 
 
 class TestWorkflowStructuralGuard(unittest.TestCase):
@@ -203,9 +216,64 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
             "--digest",
             "--evidence-state",
             "--verified",
-            "--if-present",
+            "--require-verified",
         ):
             self.assertIn(flag, run)
+        self.assertNotIn("--if-present", run)
+
+    def test_validate_step_does_not_use_if_present(self):
+        """Require slice: this job's Validate step must not pass --if-present."""
+        run = self.step["run"]
+        self.assertNotIn("--if-present", run)
+        self.assertIn("python3 ci/validate_action_evidence_index.py", run)
+
+    def test_workflow_callsite_all_empty_refuses(self):
+        """Workflow-level all-empty refuse at the only validator callsite.
+
+        Missing RED is this callsite, not unit tests. Existing
+        test_cli_require_verified_rejects_absent_and_empty and
+        _validate(..., require_verified=True) already prove all-empty refuse
+        at the CLI/API; those are not this RED.
+
+        Extracts the parsed Validate step run line and executes that exact
+        command with empty INDEX_PATH / INDEX_DIGEST / EVIDENCE_STATE /
+        VERIFIED and GITHUB_WORKSPACE=temp. Expects non-zero. Fails if the
+        callsite still has --if-present, because then all-empty would pass.
+
+        Non-claim: a future Windows producer can hard-fail via
+        assay-action#37 (Windows drive-letter / index_abs). Not a code path,
+        not a skip, not a Windows job. sandbox-command: true is not a
+        whole-action verdict.
+        """
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertEqual(
+            text.count("ci/validate_action_evidence_index.py"),
+            1,
+            "validator must appear exactly once (only callsite; no later-require jobs)",
+        )
+        step = _validate_action_evidence_index_step(self.data)
+        run = step["run"]
+        if "--if-present" in run:
+            self.fail("'--if-present' unexpectedly")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["INDEX_PATH"] = ""
+            env["INDEX_DIGEST"] = ""
+            env["EVIDENCE_STATE"] = ""
+            env["VERIFIED"] = ""
+            env["GITHUB_WORKSPACE"] = tmp
+            proc = subprocess.run(
+                ["sh", "-c", run],
+                cwd=str(REPO_ROOT),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(
+                proc.returncode,
+                0,
+                f"empty handshake accepted: rc={proc.returncode} stderr={proc.stderr!r}",
+            )
 
     def test_this_module_does_not_import_pyyaml(self):
         tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
@@ -294,14 +362,17 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = _load_validator()
 
-    def _validate(self, workspace, index_path, digest, evidence_state, verified, if_present=False):
+    def _validate(self, workspace, index_path, digest, evidence_state, verified, if_present=False, require_verified=False):
+        kwargs = {"if_present": if_present}
+        if require_verified:
+            kwargs["require_verified"] = True
         return self.mod.validate_index(
             workspace,
             index_path,
             digest,
             evidence_state,
             verified,
-            if_present=if_present,
+            **kwargs,
         )
 
     def _expect_error(self, *args, substring=None, **kwargs):
@@ -634,6 +705,41 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
             self._validate(ws, "", "", "", "", if_present=True)
+
+    def test_if_present_plus_require_verified_api_rejects_all_empty(self):
+        """Combined flags must fail before the if_present all-empty return."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            exc = self._expect_error(
+                ws, "", "", "", "", if_present=True, require_verified=True
+            )
+            self.assertIn("incompatible", str(exc))
+
+    def test_if_present_plus_require_verified_cli_rejects_all_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--workspace",
+                    str(ws),
+                    "--index",
+                    "",
+                    "--digest",
+                    "",
+                    "--evidence-state",
+                    "",
+                    "--verified",
+                    "",
+                    "--if-present",
+                    "--require-verified",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertIn("incompatible", proc.stderr)
 
     def test_if_present_partial_handshake_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1258,6 +1364,199 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                 ws, _index_payload([row], complete=False)
             )
             self._expect_error(ws, index_path, digest, "discovered", False)
+
+
+class TestRequireVerifiedSlice(unittest.TestCase):
+    """#177 require slice: absence/empty and non-verified states fail without --if-present."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_validator()
+
+    def _validate(self, workspace, index_path, digest, evidence_state, verified, **kwargs):
+        return self.mod.validate_index(
+            workspace,
+            index_path,
+            digest,
+            evidence_state,
+            verified,
+            **kwargs,
+        )
+
+    def _expect_error(self, *args, substring=None, **kwargs):
+        with self.assertRaises(self.mod.ValidationError) as ctx:
+            self._validate(*args, **kwargs)
+        if substring is not None:
+            self.assertIn(substring, str(ctx.exception))
+        return ctx.exception
+
+    def test_empty_outputs_fail_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            self._expect_error(ws, "", "", "", "")
+
+    def test_empty_index_fails_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            self._expect_error(ws, "", digest, "absent", False)
+
+    def test_empty_digest_fails_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            self._expect_error(ws, index_path, "", "absent", False)
+
+    def test_empty_evidence_state_fails_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            self._expect_error(ws, index_path, digest, "", False)
+
+    def test_empty_verified_fails_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            self._expect_error(ws, index_path, digest, "absent", "")
+
+    def test_absent_index_file_fails_without_if_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            digest = "a" * 64
+            self._expect_error(ws, "missing-index.json", digest, "absent", False)
+
+    def test_evidence_state_not_verified_fails_require_verified_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(ws, _index_payload([], complete=True))
+            self._expect_error(
+                ws,
+                index_path,
+                digest,
+                "absent",
+                False,
+                require_verified=True,
+                substring="verified",
+            )
+
+    def test_evidence_state_not_verified_fails_require_verified_discovered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a.tar.gz",
+                    content,
+                    integrity="pending",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=False)
+            )
+            self._expect_error(
+                ws,
+                index_path,
+                digest,
+                "discovered",
+                False,
+                require_verified=True,
+                substring="verified",
+            )
+
+    def test_evidence_state_not_verified_fails_require_verified_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a.tar.gz",
+                    content,
+                    integrity="rejected",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=True)
+            )
+            self._expect_error(
+                ws,
+                index_path,
+                digest,
+                "rejected",
+                False,
+                require_verified=True,
+                substring="verified",
+            )
+
+    def test_require_verified_green_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            content = _plant_file(ws, "evidence/a.tar.gz")
+            bundles = [
+                _bundle(
+                    "evidence/a.tar.gz",
+                    content,
+                    integrity="verified",
+                    source="discovered",
+                )
+            ]
+            index_path, digest = _write_index(
+                ws, _index_payload(bundles, complete=True)
+            )
+            self._validate(
+                ws, index_path, digest, "verified", True, require_verified=True
+            )
+
+    def test_cli_require_verified_rejects_absent_and_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_path, digest = _write_index(
+                ws, _index_payload([], complete=True)
+            )
+            absent = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--workspace",
+                    str(ws),
+                    "--index",
+                    str(index_path),
+                    "--digest",
+                    digest,
+                    "--evidence-state",
+                    "absent",
+                    "--verified",
+                    "false",
+                    "--require-verified",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(absent.returncode, 2, absent.stderr)
+            self.assertIn("verified", absent.stderr)
+
+            empty = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--workspace",
+                    str(ws),
+                    "--index",
+                    "",
+                    "--digest",
+                    "",
+                    "--evidence-state",
+                    "",
+                    "--verified",
+                    "",
+                    "--require-verified",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(empty.returncode, 2, empty.stderr)
+            self.assertNotIn("--if-present", empty.args)
 
 
 if __name__ == "__main__":
