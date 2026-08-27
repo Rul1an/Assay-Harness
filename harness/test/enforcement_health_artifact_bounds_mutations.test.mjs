@@ -103,7 +103,7 @@ async function loadScratch(mutate) {
   const original = readFileSync(DIST, "utf8");
   const next = mutate(original);
   assert.notEqual(next, original, "scratch mutation must change production bytes");
-  const dest = join(mkdtempSync(join(ROOT, "scratch-")), "enforcement_health_artifact.js");
+  const dest = join(mkdtempSync(join(ROOT, "scratch-")), "enforcement_health_artifact.mjs");
   writeFileSync(dest, next);
   return import(pathToFileURL(dest).href);
 }
