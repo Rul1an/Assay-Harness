@@ -74,11 +74,12 @@ def _index_payload(bundles: list[dict], *, complete: bool) -> dict:
     }
 
 
-def _write_index(workspace: Path, payload: dict, name: str = "index.json") -> tuple[Path, str]:
+def _write_index(workspace: Path, payload: dict, name: str = "index.json") -> tuple[str, str]:
+    """Write index under workspace; return workspace-relative name (never an absolute Path)."""
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     path = workspace / name
     _write_bytes(path, raw)
-    return path, _sha256_hex(raw)
+    return name, _sha256_hex(raw)
 
 
 def _plant_file(workspace: Path, rel: str, content: bytes = b"bundle-bytes") -> bytes:
@@ -360,9 +361,8 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                 b'{"schema":"%s","schema":"%s","bundles":[],"complete":true}'
                 % (SCHEMA.encode("ascii"), SCHEMA.encode("ascii"))
             )
-            index_path = ws / "dup.json"
-            _write_bytes(index_path, raw)
-            self._expect_error(ws, index_path, _sha256_hex(raw), "absent", False)
+            _write_bytes(ws / "dup.json", raw)
+            self._expect_error(ws, "dup.json", _sha256_hex(raw), "absent", False)
 
     def test_unknown_top_level_member_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -625,10 +625,9 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             ws = Path(tmp)
             raw = b"{" + (b" " * ONE_MIB) + b"}"
             self.assertGreater(len(raw), ONE_MIB)
-            index_path = ws / "huge.json"
-            _write_bytes(index_path, raw)
+            _write_bytes(ws / "huge.json", raw)
             self._expect_error(
-                ws, index_path, _sha256_hex(raw), "absent", False, substring="ceiling"
+                ws, "huge.json", _sha256_hex(raw), "absent", False, substring="ceiling"
             )
 
     def test_if_present_empty_handshake_ok(self):
@@ -778,7 +777,7 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             ):
                 self._expect_error(
                     ws,
-                    index_path,
+                    "huge.json",
                     _sha256_hex(raw),
                     "absent",
                     False,
@@ -912,6 +911,41 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                     self.fail(f"expected ValidationError for {rel!r}")
 
 
+    def test_relative_assay_reports_evidence_index_accepted(self):
+        """Workspace-relative .assay-reports/evidence-index.json accepts (empty absent handshake)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_rel, digest = _write_index(
+                ws,
+                _index_payload([], complete=True),
+                name=".assay-reports/evidence-index.json",
+            )
+            self._validate(ws, index_rel, digest, "absent", False)
+
+    def test_absolute_same_file_index_path_refused_before_open(self):
+        """The same in-workspace index as an absolute path is refused; Path.open is not called."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            index_rel, digest = _write_index(
+                ws,
+                _index_payload([], complete=True),
+                name=".assay-reports/evidence-index.json",
+            )
+            abs_text = str((ws / index_rel).resolve())
+            self.assertTrue(Path(abs_text).is_absolute())
+            opened = []
+            real_open = Path.open
+
+            def spy_open(self, *args, **kwargs):
+                opened.append(Path(self))
+                return real_open(self, *args, **kwargs)
+
+            with patch.object(Path, "open", spy_open):
+                self._expect_error(ws, abs_text, digest, "absent", False)
+            self.assertEqual(
+                opened, [], "absolute index_path must not be opened"
+            )
+
     def test_absolute_index_path_rejected(self):
         """Absolute index in a separate temp dir must fail before a successful read."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -920,7 +954,8 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             other = base / "other"
             ws.mkdir()
             other.mkdir()
-            index_path, digest = _write_index(other, _index_payload([], complete=True))
+            index_rel, digest = _write_index(other, _index_payload([], complete=True))
+            abs_index = (other / index_rel).resolve()
             opened = []
             real_open = Path.open
 
@@ -929,9 +964,8 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                 return real_open(self, *args, **kwargs)
 
             with patch.object(Path, "open", spy_open):
-                self._expect_error(ws, str(index_path), digest, "absent", False)
-            outside = Path(index_path).resolve()
-            self.assertNotIn(outside, opened)
+                self._expect_error(ws, str(abs_index), digest, "absent", False)
+            self.assertNotIn(abs_index, opened)
 
     def test_outside_relative_index_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -948,11 +982,11 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
     def test_symlinked_index_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
-            real_path, digest = _write_index(
+            real_rel, digest = _write_index(
                 ws, _index_payload([], complete=True), name="real.json"
             )
             link = ws / "link.json"
-            link.symlink_to(real_path)
+            link.symlink_to(ws / real_rel)
             opened = []
             real_open = Path.open
 
@@ -962,9 +996,9 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
 
             with patch.object(Path, "open", spy_open):
                 self._expect_error(
-                    ws, str(link), digest, "absent", False, substring="symlink"
+                    ws, "link.json", digest, "absent", False, substring="symlink"
                 )
-            self.assertNotIn(Path(real_path).resolve(), opened)
+            self.assertNotIn((ws / real_rel).resolve(), opened)
 
     def test_symlinked_parent_dir_index_rejected(self):
         """alias -> real plus alias/index.json is a second identity; reject before read."""
@@ -972,7 +1006,7 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             ws = Path(tmp)
             real_dir = ws / "real"
             real_dir.mkdir()
-            index_path, digest = _write_index(
+            index_rel, digest = _write_index(
                 real_dir, _index_payload([], complete=True)
             )
             alias = ws / "alias"
@@ -988,7 +1022,7 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
                 self._expect_error(
                     ws, "alias/index.json", digest, "absent", False, substring="symlink"
                 )
-            self.assertNotIn(Path(index_path).resolve(), opened)
+            self.assertNotIn((real_dir / index_rel).resolve(), opened)
             # Positive pair: the canonical relative path still validates.
             self._validate(ws, "real/index.json", digest, "absent", False)
 

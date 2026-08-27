@@ -341,26 +341,11 @@ def validate_index(
     root = ws.resolve()
     raw_index = _as_text(index_path)
     given = Path(raw_index)
-    if given.is_absolute():
-        try:
-            given_resolved = given.resolve(strict=False)
-        except OSError as exc:
-            raise ValidationError(f"unsafe index path: {index_path}") from exc
-        if given_resolved != root and root not in given_resolved.parents:
-            raise ValidationError(
-                f"unsafe index path (escapes workspace): {raw_index}"
-            )
-        try:
-            index_rel = given_resolved.relative_to(root).as_posix()
-        except ValueError as exc:
-            raise ValidationError(
-                f"unsafe index path (escapes workspace): {raw_index}"
-            ) from exc
-        idx_candidate = given
-    else:
-        index_rel = raw_index
-        _assert_safe_relpath(index_rel)
-        idx_candidate = root / index_rel
+    if given.is_absolute() or posixpath.isabs(raw_index) or os.path.isabs(raw_index):
+        raise ValidationError(f"unsafe index path (absolute): {raw_index}")
+    index_rel = raw_index
+    _assert_safe_relpath(index_rel)
+    idx_candidate = root / index_rel
 
     _assert_safe_relpath(index_rel)
     try:
