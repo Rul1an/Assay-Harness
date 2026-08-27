@@ -71,10 +71,41 @@ after(() => {
   rmSync(FIXTURE_ROOT, { recursive: true, force: true });
 });
 
-function ownedProbeTemps() {
-  return readdirSync(tmpdir())
-    .filter((name) => name.startsWith(`v54-enforcement-health-${process.pid}-`))
-    .map((name) => join(tmpdir(), name));
+const PROBE_MODULE = new URL("../scripts/probe-v54-enforcement-health.mjs", import.meta.url).href;
+const PROBE_TEMP_PREFIX = "v54-enforcement-health-";
+
+function leftoverOwnedProbeTemps(parent) {
+  return readdirSync(parent)
+    .filter((name) => name.startsWith(PROBE_TEMP_PREFIX))
+    .map((name) => join(parent, name));
+}
+
+function invokeLocalProducer(staged) {
+  const parent = mkdtempSync(join(tmpdir(), "v54-owned-parent-"));
+  const runner = join(parent, "invoke.mjs");
+  writeFileSync(
+    runner,
+    [
+      `import { executeLocalProducer } from ${JSON.stringify(PROBE_MODULE)};`,
+      `const staged = ${JSON.stringify({ asset: staged.asset, out: staged.out })};`,
+      "try {",
+      "  const argv = executeLocalProducer(staged);",
+      '  process.stdout.write(JSON.stringify({ ok: true, argv }) + "\\n");',
+      "} catch (error) {",
+      "  process.stdout.write(JSON.stringify({",
+      "    ok: false,",
+      "    message: error instanceof Error ? error.message : String(error),",
+      '  }) + "\\n");',
+      "  process.exitCode = 1;",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const ran = spawnSync(process.execPath, [runner], {
+    encoding: "utf8",
+    env: { ...process.env, TMPDIR: parent, TMP: parent, TEMP: parent },
+  });
+  return { parent, leftover: leftoverOwnedProbeTemps(parent), ran };
 }
 
 function packAsset(dir, { assaySource, layout = LAYOUT } = {}) {
@@ -314,17 +345,36 @@ test("missing or non-canonical allowed_connect_tcp_ports fails closed", () => {
 });
 
 test("success and failing producer leave no owned v54-enforcement-health temp dirs", () => {
-  const before = new Set(ownedProbeTemps());
-  const success = stageGreen(tempDir());
-  executeLocalProducer(success);
-  assert.ok(existsSync(success.out), "caller --out must be preserved");
-  const leftoverSuccess = ownedProbeTemps().filter((path) => !before.has(path));
-  assert.deepEqual(leftoverSuccess, [], leftoverSuccess.join(" "));
+  const self = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  assert.match(self, /leftoverOwnedProbeTemps\(parent\)/);
+  assert.doesNotMatch(self, /leftover:\s*\[\s*\]/);
+  assert.doesNotMatch(self, /readdirSync\(tmpdir\(\)\)/);
+  const foreign = mkdtempSync(join(tmpdir(), PROBE_TEMP_PREFIX));
+  try {
+    const success = stageGreen(tempDir());
+    const succeeded = invokeLocalProducer(success);
+    try {
+      assert.equal(succeeded.ran.status, 0, succeeded.ran.stderr || succeeded.ran.stdout);
+      assert.ok(existsSync(success.out), "caller --out must be preserved");
+      assert.deepEqual(succeeded.leftover, [], succeeded.leftover.join(" "));
+      assert.ok(existsSync(foreign), "foreign prefix dir must remain");
+    } finally {
+      rmSync(succeeded.parent, { recursive: true, force: true });
+    }
 
-  const failing = stageGreen(tempDir(), { exit: 7 });
-  assert.throws(() => executeLocalProducer(failing), /exit|nonzero|status/i);
-  const leftoverFail = ownedProbeTemps().filter((path) => !before.has(path));
-  assert.deepEqual(leftoverFail, [], leftoverFail.join(" "));
+    const failing = stageGreen(tempDir(), { exit: 7 });
+    const failed = invokeLocalProducer(failing);
+    try {
+      assert.notEqual(failed.ran.status, 0, "failing producer must exit nonzero");
+      assert.match(`${failed.ran.stdout}\n${failed.ran.stderr}`, /exit|nonzero|status/i);
+      assert.deepEqual(failed.leftover, [], failed.leftover.join(" "));
+      assert.ok(existsSync(foreign), "foreign prefix dir must remain");
+    } finally {
+      rmSync(failed.parent, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(foreign, { recursive: true, force: true });
+  }
 });
 
 test("near-miss: flipping enforcement_class or a confirmation boolean fails the active claim", () => {
