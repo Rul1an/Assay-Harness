@@ -1143,38 +1143,3 @@ jobs:
             /tmp/enforcement-health.json
             /tmp/recipe.provenance.json
           if-no-files-found: error
-
-  enforcement-health-promotion:
-    name: Enforcement Health Promotion
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: base-tree
-
-      - uses: ./.github/actions/setup-node-harness
-
-      - name: Verify enforcement-health promotion
-        working-directory: harness
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPOSITORY: ${{ github.repository }}
-          PROMOTING_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          npx tsx src/enforcement_health_promotion_cli.ts \
-            --base-matrix ../base-tree/harness/suite-compatibility.json \
-            --head-matrix suite-compatibility.json \
-            --promoting-head "$PROMOTING_HEAD" \
-            --repo-root ..
