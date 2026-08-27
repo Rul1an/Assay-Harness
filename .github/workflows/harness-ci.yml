@@ -388,8 +388,8 @@ jobs:
             echo "- failure: ${failure_events} events"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Existing jobs stay validation-if-present; requiring the index on every
-  # job is a later require-slice.
+  # Dedicated live producing job requires a verified Action evidence index.
+  # Other jobs stay unchanged; do not broaden the consumer to every job.
   action-evidence-index:
     name: Action Evidence Index
     runs-on: ubuntu-latest
@@ -426,7 +426,7 @@ jobs:
           INDEX_DIGEST: ${{ steps.assay.outputs.evidence_index_digest }}
           EVIDENCE_STATE: ${{ steps.assay.outputs.evidence_state }}
           VERIFIED: ${{ steps.assay.outputs.verified }}
-        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED" --if-present
+        run: python3 ci/validate_action_evidence_index.py --workspace "$GITHUB_WORKSPACE" --index "$INDEX_PATH" --digest "$INDEX_DIGEST" --evidence-state "$EVIDENCE_STATE" --verified "$VERIFIED" --require-verified
 
   assay-release-compatibility:
     name: Assay Release Compatibility Recipes
