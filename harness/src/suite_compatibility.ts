@@ -180,14 +180,62 @@ export function canonicalize(value: unknown): string {
   throw new Error(`unsupported value type in canonicalization: ${typeof value}`);
 }
 
-/**
- * The matrix digest is `sha256` over JCS-canonicalized `{carrier_rows,
- * recipe_rows}` ONLY — excluding `generated` (date churn) and `manifest` itself.
- * Same rows in any key order produce the same digest; a changed row changes it.
- */
+/** sha256(JCS({carrier_rows, recipe_rows})); excludes generated and manifest. */
 export function computeMatrixDigest(rows: { carrier_rows: unknown; recipe_rows: unknown }): string {
   const subject = { carrier_rows: rows.carrier_rows ?? [], recipe_rows: rows.recipe_rows ?? [] };
   return "sha256:" + createHash("sha256").update(canonicalize(subject), "utf-8").digest("hex");
+}
+
+export interface GeneratedProjection {
+  harness_version: string;
+  last_verified_assay: string;
+  assay_default: string;
+  verified_on: string;
+}
+
+function proofAssayVersions(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  const versions: string[] = [];
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null) continue;
+    const version = (row as { proof?: { assay_version?: unknown } }).proof?.assay_version;
+    if (typeof version === "string" && version.length > 0) versions.push(version);
+  }
+  return versions;
+}
+
+function maxAssayVersion(versions: string[]): string {
+  if (versions.length === 0) {
+    throw new Error("no proof.assay_version values to derive last_verified_assay");
+  }
+  return versions.reduce((best, current) => {
+    const left = best.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const right = current.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+      const delta = (right[i] ?? 0) - (left[i] ?? 0);
+      if (delta !== 0) return delta > 0 ? current : best;
+    }
+    return best;
+  });
+}
+
+/** One production derivation path for the top-level `generated` object. */
+export function deriveGenerated(input: {
+  harnessVersion: string;
+  carrier_rows: unknown;
+  recipe_rows: unknown;
+  verifiedOn: string;
+}): GeneratedProjection {
+  const lastVerified = maxAssayVersion([
+    ...proofAssayVersions(input.carrier_rows),
+    ...proofAssayVersions(input.recipe_rows),
+  ]);
+  return {
+    harness_version: input.harnessVersion,
+    last_verified_assay: lastVerified,
+    assay_default: lastVerified,
+    verified_on: input.verifiedOn,
+  };
 }
 
 // ---------------------------------------------------------------------------

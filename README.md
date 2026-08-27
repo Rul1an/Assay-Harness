@@ -293,7 +293,7 @@ the Harness never silently accepts a carrier it does not recognize. A golden-dri
 test pins every registered schema's shape, so a future producer change is caught
 rather than mis-parsed.
 
-## Suite compatibility matrix (`suite check` / `suite matrix`)
+## Suite compatibility matrix (`suite check` / `suite matrix` / `suite generate`)
 
 The suite compatibility matrix (`suite.compatibility.v0`, checked in at
 `harness/suite-compatibility.json`) is a versioned suite-contract artifact: it records
@@ -309,6 +309,15 @@ real producer golden bytes) and `end_to_end` (the released Assay binary emitted 
 and the Harness consumed it in a hosted run). A `declared / pending` end-to-end state means
 the first is proven but the second is not yet, so it renders as pending, never as approved.
 
+The top-level `generated` object is a derived projection, not a hand-kept claim about the
+present. `harness_version` comes from `harness/package.json`. `last_verified_assay` is the
+highest `proof.assay_version` already recorded in the matrix — an event fact, not a
+current recommendation or a supported range. `assay_default` is a deprecated generated
+alias of `last_verified_assay` (kept so public v0 readers do not break). `verified_on`
+is the committed historical event date and is never rewritten from the current clock.
+Regenerating `generated` does not change `carrier_rows`, `recipe_rows`, proofs, or
+`manifest.digest`.
+
 ```bash
 # Validate the matrix shape + digest only
 npx tsx harness/src/cli.ts suite check --matrix harness/suite-compatibility.json
@@ -316,12 +325,19 @@ npx tsx harness/src/cli.ts suite check --matrix harness/suite-compatibility.json
 # Also check drift vs the live carrier registry (CI)
 npx tsx harness/src/cli.ts suite check --matrix harness/suite-compatibility.json --against-registry
 
+# Fail closed if committed generated drifted (read-only; CI)
+npx tsx harness/src/cli.ts suite generate --matrix harness/suite-compatibility.json --check
+
+# Rewrite generated only from package.json + max proof.assay_version
+npx tsx harness/src/cli.ts suite generate --matrix harness/suite-compatibility.json
+
 # Project a reviewer-facing Markdown (or JSON) view
 npx tsx harness/src/cli.ts suite matrix --matrix harness/suite-compatibility.json
 ```
 
 A malformed matrix, an unknown enum state, a digest mismatch, a `proven` end-to-end row
-without its `hosted_run` + `artifact_digest`, or (in registry mode) drift between the
+without its `hosted_run` + `artifact_digest`, generated-projection drift under
+`suite generate --check`, or (in registry mode) drift between the
 matrix and the registry is a contract error (exit 3). An unknown state is never clean.
 
 ## Evidence Pack (`evidence-pack create` / `evidence-pack verify`)

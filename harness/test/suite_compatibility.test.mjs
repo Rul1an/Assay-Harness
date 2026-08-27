@@ -1,11 +1,16 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { load as loadYaml } from "js-yaml";
 import {
   SUITE_COMPATIBILITY_SCHEMA,
   validateSuiteCompatibility,
   computeMatrixDigest,
+  deriveGenerated,
   driftAgainstRegistry,
   buildSuiteReport,
   loadSuiteReport,
@@ -16,6 +21,8 @@ const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/suite-compatibility/${name}`, import.meta.url));
 // The canonical, checked-in suite asset (CI gates the real matrix, not a copy).
 const ASSET = fileURLToPath(new URL("../suite-compatibility.json", import.meta.url));
+const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
+const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
 test("schema constant is the frozen suite id", () => {
@@ -316,4 +323,174 @@ test("CLI suite matrix: --format json stays complete + parseable above the 8KB p
   assert.equal(r.status, 0, r.stderr);
   assert.ok(r.stdout.length > 8192, `matrix JSON must exceed the 8KB pipe buffer to guard the flush; got ${r.stdout.length} bytes`);
   assert.doesNotThrow(() => JSON.parse(r.stdout), "piped stdout must be complete, parseable JSON (not truncated)");
+});
+
+// ---------------------------------------------------------------------------
+// Generated projection (one derivation path; digest-invariant)
+// ---------------------------------------------------------------------------
+
+const PINNED_LAST_VERIFIED = "v3.28.0";
+const PINNED_VERIFIED_ON = "2026-06-17";
+
+function committedMatrix() {
+  return JSON.parse(readFileSync(ASSET, "utf8"));
+}
+
+function harnessPackageVersion() {
+  const version = JSON.parse(readFileSync(PACKAGE, "utf8")).version;
+  assert.equal(typeof version, "string");
+  assert.ok(version.length > 0);
+  return version;
+}
+
+function stageGeneratedWorkspace(mutate) {
+  const dir = mkdtempSync(join(tmpdir(), "suite-generated-"));
+  const matrix = committedMatrix();
+  const pkg = JSON.parse(readFileSync(PACKAGE, "utf8"));
+  mutate({ matrix, pkg });
+  const matrixPath = join(dir, "suite-compatibility.json");
+  writeFileSync(matrixPath, JSON.stringify(matrix, null, 2) + "\n");
+  writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
+  return { dir, matrixPath };
+}
+
+test("deriveGenerated is the single rule: package version + max proof.assay_version + alias equality", () => {
+  const matrix = committedMatrix();
+  const expected = deriveGenerated({
+    harnessVersion: harnessPackageVersion(),
+    carrier_rows: matrix.carrier_rows,
+    recipe_rows: matrix.recipe_rows,
+    verifiedOn: matrix.generated.verified_on,
+  });
+  assert.equal(expected.harness_version, harnessPackageVersion());
+  assert.equal(expected.last_verified_assay, PINNED_LAST_VERIFIED);
+  assert.equal(expected.assay_default, expected.last_verified_assay, "deprecated assay_default alias must equal last_verified_assay");
+  assert.equal(expected.verified_on, PINNED_VERIFIED_ON);
+  assert.notEqual(expected.verified_on, new Date().toISOString().slice(0, 10), "verified_on is a historical event date, never today");
+});
+
+test("deriveGenerated takes the highest proof.assay_version across carrier and recipe rows", () => {
+  const derived = deriveGenerated({
+    harnessVersion: "1.2.3",
+    carrier_rows: [{ proof: { assay_version: "v3.9.0" } }, { proof: { assay_version: "v3.27.0" } }],
+    recipe_rows: [{ proof: { assay_version: "v3.28.0" } }],
+    verifiedOn: "2020-01-01",
+  });
+  assert.equal(derived.last_verified_assay, "v3.28.0");
+  assert.equal(derived.assay_default, "v3.28.0");
+  assert.equal(derived.harness_version, "1.2.3");
+  assert.equal(derived.verified_on, "2020-01-01");
+});
+
+test("committed generated matches deriveGenerated (harness_version + last-verified + alias)", () => {
+  const matrix = committedMatrix();
+  const expected = deriveGenerated({
+    harnessVersion: harnessPackageVersion(),
+    carrier_rows: matrix.carrier_rows,
+    recipe_rows: matrix.recipe_rows,
+    verifiedOn: matrix.generated.verified_on,
+  });
+  assert.deepEqual(matrix.generated, expected);
+  assert.equal(matrix.generated.last_verified_assay, matrix.generated.assay_default);
+});
+
+test("changing only generated leaves computeMatrixDigest and matrix validation unchanged", () => {
+  const matrix = committedMatrix();
+  const digestBefore = computeMatrixDigest(matrix);
+  const validationBefore = validateSuiteCompatibility(matrix);
+  assert.equal(validationBefore.valid, true, JSON.stringify(validationBefore.errors));
+  matrix.generated = {
+    harness_version: "9.9.9",
+    last_verified_assay: "v9.9.9",
+    assay_default: "v9.9.9",
+    verified_on: "1999-01-01",
+  };
+  assert.equal(computeMatrixDigest(matrix), digestBefore);
+  const validationAfter = validateSuiteCompatibility(matrix);
+  assert.equal(validationAfter.valid, true, JSON.stringify(validationAfter.errors));
+});
+
+test("CLI suite generate --check is clean on the committed matrix and never rewrites", () => {
+  const before = readFileSync(ASSET);
+  const r = runCli("generate", "--matrix", ASSET, "--check");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readFileSync(ASSET), before);
+});
+
+test("CLI suite generate --check fails when committed harness_version or last-verified alias drifts", () => {
+  for (const mutate of [
+    (matrix) => {
+      matrix.generated.harness_version = "0.0.0-drift";
+    },
+    (matrix) => {
+      matrix.generated.last_verified_assay = "v0.0.0";
+    },
+    (matrix) => {
+      matrix.generated.assay_default = "v0.0.0";
+    },
+  ]) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => mutate(matrix));
+    const before = readFileSync(matrixPath);
+    const r = runCli("generate", "--matrix", matrixPath, "--check");
+    assert.equal(r.status, 3, r.stderr);
+    assert.deepEqual(readFileSync(matrixPath), before, "--check must never rewrite");
+  }
+});
+
+test("CLI suite generate --check fails when sibling package.json version drifts", () => {
+  const { matrixPath } = stageGeneratedWorkspace(({ pkg }) => {
+    pkg.version = "9.9.9-package-drift";
+  });
+  const before = readFileSync(matrixPath);
+  const r = runCli("generate", "--matrix", matrixPath, "--check");
+  assert.equal(r.status, 3, r.stderr);
+  assert.deepEqual(readFileSync(matrixPath), before, "--check must never rewrite");
+});
+
+test("CLI suite generate --check fails when the highest proof.assay_version moves until generated follows", () => {
+  const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+    matrix.carrier_rows[0].proof.assay_version = "v9.9.9";
+  });
+  const drifted = runCli("generate", "--matrix", matrixPath, "--check");
+  assert.equal(drifted.status, 3, drifted.stderr);
+
+  const matrix = JSON.parse(readFileSync(matrixPath, "utf8"));
+  matrix.generated.last_verified_assay = "v9.9.9";
+  matrix.generated.assay_default = "v9.9.9";
+  writeFileSync(matrixPath, JSON.stringify(matrix, null, 2) + "\n");
+  const followed = runCli("generate", "--matrix", matrixPath, "--check");
+  assert.equal(followed.status, 0, followed.stderr);
+});
+
+test("CLI suite generate no-op on a clean projection is byte-stable and digest-invariant", () => {
+  const { matrixPath } = stageGeneratedWorkspace(() => {});
+  const before = readFileSync(matrixPath);
+  const digestBefore = computeMatrixDigest(JSON.parse(before.toString("utf8")));
+  const r = runCli("generate", "--matrix", matrixPath);
+  assert.equal(r.status, 0, r.stderr);
+  const after = readFileSync(matrixPath);
+  assert.deepEqual(after, before);
+  const parsed = JSON.parse(after.toString("utf8"));
+  assert.equal(computeMatrixDigest(parsed), digestBefore);
+  assert.equal(validateSuiteCompatibility(parsed).valid, true);
+});
+
+test("Harness CI invokes read-only suite generate --check (removing it must fail this guard)", () => {
+  const workflowText = readFileSync(WORKFLOW, "utf8");
+  const workflow = loadYaml(workflowText);
+  assert.equal(typeof workflow, "object");
+  const runs = Object.values(workflow.jobs ?? {}).flatMap((job) =>
+    (job.steps ?? []).map((step) => step.run).filter((run) => typeof run === "string"),
+  );
+  const invocation = runs.find(
+    (run) =>
+      run.includes("suite generate") &&
+      run.includes("--check") &&
+      run.includes("suite-compatibility.json"),
+  );
+  assert.ok(
+    invocation,
+    "harness-ci.yml must invoke `suite generate --matrix suite-compatibility.json --check` in a job step run, not a comment",
+  );
+  assert.doesNotMatch(invocation, /(?<!-)--write\b/);
 });
