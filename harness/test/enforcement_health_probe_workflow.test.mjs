@@ -52,6 +52,13 @@ function reachableOn(expr, eventName, probeOnly) {
   assert.fail(`unpinned if expression: ${expr}`);
 }
 
+test("required Node tests have a finite ten-minute ceiling", () => {
+  const nodeTests = job(loadWorkflow(), "node-tests");
+  const timeoutMinutes = nodeTests["timeout-minutes"];
+  assert.equal(Number.isInteger(timeoutMinutes), true);
+  assert.ok(timeoutMinutes > 0 && timeoutMinutes <= 10);
+});
+
 test("probe_only dispatch input defaults to current recipe dispatch", () => {
   const workflow = loadWorkflow();
   const input = workflow.on.workflow_dispatch.inputs.probe_only;
