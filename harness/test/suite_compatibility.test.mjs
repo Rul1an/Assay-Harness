@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -498,6 +498,30 @@ test("CLI suite generate --check is clean on the committed matrix and never rewr
   assert.deepEqual(readFileSync(ASSET), before);
 });
 
+test("CLI suite generate --check on a clean unwritable matrix stays read-only", () => {
+  const { matrixPath: cleanPath } = stageGeneratedWorkspace(() => {});
+  const clean = runCli("generate", "--matrix", cleanPath, "--check");
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.equal(clean.stderr, "");
+
+  const { matrixPath } = stageGeneratedWorkspace(() => {});
+  chmodSync(matrixPath, 0o444);
+  const before = readFileSync(matrixPath);
+  const mtimeBefore = statSync(matrixPath).mtimeMs;
+  let r;
+  let mtimeAfter;
+  try {
+    r = runCli("generate", "--matrix", matrixPath, "--check");
+    mtimeAfter = statSync(matrixPath).mtimeMs;
+  } finally {
+    chmodSync(matrixPath, 0o644);
+  }
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, "");
+  assert.deepEqual(readFileSync(matrixPath), before, "--check must not rewrite a clean matrix");
+  assert.equal(mtimeAfter, mtimeBefore, "--check must not move mtime on a clean matrix");
+});
+
 test("CLI suite generate --check fails when committed harness_version or last-verified alias drifts", () => {
   for (const mutate of [
     (matrix) => {
@@ -554,6 +578,38 @@ test("CLI suite generate no-op on a clean projection is byte-stable and digest-i
   const parsed = JSON.parse(after.toString("utf8"));
   assert.equal(computeMatrixDigest(parsed), digestBefore);
   assert.equal(validateSuiteCompatibility(parsed).valid, true);
+});
+
+test("CLI suite generate write repairs a drifted four-field generated projection", () => {
+  const { dir, matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+    matrix.generated.harness_version = "0.0.0-DRIFT";
+    matrix.generated.last_verified_assay = "v0.0.1";
+    matrix.generated.assay_default = "v0.0.1";
+  });
+  const before = JSON.parse(readFileSync(matrixPath, "utf8"));
+  const digestBefore = computeMatrixDigest(before);
+  const expected = deriveGenerated({
+    harnessVersion: JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version,
+    carrier_rows: before.carrier_rows,
+    recipe_rows: before.recipe_rows,
+    verifiedOn: before.generated.verified_on,
+  });
+
+  const drifted = runCli("generate", "--matrix", matrixPath, "--check");
+  assert.equal(drifted.status, 3, drifted.stderr);
+
+  const written = runCli("generate", "--matrix", matrixPath);
+  assert.equal(written.status, 0, written.stderr);
+
+  const after = JSON.parse(readFileSync(matrixPath, "utf8"));
+  assert.deepEqual(after.generated, expected);
+  assert.deepEqual(after.carrier_rows, before.carrier_rows);
+  assert.deepEqual(after.recipe_rows, before.recipe_rows);
+  assert.deepEqual(after.manifest, before.manifest);
+  assert.equal(computeMatrixDigest(after), digestBefore);
+
+  const repaired = runCli("generate", "--matrix", matrixPath, "--check");
+  assert.equal(repaired.status, 0, repaired.stderr);
 });
 
 test("CLI suite generate --check rejects extra generated fields without a canonicalize crash", () => {
