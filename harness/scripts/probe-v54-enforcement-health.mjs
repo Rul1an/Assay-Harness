@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   closeSync,
+  constants as fsConstants,
   existsSync,
   mkdtempSync,
   openSync,
@@ -14,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const MEASURED_SCHEMA = "assay.enforcement_health.v1";
 export const V54_PEEL = "bbb5e7fe4b03bc6160d18e2966e75a7586c062ef";
@@ -24,10 +25,16 @@ export const RELEASE_LAYOUT = "assay-v5.4.0-x86_64-unknown-linux-gnu";
 export const MAX_ASSET_BYTES = 64 * 1024 * 1024;
 export const MAX_OUTPUT_BYTES = 64 * 1024;
 export const MAX_TIMEOUT_MS = 30_000;
+// Same measured published layout / ceilings as v54-tar-entry-bounds.mjs.
+export const MEASURED_PUBLISHED_ISIZE_SUM = 31_683_222;
+export const MEASURED_PUBLISHED_ENTRY_COUNT = 4;
+export const MAX_EXPANDED_BYTES = 32 * 1024 * 1024;
+export const MAX_TAR_ENTRIES = 8;
 export const FIXED_ALLOWED_PORT = 443;
 export const FIXED_ALLOWED_CONNECT_TCP_PORTS = Object.freeze([FIXED_ALLOWED_PORT]);
 
 const READ_CHUNK = 64 * 1024;
+const TAR_BOUNDS = fileURLToPath(new URL("./v54-tar-entry-bounds.mjs", import.meta.url));
 const FORBIDDEN_NET_FLAGS = new Set(["download", "url", "from-release", "fetch"]);
 const DEFAULT_POLICY = `api_version: "assay/v1"
 fs:
@@ -45,7 +52,7 @@ function fail(message, code = 3) {
 }
 
 function withOwnedTemp(fn) {
-  const dir = mkdtempSync(join(tmpdir(), "v54-enforcement-health-"));
+  const dir = mkdtempSync(join(tmpdir(), `v54-enforcement-health-${process.pid}-`));
   try {
     return fn(dir);
   } finally {
@@ -143,13 +150,31 @@ export function snapshotAssetWhileHashing(srcPath, destPath, maxBytes) {
   return `sha256:${hash.digest("hex")}`;
 }
 
-function assertSafeTarEntries(assetPath) {
-  const listed = spawnSync("tar", ["-tzf", assetPath], { encoding: "utf8" });
-  if (listed.status !== 0) throw new Error(`unable to list asset: ${listed.stderr || listed.stdout}`);
-  for (const name of listed.stdout.split("\n").filter(Boolean)) {
-    if (name.startsWith("/") || name.split("/").includes("..")) {
-      throw new Error(`unsafe tar entry: ${name}`);
+function assertSafeTarEntries(assetPath, timeoutMs = MAX_TIMEOUT_MS) {
+  const boundedTimeout = boundCeiling("timeout-ms", timeoutMs, MAX_TIMEOUT_MS);
+  let st;
+  try {
+    st = statSync(assetPath);
+  } catch {
+    throw new Error(`asset missing: ${assetPath}`);
+  }
+  if (!st.isFile()) throw new Error(`asset missing: not a file: ${assetPath}`);
+  const fd = openSync(assetPath, fsConstants.O_RDONLY);
+  try {
+    const listed = spawnSync(process.execPath, [TAR_BOUNDS, String(boundedTimeout)], {
+      encoding: "utf8",
+      timeout: boundedTimeout,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe", fd],
+    });
+    if (listed.error?.code === "ETIMEDOUT" || listed.signal === "SIGKILL") {
+      throw new Error("listing timeout");
     }
+    if (listed.status !== 0) {
+      throw new Error((listed.stderr || listed.stdout || "unable to list asset").trim());
+    }
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -282,8 +307,15 @@ export function executeLocalProducer({
   maxOutputBytes = MAX_OUTPUT_BYTES,
 }) {
   return withOwnedTemp((workdir) => {
-    assertSafeTarEntries(asset);
-    const extracted = spawnSync("tar", ["-xzf", asset, "-C", workdir], { encoding: "utf8" });
+    assertSafeTarEntries(asset, timeoutMs);
+    const extracted = spawnSync("tar", ["-xzf", asset, "-C", workdir], {
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+    });
+    if (extracted.error?.code === "ETIMEDOUT" || extracted.signal === "SIGKILL") {
+      throw new Error("extract timeout");
+    }
     if (extracted.status !== 0) throw new Error(`extract failed: ${extracted.stderr || extracted.stdout}`);
     const bin = join(workdir, RELEASE_LAYOUT, "assay");
     if (!existsSync(bin) || !statSync(bin).isFile()) {
