@@ -26,6 +26,8 @@ const RECIPE_JOBS = [
 // subject `requireUnconditionalRequiredJob` is asserted over; emptying it must
 // fail rather than vacuously pass.
 const REQUIRED_CONTRACT_JOBS = ["node-tests"];
+// This contract file must also run from a job other than the one it guards.
+const CONTRACT_TEST_FILE = "enforcement_health_probe_workflow.test.mjs";
 
 const RECIPE_IF = "github.event_name == 'workflow_dispatch' && !inputs.probe_only";
 const PROBE_IF = "github.event_name == 'workflow_dispatch' && inputs.probe_only";
@@ -73,6 +75,27 @@ function requireUnconditionalRequiredJob(workflow, id) {
       `${id} requires ${event} on main`,
     );
   }
+}
+
+// A guard that runs only inside the job it guards cannot report its own
+// absence: GitHub reports a job disabled with `if: false` as skipped, and a
+// skipped required context satisfies branch protection. This rule pins at
+// least one invocation of the contract file from a different job, and holds
+// that job to the same reachability rule.
+function requireIndependentContractInvocation(workflow, file, guardedJobs) {
+  const runsFile = (definition) =>
+    (definition?.steps ?? []).some((step) => String(step?.run ?? "").includes(file));
+  const hosts = Object.keys(workflow.jobs ?? {}).filter(
+    (id) => !guardedJobs.includes(id) && runsFile(workflow.jobs[id]),
+  );
+  assert.ok(
+    hosts.length > 0,
+    `${file} must be invoked from a job outside ${guardedJobs.join(", ")}`,
+  );
+  for (const id of hosts) {
+    requireUnconditionalRequiredJob(workflow, id);
+  }
+  return hosts;
 }
 
 function reachableOn(expr, eventName, probeOnly) {
@@ -279,4 +302,34 @@ test("the required-job rule rejects a disabled, non-blocking or unreachable job"
   const missing = clone();
   delete missing.jobs["node-tests"];
   assert.throws(() => requireUnconditionalRequiredJob(missing, "node-tests"), /missing job node-tests/);
+});
+
+test("the reachability contract is invoked from a job it does not guard", () => {
+  const hosts = requireIndependentContractInvocation(
+    loadWorkflow(),
+    CONTRACT_TEST_FILE,
+    REQUIRED_CONTRACT_JOBS,
+  );
+  assert.ok(hosts.includes("hardening"), `expected hardening among ${hosts.join(", ")}`);
+});
+
+test("the independent-invocation rule rejects a self-hosted-only contract", () => {
+  const base = loadWorkflow();
+  const clone = () => JSON.parse(JSON.stringify(base));
+
+  const selfHostedOnly = clone();
+  selfHostedOnly.jobs.hardening.steps = selfHostedOnly.jobs.hardening.steps.filter(
+    (step) => !String(step?.run ?? "").includes(CONTRACT_TEST_FILE),
+  );
+  assert.throws(
+    () => requireIndependentContractInvocation(selfHostedOnly, CONTRACT_TEST_FILE, REQUIRED_CONTRACT_JOBS),
+    /must be invoked from a job outside/,
+  );
+
+  const disabledHost = clone();
+  disabledHost.jobs.hardening.if = false;
+  assert.throws(
+    () => requireIndependentContractInvocation(disabledHost, CONTRACT_TEST_FILE, REQUIRED_CONTRACT_JOBS),
+    /must not be conditional/,
+  );
 });

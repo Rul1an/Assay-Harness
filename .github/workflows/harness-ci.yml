@@ -135,6 +135,16 @@ jobs:
       - name: Run hardening tests
         run: python3 -m unittest tests.test_hardening -v
 
+      # The workflow-reachability contract runs here as well as in node-tests.
+      # A guard that only runs inside the job it guards cannot report its own
+      # absence: GitHub reports a job disabled with `if: false` as skipped, a
+      # skipped required context satisfies branch protection, and the guard
+      # never executes. This second, unconditional invocation is what makes the
+      # contract observable when node-tests is disabled.
+      - name: Run workflow reachability contract
+        working-directory: harness
+        run: node --test test/enforcement_health_probe_workflow.test.mjs
+
   policy-validation:
     name: Policy Validation
     runs-on: ubuntu-latest
