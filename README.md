@@ -597,10 +597,15 @@ See [docs/CYCLONEDX_MLBOM_MODEL_RECEIPT_PIPELINE.md](docs/CYCLONEDX_MLBOM_MODEL_
 for the artifact chain and boundary rules.
 
 These receipt recipes require the released Assay `v3.8.0` Trust Basis surface
-or a later compatible release for `assay.trust-basis.diff.v1`, Trust Card schema
-v5, and the 10-claim eval / decision / inventory family set, with machine-readable
-receipt contracts owned by Assay. Current runtime support is deferred to PR2b;
-per-row historical proof facts live in `harness/suite-compatibility.json`. See
+or a later compatible release for `assay.trust-basis.diff.v1`, Trust Card schema v5,
+and the 10-claim eval / decision / inventory family set, with machine-readable
+receipt contracts owned by Assay. PR2b revalidated that contract line at Assay
+`v5.4.0` peel `bbb5e7fe4b03bc6160d18e2966e75a7586c062ef` against published Linux
+CLI digest
+`sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3`.
+Per-row historical proof facts live in `harness/suite-compatibility.json`; the
+suite matrix `generated` projection is derived from the sibling `package.json`
+of `--matrix`. See
 [docs/ASSAY_COMPATIBILITY.md](docs/ASSAY_COMPATIBILITY.md) for the exact
 compatibility boundary.
 
