@@ -25,8 +25,37 @@ const ASSET = fileURLToPath(new URL("../suite-compatibility.json", import.meta.u
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
 const COMPAT_DOC = fileURLToPath(new URL("../../docs/ASSAY_COMPATIBILITY.md", import.meta.url));
+const README = fileURLToPath(new URL("../../README.md", import.meta.url));
+const EXIT_CODES = fileURLToPath(new URL("../../docs/contracts/EXIT_CODES.md", import.meta.url));
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const READONLY_GENERATE_CHECK = "npx tsx src/cli.ts suite generate --matrix suite-compatibility.json --check";
+const GENERATE_CHECK_STEP = `      - name: Check suite generated projection
+        working-directory: harness
+        run: ${READONLY_GENERATE_CHECK}
+`;
+const NORMATIVE_GENERATED_PROJECTION = `The suite matrix \`generated\` object is a derived projection, not a present-tense
+recommendation. \`generated.last_verified_assay\` is the highest explicitly recorded
+\`proof.assay_version\` in the suite matrix. That is not necessarily the highest
+underlying Assay version used by every proof — a recipe row can prove a later
+binary without carrying \`proof.assay_version\` — and it is not a supported range
+or a claim that current Assay is covered.
+\`generated.assay_default\` is a deprecated alias of \`last_verified_assay\`.
+\`generated.verified_on\` is the retained historical projection date
+(\`2026-06-17\`) and may predate later row runs; it is never regenerated from the
+current clock.`;
+const SUITE_GENERATE_EXIT_SECTION = `### \`assay-harness suite generate\` / \`assay-harness suite generate --check\`
+
+\`suite generate\` writes the derived \`generated\` projection. \`--check\` is read-only.
+This command uses the frozen exit-code taxonomy; it is an additive command, not a
+renumbering.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Write or \`--check\` clean | 0 |
+| Missing matrix, missing sibling \`package.json\` version, or invalid or unknown args | 2 |
+| Malformed or wrong-shape matrix, malformed \`proof.assay_version\` tag, or generated drift | 3 |
+
+There is no policy verdict (\`1\`) and no regression verdict (\`6\`).`;
 
 function isReadOnlyGenerateCheck(run) {
   return (
@@ -36,6 +65,32 @@ function isReadOnlyGenerateCheck(run) {
     /(?:^|\s)--check(?:\s|$)/.test(run) &&
     !/--check=/.test(run)
   );
+}
+
+function findSuiteGenerateCheckStep(workflow) {
+  for (const job of Object.values(workflow.jobs ?? {})) {
+    for (const step of job.steps ?? []) {
+      if (isReadOnlyGenerateCheck(step?.run)) return step;
+    }
+  }
+  return undefined;
+}
+
+function assertReachableReadOnlyGenerateStep(workflow, label) {
+  const step = findSuiteGenerateCheckStep(workflow);
+  assert.ok(step, `${label}: harness-ci.yml must contain the reachable suite generate --check step`);
+  assert.equal(String(step.run).trim(), READONLY_GENERATE_CHECK, `${label}: exact run token`);
+  assert.equal(step["working-directory"], "harness", `${label}: working-directory must be harness`);
+  assert.equal(Object.hasOwn(step, "if"), false, `${label}: step must not have if`);
+  assert.equal(Object.hasOwn(step, "continue-on-error"), false, `${label}: step must not continue-on-error`);
+}
+
+function stageRawMatrix(contents) {
+  const dir = mkdtempSync(join(tmpdir(), "suite-generated-raw-"));
+  const matrixPath = join(dir, "suite-compatibility.json");
+  writeFileSync(matrixPath, contents);
+  writeFileSync(join(dir, "package.json"), readFileSync(PACKAGE));
+  return matrixPath;
 }
 
 test("schema constant is the frozen suite id", () => {
@@ -488,39 +543,36 @@ test("CLI suite generate no-op on a clean projection is byte-stable and digest-i
   assert.equal(validateSuiteCompatibility(parsed).valid, true);
 });
 
-test("Harness CI invokes read-only suite generate --check (removing it must fail this guard)", () => {
+test("Harness CI suite generate --check step is reachable and structurally pinned", () => {
   const workflowText = readFileSync(WORKFLOW, "utf8");
-  const workflow = loadYaml(workflowText);
-  assert.equal(typeof workflow, "object");
-  const runs = Object.values(workflow.jobs ?? {}).flatMap((job) =>
-    (job.steps ?? []).map((step) => step.run).filter((run) => typeof run === "string"),
-  );
-  const invocation = runs.find(isReadOnlyGenerateCheck);
-  assert.ok(
-    invocation,
-    "harness-ci.yml must invoke `suite generate --matrix suite-compatibility.json --check` in a job step run, not a comment",
-  );
-  assert.equal(invocation.trim(), READONLY_GENERATE_CHECK);
-  assert.doesNotMatch(invocation, /--check=/);
-});
+  assert.ok(workflowText.includes(GENERATE_CHECK_STEP), "committed workflow must contain the exact generate --check step");
+  assertReachableReadOnlyGenerateStep(loadYaml(workflowText), "committed");
 
-test("workflow generate --check guard rejects the --check=true write-mode spelling", () => {
-  const workflowText = readFileSync(WORKFLOW, "utf8");
-  assert.ok(isReadOnlyGenerateCheck(READONLY_GENERATE_CHECK));
-  assert.equal(
-    isReadOnlyGenerateCheck(READONLY_GENERATE_CHECK.replace(/(?:^|\s)--check(?:\s|$)/, " --check=true")),
-    false,
-    "replacing --check with --check=true must fail the read-only invocation guard",
-  );
-  const mutated = workflowText.replace(
-    /npx tsx src\/cli\.ts suite generate --matrix suite-compatibility\.json --check\b/,
-    "npx tsx src/cli.ts suite generate --matrix suite-compatibility.json --check=true",
-  );
-  const workflow = loadYaml(mutated);
-  const runs = Object.values(workflow.jobs ?? {}).flatMap((job) =>
-    (job.steps ?? []).map((step) => step.run).filter((run) => typeof run === "string"),
-  );
-  assert.equal(runs.find(isReadOnlyGenerateCheck), undefined);
+  const withIf = workflowText.replace(GENERATE_CHECK_STEP, `      - name: Check suite generated projection
+        if: false
+        working-directory: harness
+        run: ${READONLY_GENERATE_CHECK}
+`);
+  assert.throws(() => assertReachableReadOnlyGenerateStep(loadYaml(withIf), "if: false"), /if/);
+
+  const withContinue = workflowText.replace(GENERATE_CHECK_STEP, `      - name: Check suite generated projection
+        continue-on-error: true
+        working-directory: harness
+        run: ${READONLY_GENERATE_CHECK}
+`);
+  assert.throws(() => assertReachableReadOnlyGenerateStep(loadYaml(withContinue), "continue-on-error"), /continue-on-error/);
+
+  const wrongCwd = workflowText.replace(GENERATE_CHECK_STEP, `      - name: Check suite generated projection
+        working-directory: .
+        run: ${READONLY_GENERATE_CHECK}
+`);
+  assert.throws(() => assertReachableReadOnlyGenerateStep(loadYaml(wrongCwd), "wrong cwd"), /working-directory/);
+
+  const checkEqualsTrue = workflowText.replace(GENERATE_CHECK_STEP, GENERATE_CHECK_STEP.replace(/ --check\n/, " --check=true\n"));
+  assert.throws(() => assertReachableReadOnlyGenerateStep(loadYaml(checkEqualsTrue), "--check=true"), /exact run token|reachable/);
+
+  const removed = workflowText.replace(GENERATE_CHECK_STEP, "");
+  assert.throws(() => assertReachableReadOnlyGenerateStep(loadYaml(removed), "step removal"), /reachable/);
 });
 
 test("CLI suite generate rejects non-exact --check spellings on a drifted matrix without rewriting", () => {
@@ -541,11 +593,77 @@ test("CLI suite generate rejects non-exact --check spellings on a drifted matrix
   }
 });
 
-test("ASSAY_COMPATIBILITY.md does not overclaim last_verified_assay as the last version a row proved", () => {
+test("CLI suite generate rejects a non-object JSON root as artifact_contract without a stack trace", () => {
+  const roots = ["null\n", "[]\n", "123\n", "\"str\"\n", "true\n"];
+  for (const contents of roots) {
+    for (const extra of [[], ["--check"]]) {
+      const matrixPath = stageRawMatrix(contents);
+      const before = readFileSync(matrixPath);
+      const r = runCli("generate", "--matrix", matrixPath, ...extra);
+      const label = `${JSON.stringify(contents.trim())} ${extra[0] ?? "write"}`;
+      assert.equal(r.status, 3, `${label} must be artifact_contract: ${r.stderr}`);
+      assert.doesNotMatch(r.stderr, /TypeError|at cmdSuiteGenerate/);
+      assert.deepEqual(readFileSync(matrixPath), before, `${label} must not rewrite`);
+    }
+  }
+});
+
+test("deriveGenerated and suite generate require a canonical YYYY-MM-DD verified_on", () => {
+  const base = {
+    harnessVersion: "1.0.0",
+    carrier_rows: [{ proof: { assay_version: "v3.28.0" } }],
+    recipe_rows: [],
+  };
+  assert.equal(deriveGenerated({ ...base, verifiedOn: "2024-02-29" }).verified_on, "2024-02-29");
+  for (const bad of ["banana", "2026-02-30", "2026-13-01", "2023-02-29", "2024-2-29", "2024-02-29T00:00:00Z"]) {
+    assert.throws(
+      () => deriveGenerated({ ...base, verifiedOn: bad }),
+      /verified_on|YYYY-MM-DD|calendar date/i,
+      `deriveGenerated must refuse ${bad}`,
+    );
+  }
+
+  const { matrixPath: leapPath } = stageGeneratedWorkspace(({ matrix }) => {
+    matrix.generated.verified_on = "2024-02-29";
+  });
+  const leap = runCli("generate", "--matrix", leapPath, "--check");
+  assert.equal(leap.status, 0, leap.stderr);
+
+  for (const bad of ["banana", "2026-02-30"]) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+      matrix.generated.verified_on = bad;
+    });
+    const before = readFileSync(matrixPath);
+    for (const extra of [[], ["--check"]]) {
+      writeFileSync(matrixPath, before);
+      const r = runCli("generate", "--matrix", matrixPath, ...extra);
+      assert.equal(r.status, 3, `${bad} ${extra[0] ?? "write"} must be artifact_contract: ${r.stderr}`);
+      assert.deepEqual(readFileSync(matrixPath), before, `${bad} must not rewrite`);
+    }
+  }
+});
+
+test("ASSAY_COMPATIBILITY.md pins the normative generated projection paragraph", () => {
   const docs = readFileSync(COMPAT_DOC, "utf8");
-  assert.doesNotMatch(docs, /the last Assay version a row actually proved/i);
-  assert.match(docs, /explicitly recorded/);
-  assert.match(docs, /may predate later row runs/i);
+  assert.ok(docs.includes(NORMATIVE_GENERATED_PROJECTION), "compatibility doc must contain the exact generated projection paragraph");
+  assert.doesNotMatch(docs, /\(today `0\.10\.2`\)/);
+  assert.doesNotMatch(docs, /\(today `v3\.28\.0`\)/);
+  assert.match(docs, /sibling `package\.json` of `--matrix`/);
+});
+
+test("README defers current runtime support and does not hand-pin last-verified", () => {
+  const readme = readFileSync(README, "utf8");
+  assert.doesNotMatch(readme, /verified through `v3\.27\.0`/);
+  assert.doesNotMatch(readme, /Trust Card schema v5\.4/);
+  assert.match(readme, /sibling `package\.json` of `--matrix`/);
+  assert.match(readme, /PR2b/);
+  assert.match(readme, /suite-compatibility\.json/);
+});
+
+test("EXIT_CODES.md documents suite generate routing on the frozen 0/2/3 taxonomy", () => {
+  const doc = readFileSync(EXIT_CODES, "utf8");
+  assert.ok(doc.includes(SUITE_GENERATE_EXIT_SECTION), "EXIT_CODES.md must contain the exact suite generate routing section");
+  assert.match(doc, /### `assay-harness suite check` \/ `assay-harness suite matrix`/);
 });
 
 const EXACT_RELEASE_TAGS = ["v0.8.0", "v3.9.0", "v3.27.0", "v3.28.0", "v9.9.9"];

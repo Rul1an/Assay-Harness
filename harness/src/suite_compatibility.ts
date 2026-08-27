@@ -6,22 +6,9 @@
  * consumes/projects/gates, Plimsoll reviews) and gates on its own internal
  * consistency, never on organization policy.
  *
- * SOTA grounding (June 2026):
- *  - VSA-shaped, not a SLSA VSA: each proven cell carries provenance over the
- *    compat-proof (the hosted run + a content anchor), the way a SLSA
- *    Verification Summary Attestation lets a downstream consumer trust a summary
- *    without re-evaluating raw evidence. We do NOT emit a signed VSA predicate.
- *  - Android VINTF/FCM style: compatibility is data + a drift gate, not a README.
- *  - Declared-vs-observed: every claim distinguishes `proven` (a hosted run +
- *    content anchor exists) from `declared` (documented intent, not proof).
- *    Absence of proof never reads as "works"; unknown is never clean.
- *
- * The matrix splits the proof claim in two, which is the load-bearing honesty:
- *  - `harness_consumption`: Harness can validate/gate/project the carrier shape
- *    (proven by this repo's test suite over real producer golden bytes).
- *  - `end_to_end`: the released Assay binary emitted the carrier AND Harness
- *    consumed it in a hosted run (the H-next-2 target). Today this is `declared`
- *    for the carrier family; only the established recipe rail is `proven`.
+ * VSA-shaped, not a SLSA VSA. Declared-vs-observed: `proven` needs a hosted run
+ * plus content anchor; `declared` is intent, never "works". The matrix splits
+ * `harness_consumption` from released-binary `end_to_end`.
  */
 
 import { readFileSync } from "node:fs";
@@ -225,12 +212,25 @@ function maxAssayVersion(versions: string[]): string {
   });
 }
 
+function assertCanonicalCalendarDate(value: string): void {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new Error("generated.verified_on must be a canonical YYYY-MM-DD calendar date");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) {
+    throw new Error("generated.verified_on must be a canonical YYYY-MM-DD calendar date");
+  }
+}
+
 export function deriveGenerated(input: {
   harnessVersion: string;
   carrier_rows: unknown;
   recipe_rows: unknown;
   verifiedOn: string;
 }): GeneratedProjection {
+  assertCanonicalCalendarDate(input.verifiedOn);
   const lastVerified = maxAssayVersion([...proofAssayVersions(input.carrier_rows), ...proofAssayVersions(input.recipe_rows)]);
   return { harness_version: input.harnessVersion, last_verified_assay: lastVerified, assay_default: lastVerified, verified_on: input.verifiedOn };
 }

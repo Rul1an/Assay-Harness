@@ -7,15 +7,15 @@ Trust Basis claim semantics, or Trust Card schemas itself.
 
 Assay Harness requires the released Assay `v3.8.0` contract line or later
 binaries that still emit the same Trust Basis diff schema v1, Trust Card
-schema v5, and 10-claim Trust Basis surface. The consumer version is
-`harness/package.json` (today `0.10.2`); do not restate it by hand.
+schema v5, and 10-claim Trust Basis surface. The consumer version comes from the
+sibling `package.json` of `--matrix`; do not restate it by hand.
 
 The suite matrix `generated` object is a derived projection, not a present-tense
 recommendation. `generated.last_verified_assay` is the highest explicitly recorded
-`proof.assay_version` in `harness/suite-compatibility.json` (today `v3.28.0`).
-That is not necessarily the highest underlying Assay version used by every proof
-— a recipe row can prove a later binary without carrying `proof.assay_version` —
-and it is not a supported range or a claim that current Assay is covered.
+`proof.assay_version` in the suite matrix. That is not necessarily the highest
+underlying Assay version used by every proof — a recipe row can prove a later
+binary without carrying `proof.assay_version` — and it is not a supported range
+or a claim that current Assay is covered.
 `generated.assay_default` is a deprecated alias of `last_verified_assay`.
 `generated.verified_on` is the retained historical projection date
 (`2026-06-17`) and may predate later row runs; it is never regenerated from the

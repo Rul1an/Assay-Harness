@@ -106,13 +106,18 @@ function cmdSuiteGenerate(args: Record<string, string | boolean>): void {
     console.error(`[config_error] Suite compatibility matrix not found: ${matrixPath}`);
     process.exit(EXIT.CONFIG_ERROR);
   }
-  let parsed: Record<string, unknown>;
+  let parsedUnknown: unknown;
   try {
-    parsed = JSON.parse(rawText) as Record<string, unknown>;
+    parsedUnknown = JSON.parse(rawText) as unknown;
   } catch (error) {
     console.error(`[artifact_contract] suite generate: cannot parse matrix (${(error as Error).message})`);
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
+  if (typeof parsedUnknown !== "object" || parsedUnknown === null || Array.isArray(parsedUnknown)) {
+    console.error("[artifact_contract] suite generate: matrix must be a JSON object");
+    process.exit(EXIT.ARTIFACT_CONTRACT);
+  }
+  const parsed = parsedUnknown as Record<string, unknown>;
   const harnessVersion = siblingHarnessVersion(matrixPath);
   if (!harnessVersion) {
     console.error("[config_error] suite generate: sibling package.json version is required");

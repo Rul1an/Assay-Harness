@@ -230,6 +230,20 @@ An `end_to_end: "declared"` row is **not** a failure; it is visible pending-proo
 is no `6` here: the matrix reports no producer-owned not-clean gate, it describes the
 suite contract.
 
+### `assay-harness suite generate` / `assay-harness suite generate --check`
+
+`suite generate` writes the derived `generated` projection. `--check` is read-only.
+This command uses the frozen exit-code taxonomy; it is an additive command, not a
+renumbering.
+
+| Outcome | Exit Code |
+|---------|-----------|
+| Write or `--check` clean | 0 |
+| Missing matrix, missing sibling `package.json` version, or invalid or unknown args | 2 |
+| Malformed or wrong-shape matrix, malformed `proof.assay_version` tag, or generated drift | 3 |
+
+There is no policy verdict (`1`) and no regression verdict (`6`).
+
 ### `assay-harness evidence-pack create` / `assay-harness evidence-pack verify`
 
 The Evidence Pack (`suite.evidence_pack.v0`) is a deterministic, digest-bound bundle of a
