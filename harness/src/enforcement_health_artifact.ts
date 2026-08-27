@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
 
 export const MAX_ARTIFACT_ZIP_BYTES = 1 * 1024 * 1024;
@@ -6,6 +6,7 @@ export const MAX_CARRIER_FILE_BYTES = 64 * 1024;
 export const MAX_PROVENANCE_FILE_BYTES = 64 * 1024;
 export const MAX_ZIP_LIST_BYTES = 8 * 1024;
 export const REQUIRED_ARTIFACT_ENTRIES = ["enforcement-health.json", "recipe.provenance.json"] as const;
+const ZIP_PROCESS_TIMEOUT_MS = 1_000;
 
 export interface ArtifactIo {
   writeStream: (response: Response, dest: string, maxCompressedBytes: number) => Promise<number>;
@@ -106,27 +107,53 @@ export async function materializePromotionArtifacts(input: {
   };
 }
 
+function assertZipProcessSucceeded(
+  result: SpawnSyncReturns<string | Buffer>,
+  operation: string,
+  fallback: string,
+): void {
+  const errorCode = (result.error as NodeJS.ErrnoException | undefined)?.code;
+  if (errorCode === "ETIMEDOUT") {
+    throw new Error(`${operation} timed out after ${ZIP_PROCESS_TIMEOUT_MS}ms`);
+  }
+  if (errorCode === "ENOBUFS" || errorCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    throw new Error(fallback);
+  }
+  if (result.error) {
+    throw new Error(`${operation} failed: ${result.error.message}`);
+  }
+  if (result.signal !== null) {
+    throw new Error(`${operation} terminated by ${result.signal}`);
+  }
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === "string" ? result.stderr : result.stderr.toString();
+    throw new Error(stderr || fallback);
+  }
+}
+
 export function productionZipIo(): ArtifactIo {
   return {
     writeStream: streamResponseToFile,
     async listEntries(zipPath) {
       const listed = spawnSync("unzip", ["-Z1", zipPath], {
         encoding: "utf8",
+        timeout: ZIP_PROCESS_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+        stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: MAX_ZIP_LIST_BYTES,
       });
-      if (listed.status !== 0) {
-        throw new Error(listed.stderr || "zip list failed");
-      }
+      assertZipProcessSucceeded(listed, "zip list", "zip list failed");
       return listed.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
     },
     async extractEntry(zipPath, name, maxBytes) {
       const extracted = spawnSync("unzip", ["-p", zipPath, name], {
         encoding: "buffer",
+        timeout: ZIP_PROCESS_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+        stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: maxBytes,
       });
-      if (extracted.status !== 0) {
-        throw new Error(extracted.stderr?.toString() || `${name} exceeds expanded cap`);
-      }
+      assertZipProcessSucceeded(extracted, "zip extract", `${name} exceeds expanded cap`);
       const buf = Buffer.isBuffer(extracted.stdout) ? extracted.stdout : Buffer.from(extracted.stdout);
       if (buf.length > maxBytes) {
         throw new Error(`${name} exceeds expanded cap`);
