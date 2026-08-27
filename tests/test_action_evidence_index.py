@@ -31,6 +31,8 @@ ASSAY_ACTION_PIN = (
     "Rul1an/assay-action@184720a5cb051ebc2c1de7e52b113aa973f2c374"
 )
 ONE_MIB = 1024 * 1024
+HUNDRED_MIB = 100 * 1024 * 1024
+ONE_GIB = 1024 * 1024 * 1024
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -252,15 +254,23 @@ class TestValidatorExportsAndPolicy(unittest.TestCase):
         self.assertEqual(self.mod.CONSUMER_INDEX_BYTES_CEILING, 1024 * 1024)
 
     def test_bundle_ceiling_constants(self):
+        """Static pin of shipping values: 100 MiB per bundle, 1 GiB aggregate fail-closed."""
         self.assertTrue(hasattr(self.mod, "CONSUMER_BUNDLE_BYTES_CEILING"))
         self.assertTrue(hasattr(self.mod, "CONSUMER_BUNDLE_BYTES_AGGREGATE"))
-        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, ONE_MIB)
-        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, 1024 * 1024)
-        self.assertEqual(
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, HUNDRED_MIB)
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_CEILING, 100 * 1024 * 1024)
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE, ONE_GIB)
+        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE, 1024 * 1024 * 1024)
+        self.assertNotEqual(
             self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE,
             self.mod.MAX_BUNDLE_ROWS * self.mod.CONSUMER_BUNDLE_BYTES_CEILING,
         )
-        self.assertEqual(self.mod.CONSUMER_BUNDLE_BYTES_AGGREGATE, 100 * ONE_MIB)
+
+    def test_aggregate_policy_nonclaim_in_source(self):
+        src = VALIDATOR_PATH.read_text(encoding="utf-8")
+        self.assertIn("producer-legal 100-row", src)
+        self.assertIn("Harness resource policy", src)
+        self.assertIn("not a producer guarantee", src)
 
     def test_containment_predicate_pinned_in_source(self):
         src = VALIDATOR_PATH.read_text(encoding="utf-8")
@@ -982,7 +992,8 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             # Positive pair: the canonical relative path still validates.
             self._validate(ws, "real/index.json", digest, "absent", False)
 
-    def test_two_mib_bundle_exceeds_per_bundle_ceiling(self):
+    def test_two_mib_bundle_accepted(self):
+        """2 MiB is legal producer input (VerifyLimits 100 MiB); must succeed."""
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
             content = b"B" * (2 * ONE_MIB)
@@ -993,46 +1004,82 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             index_path, digest = _write_index(
                 ws, _index_payload([row], complete=False)
             )
-            exc = self._expect_error(ws, index_path, digest, "discovered", False)
-            msg = str(exc).lower()
-            self.assertTrue("ceiling" in msg or "bundle" in msg, str(exc))
+            self._validate(ws, index_path, digest, "discovered", False)
 
-    def test_bundle_hash_stops_at_per_bundle_ceiling(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ws = Path(tmp)
-            content = b"C" * (2 * ONE_MIB)
-            rel = "evidence/a.tar.gz"
-            bundle_path = ws / rel
-            _plant_file(ws, rel, content)
-            row = _bundle(rel, content, integrity="pending", source="discovered")
-            index_path, digest = _write_index(
-                ws, _index_payload([row], complete=False)
-            )
-            bytes_read = [0]
-            real_open = Path.open
+    def test_patched_bundle_exact_limit_and_limit_plus_one(self):
+        ceiling = 64
+        with patch.object(self.mod, "CONSUMER_BUNDLE_BYTES_CEILING", ceiling), patch.object(
+            self.mod, "CONSUMER_BUNDLE_BYTES_AGGREGATE", 1024
+        ), patch.object(self.mod, "BUNDLE_HASH_CHUNK_BYTES", 16):
+            with tempfile.TemporaryDirectory() as tmp:
+                ws = Path(tmp)
+                exact = b"E" * ceiling
+                _plant_file(ws, "evidence/exact.tar.gz", exact)
+                row = _bundle(
+                    "evidence/exact.tar.gz",
+                    exact,
+                    integrity="pending",
+                    source="discovered",
+                )
+                index_path, digest = _write_index(
+                    ws, _index_payload([row], complete=False)
+                )
+                self._validate(ws, index_path, digest, "discovered", False)
+                over = b"O" * (ceiling + 1)
+                _plant_file(ws, "evidence/over.tar.gz", over)
+                row_over = _bundle(
+                    "evidence/over.tar.gz",
+                    over,
+                    integrity="pending",
+                    source="discovered",
+                )
+                over_path, over_digest = _write_index(
+                    ws,
+                    _index_payload([row_over], complete=False),
+                    name="over.json",
+                )
+                (ws / "evidence/exact.tar.gz").unlink()
+                exc = self._expect_error(
+                    ws, over_path, over_digest, "discovered", False
+                )
+                self.assertIn("ceiling", str(exc).lower())
 
-            def spy_open(self, *args, **kwargs):
-                fh = real_open(self, *args, **kwargs)
-                try:
-                    same = Path(self).resolve() == bundle_path.resolve()
-                except OSError:
-                    same = False
-                if same:
-                    inner = fh.read
-
-                    def spy_read(n=-1):
-                        data = inner(n)
-                        bytes_read[0] += len(data)
-                        return data
-
-                    fh.read = spy_read
-                return fh
-
-            with patch.object(Path, "open", spy_open):
-                with self.assertRaises(self.mod.ValidationError):
-                    self._validate(ws, index_path, digest, "discovered", False)
-            chunk = self.mod.BUNDLE_HASH_CHUNK_BYTES
-            self.assertLessEqual(bytes_read[0], ONE_MIB + chunk)
+    def test_patched_aggregate_accept_and_refuse(self):
+        with patch.object(self.mod, "CONSUMER_BUNDLE_BYTES_CEILING", 64), patch.object(
+            self.mod, "CONSUMER_BUNDLE_BYTES_AGGREGATE", 80
+        ), patch.object(self.mod, "BUNDLE_HASH_CHUNK_BYTES", 16):
+            with tempfile.TemporaryDirectory() as tmp:
+                ws = Path(tmp)
+                a = b"A" * 40
+                bts = b"B" * 41
+                _plant_file(ws, "evidence/a.tar.gz", a)
+                _plant_file(ws, "evidence/b.tar.gz", bts)
+                ok_a = b"C" * 30
+                ok_b = b"D" * 30
+                # refuse: 40+40 > 80
+                rows = [
+                    _bundle("evidence/a.tar.gz", a, integrity="pending", source="discovered"),
+                    _bundle("evidence/b.tar.gz", bts, integrity="pending", source="discovered"),
+                ]
+                index_path, digest = _write_index(
+                    ws, _index_payload(rows, complete=False)
+                )
+                exc = self._expect_error(ws, index_path, digest, "discovered", False)
+                msg = str(exc).lower()
+                self.assertTrue("aggregate" in msg or "100-row" in msg, str(exc))
+                # accept: 30+30 <= 80
+                _plant_file(ws, "evidence/c.tar.gz", ok_a)
+                _plant_file(ws, "evidence/d.tar.gz", ok_b)
+                ok_rows = [
+                    _bundle("evidence/c.tar.gz", ok_a, integrity="pending", source="discovered"),
+                    _bundle("evidence/d.tar.gz", ok_b, integrity="pending", source="discovered"),
+                ]
+                ok_path, ok_digest = _write_index(
+                    ws, _index_payload(ok_rows, complete=False), name="ok-agg.json"
+                )
+                (ws / "evidence/a.tar.gz").unlink()
+                (ws / "evidence/b.tar.gz").unlink()
+                self._validate(ws, ok_path, ok_digest, "discovered", False)
 
     def test_unindexed_stops_without_full_enumeration(self):
         with tempfile.TemporaryDirectory() as tmp:

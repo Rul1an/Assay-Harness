@@ -25,9 +25,9 @@ class ValidationError(Exception):
 # not a producer guarantee.
 CONSUMER_INDEX_BYTES_CEILING = 1024 * 1024
 
-# Per-bundle consumer ceiling. Same 1 MiB Harness resource policy as the index,
-# not a producer guarantee.
-CONSUMER_BUNDLE_BYTES_CEILING = 1024 * 1024
+# Per-bundle consumer ceiling. Matches Assay VerifyLimits compressed input
+# (100 MiB). This ceiling is Harness resource policy, not a producer guarantee.
+CONSUMER_BUNDLE_BYTES_CEILING = 100 * 1024 * 1024
 
 # Fixed-size streaming chunks for listed-bundle hashes. Never Path.read_bytes.
 BUNDLE_HASH_CHUNK_BYTES = 65536
@@ -40,8 +40,10 @@ ALLOWED_SOURCES = frozenset({"discovered", "sandbox_command"})
 ALLOWED_INTEGRITIES = frozenset({"pending", "verified", "rejected"})
 CLOSED_EVIDENCE_STATES = frozenset({"absent", "discovered", "verified", "rejected"})
 MAX_BUNDLE_ROWS = 100
-# Derived aggregate: 100 rows * 1 MiB. No extra magic number.
-CONSUMER_BUNDLE_BYTES_AGGREGATE = MAX_BUNDLE_ROWS * CONSUMER_BUNDLE_BYTES_CEILING
+# Independent 1 GiB fail-closed aggregate. Not rows * per-bundle (that would
+# be 10 GiB). Harness aggregate policy may refuse a producer-legal 100-row
+# maximum.
+CONSUMER_BUNDLE_BYTES_AGGREGATE = 1024 * 1024 * 1024
 SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 IN_SCOPE_GLOBS = (
     ".assay/evidence/*.tar.gz",
@@ -159,7 +161,9 @@ def _sha256_file(path: Path, *, aggregate_hashed: int = 0) -> tuple[str, int]:
                 if aggregate_hashed + hashed > CONSUMER_BUNDLE_BYTES_AGGREGATE:
                     raise ValidationError(
                         "bundles exceed consumer aggregate of "
-                        f"{CONSUMER_BUNDLE_BYTES_AGGREGATE} bytes"
+                        f"{CONSUMER_BUNDLE_BYTES_AGGREGATE} bytes "
+                        "(Harness aggregate policy may refuse a "
+                        "producer-legal 100-row maximum)"
                     )
                 digest.update(chunk)
     except ValidationError:
