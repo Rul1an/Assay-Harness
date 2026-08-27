@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,11 +49,17 @@ const SUITE_GENERATE_EXIT_SECTION = `### \`assay-harness suite generate\` / \`as
 This command uses the frozen exit-code taxonomy; it is an additive command, not a
 renumbering.
 
+A matrix that cannot be materialized as JSON (parse failure, wrong root shape, or
+unserializable row data) is artifact-contract. An actual filesystem write failure
+after successful serialization is \`ci_formatter\` (7), matching every other
+write-capable Harness verb. Serialization is never collapsed into 7.
+
 | Outcome | Exit Code |
 |---------|-----------|
 | Write or \`--check\` clean | 0 |
 | Missing matrix, missing sibling \`package.json\` version, or invalid or unknown args | 2 |
-| Malformed or wrong-shape matrix, malformed \`proof.assay_version\` tag, or generated drift | 3 |
+| Malformed or wrong-shape matrix, malformed \`proof.assay_version\` tag, generated drift, or serialization-unmaterializable matrix | 3 |
+| Filesystem write failure after successful serialization | 7 |
 
 There is no policy verdict (\`1\`) and no regression verdict (\`6\`).`;
 
@@ -594,6 +600,51 @@ test("CLI suite generate write routes unserializable row data as artifact_contra
   assert.deepEqual(readFileSync(matrixPath), before, "failed serialize must not rewrite");
 });
 
+test("CLI suite generate rejects malformed JSON as artifact_contract without rewriting", () => {
+  const payloads = ["{", "{,}", "not-json\n"];
+  for (const contents of payloads) {
+    for (const extra of [[], ["--check"]]) {
+      const matrixPath = stageRawMatrix(contents);
+      const before = readFileSync(matrixPath);
+      const r = runCli("generate", "--matrix", matrixPath, ...extra);
+      const label = `${JSON.stringify(contents)} ${extra[0] ?? "write"}`;
+      assert.equal(r.status, 3, `${label} must be artifact_contract: ${r.stderr}`);
+      assert.match(r.stderr, /\[artifact_contract\] suite generate:/);
+      assert.equal(
+        r.stderr.split("\n").filter((line) => line.includes("[artifact_contract]")).length,
+        1,
+        `${label} must emit exactly one artifact_contract diagnostic`,
+      );
+      assert.doesNotMatch(r.stderr, /TypeError|RangeError|^\s+at /m);
+      assert.deepEqual(readFileSync(matrixPath), before, `${label} must not rewrite`);
+    }
+  }
+});
+
+test("CLI suite generate write routes a readable-but-unwritable matrix as ci_formatter without rewriting", () => {
+  const { matrixPath: cleanPath } = stageGeneratedWorkspace(() => {});
+  const cleanBefore = readFileSync(cleanPath);
+  const clean = runCli("generate", "--matrix", cleanPath);
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.deepEqual(readFileSync(cleanPath), cleanBefore);
+
+  const { matrixPath } = stageGeneratedWorkspace(() => {});
+  const before = readFileSync(matrixPath);
+  chmodSync(matrixPath, 0o444);
+  let r;
+  try {
+    r = runCli("generate", "--matrix", matrixPath);
+  } finally {
+    chmodSync(matrixPath, 0o644);
+  }
+  assert.notEqual(r.status, 0, "chmod 0444 must make the staged matrix unwritable on this OS");
+  assert.equal(r.status, 7, r.stderr);
+  assert.match(r.stderr, /\[ci_formatter\] suite generate:/);
+  assert.equal(r.stderr.trim().split("\n").length, 1, "write I/O failure must emit one routed line");
+  assert.doesNotMatch(r.stderr, /TypeError|RangeError|^\s+at /m);
+  assert.deepEqual(readFileSync(matrixPath), before, "failed write must not rewrite");
+});
+
 test("CLI suite generate --check rejects a non-object generated field without a stack trace", () => {
   for (const generated of [null, [1.5], "x", 1.5]) {
     const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
@@ -726,7 +777,7 @@ test("README defers current runtime support and does not hand-pin last-verified"
   assert.match(readme, /suite-compatibility\.json/);
 });
 
-test("EXIT_CODES.md documents suite generate routing on the frozen 0/2/3 taxonomy", () => {
+test("EXIT_CODES.md documents suite generate routing on the frozen 0/2/3/7 taxonomy", () => {
   const doc = readFileSync(EXIT_CODES, "utf8");
   assert.ok(doc.includes(SUITE_GENERATE_EXIT_SECTION), "EXIT_CODES.md must contain the exact suite generate routing section");
   assert.match(doc, /### `assay-harness suite check` \/ `assay-harness suite matrix`/);

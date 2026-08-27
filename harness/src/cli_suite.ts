@@ -185,8 +185,8 @@ function writeGeneratedMatrix(
   try {
     writeFileSync(matrixPath, serialized);
   } catch (error) {
-    console.error(`[artifact_contract] suite generate: cannot write matrix (${(error as Error).message})`);
-    process.exit(EXIT.ARTIFACT_CONTRACT);
+    console.error(`[ci_formatter] suite generate: cannot write matrix (${(error as Error).message})`);
+    process.exit(EXIT.CI_FORMATTER);
   }
 }
 

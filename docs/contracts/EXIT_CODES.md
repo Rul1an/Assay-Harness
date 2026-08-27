@@ -236,11 +236,17 @@ suite contract.
 This command uses the frozen exit-code taxonomy; it is an additive command, not a
 renumbering.
 
+A matrix that cannot be materialized as JSON (parse failure, wrong root shape, or
+unserializable row data) is artifact-contract. An actual filesystem write failure
+after successful serialization is `ci_formatter` (7), matching every other
+write-capable Harness verb. Serialization is never collapsed into 7.
+
 | Outcome | Exit Code |
 |---------|-----------|
 | Write or `--check` clean | 0 |
 | Missing matrix, missing sibling `package.json` version, or invalid or unknown args | 2 |
-| Malformed or wrong-shape matrix, malformed `proof.assay_version` tag, or generated drift | 3 |
+| Malformed or wrong-shape matrix, malformed `proof.assay_version` tag, generated drift, or serialization-unmaterializable matrix | 3 |
+| Filesystem write failure after successful serialization | 7 |
 
 There is no policy verdict (`1`) and no regression verdict (`6`).
 
