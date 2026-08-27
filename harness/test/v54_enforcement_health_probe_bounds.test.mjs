@@ -19,6 +19,7 @@ import {
 } from "../scripts/probe-v54-enforcement-health.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../scripts/probe-v54-enforcement-health.mjs", import.meta.url));
+const BOUNDS = fileURLToPath(new URL("../scripts/v54-tar-entry-bounds.mjs", import.meta.url));
 const HARNESS_ROOT = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const LAYOUT = "assay-v5.4.0-x86_64-unknown-linux-gnu";
 
@@ -278,7 +279,7 @@ test("listing times out on a blocking asset without hanging the producer", { tim
   const started = Date.now();
   assert.throws(
     () => executeLocalProducer({ asset: fifo, out: join(dir, "out.json"), timeoutMs: 400 }),
-    /listing timeout|timeout/i,
+    /listing timeout|timeout|not a file|refused/i,
   );
   assert.ok(Date.now() - started < 2500, "listing timeout must fail closed before a hang");
 });
@@ -290,4 +291,26 @@ test("extract spawn on the producer path is time-bounded", () => {
   const block = src.slice(start, src.indexOf("if (!existsSync(bin)", start));
   assert.match(block, /spawnSync\("tar", \["-xzf"/);
   assert.match(block, /timeout:\s*timeoutMs/);
+});
+
+test("listing helper refuses an argv path when fd 3 is omitted", () => {
+  const dir = tempDir();
+  const asset = packPublishedLayout(dir);
+  const listed = spawnSync(process.execPath, [BOUNDS, asset, "30000"], { encoding: "utf8" });
+  assert.notEqual(listed.status, 0, "argv path must not be enough to list; fd 3 is required");
+  assert.match(listed.stderr, /fd 3|listing fd|path fallback|refused/i);
+});
+
+test("parent listing spawn opens a read-only fd and does not put the asset path on child argv", () => {
+  const src = readFileSync(SCRIPT, "utf8");
+  const start = src.indexOf("function assertSafeTarEntries");
+  assert.ok(start >= 0, "assertSafeTarEntries must remain the one listing function");
+  const block = src.slice(start, src.indexOf("export function parseExactlyOneJson"));
+  assert.match(block, /openSync\(\s*assetPath\s*,/);
+  assert.match(block, /stdio:/);
+  assert.doesNotMatch(block, /\[TAR_BOUNDS,\s*assetPath/);
+  const helper = readFileSync(BOUNDS, "utf8");
+  assert.doesNotMatch(helper, /createReadStream\(\s*assetPath/);
+  assert.doesNotMatch(helper, /createReadStream\(\s*process\.argv/);
+  assert.match(helper, /fd:\s*3|LISTING_FD|fstatSync\(\s*3\s*\)/);
 });

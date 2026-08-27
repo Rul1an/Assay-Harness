@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   closeSync,
+  constants as fsConstants,
   existsSync,
   mkdtempSync,
   openSync,
@@ -151,16 +152,29 @@ export function snapshotAssetWhileHashing(srcPath, destPath, maxBytes) {
 
 function assertSafeTarEntries(assetPath, timeoutMs = MAX_TIMEOUT_MS) {
   const boundedTimeout = boundCeiling("timeout-ms", timeoutMs, MAX_TIMEOUT_MS);
-  const listed = spawnSync(process.execPath, [TAR_BOUNDS, assetPath, String(boundedTimeout)], {
-    encoding: "utf8",
-    timeout: boundedTimeout,
-    killSignal: "SIGKILL",
-  });
-  if (listed.error?.code === "ETIMEDOUT" || listed.signal === "SIGKILL") {
-    throw new Error("listing timeout");
+  let st;
+  try {
+    st = statSync(assetPath);
+  } catch {
+    throw new Error(`asset missing: ${assetPath}`);
   }
-  if (listed.status !== 0) {
-    throw new Error((listed.stderr || listed.stdout || "unable to list asset").trim());
+  if (!st.isFile()) throw new Error(`asset missing: not a file: ${assetPath}`);
+  const fd = openSync(assetPath, fsConstants.O_RDONLY);
+  try {
+    const listed = spawnSync(process.execPath, [TAR_BOUNDS, String(boundedTimeout)], {
+      encoding: "utf8",
+      timeout: boundedTimeout,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe", fd],
+    });
+    if (listed.error?.code === "ETIMEDOUT" || listed.signal === "SIGKILL") {
+      throw new Error("listing timeout");
+    }
+    if (listed.status !== 0) {
+      throw new Error((listed.stderr || listed.stdout || "unable to list asset").trim());
+    }
+  } finally {
+    closeSync(fd);
   }
 }
 

@@ -1,6 +1,8 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, fstatSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createGunzip } from "node:zlib";
+
+const LISTING_FD = 3;
 
 // List-only on origin/main d9f26cf2: pinned v5.4.0 x86_64 header ISIZE sum is
 // 31683222 bytes (~30.215 MiB) across 4 entries (dir, README, LICENSE, assay).
@@ -77,16 +79,29 @@ class HeaderOnlyTarStream {
   }
 }
 
-export async function assertSafeTarEntries(assetPath, options = {}) {
+function requireListingFd() {
+  let st;
+  try {
+    st = fstatSync(LISTING_FD);
+  } catch {
+    throw new Error("listing fd 3 is required; path fallback is refused");
+  }
+  if (!st.isFile()) {
+    throw new Error("listing fd 3 is required; path fallback is refused");
+  }
+}
+
+export async function assertSafeTarEntries(options = {}) {
   const timeoutMs = options.timeoutMs ?? MAX_LIST_TIMEOUT_MS;
   const maxExpandedBytes = options.maxExpandedBytes ?? MAX_EXPANDED_BYTES;
   const maxEntries = options.maxEntries ?? MAX_TAR_ENTRIES;
+  requireListingFd();
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_LIST_TIMEOUT_MS) {
     throw new Error("timeout-ms cannot raise the fixed maximum ceiling");
   }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
-  const raw = createReadStream(assetPath, { signal: ac.signal });
+  const raw = createReadStream(null, { fd: LISTING_FD, signal: ac.signal, autoClose: true });
   const gunzip = createGunzip();
   raw.on("error", (error) => gunzip.destroy(error));
   raw.pipe(gunzip);
@@ -138,9 +153,9 @@ export async function assertSafeTarEntries(assetPath, options = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const asset = process.argv[2];
-  const timeoutMs = Number(process.argv[3] ?? MAX_LIST_TIMEOUT_MS);
-  assertSafeTarEntries(asset, { timeoutMs }).catch((error) => {
+  const timeoutRaw = process.argv[2];
+  const timeoutMs = /^\d+$/.test(timeoutRaw ?? "") ? Number(timeoutRaw) : MAX_LIST_TIMEOUT_MS;
+  assertSafeTarEntries({ timeoutMs }).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(3);
   });
