@@ -158,10 +158,17 @@ test("promotion runs from a base-owned pull_request_target workflow with least p
   const promotion = job(workflow, "enforcement-health-promotion");
   assert.equal(promotion["runs-on"], "ubuntu-latest");
   assert.equal(promotion["timeout-minutes"], 10);
+  assert.equal(Object.hasOwn(promotion, "if"), false);
   assert.equal(Object.hasOwn(promotion, "continue-on-error"), false);
   assert.deepEqual(promotion.permissions, { contents: "read", actions: "read" });
 
-  const body = (promotion.steps ?? []).map((step) => `${step.uses ?? ""}\n${step.run ?? ""}`).join("\n");
+  const steps = promotion.steps ?? [];
+  const verifier = steps.find((step) => step.name === "Verify enforcement-health promotion");
+  assert.ok(verifier, "missing trusted promotion verifier step");
+  assert.equal(Object.hasOwn(verifier, "if"), false);
+  assert.equal(Object.hasOwn(verifier, "continue-on-error"), false);
+
+  const body = steps.map((step) => `${step.uses ?? ""}\n${step.run ?? ""}`).join("\n");
   assert.match(body, /enforcement_health_promotion_cli\.ts/);
   assert.doesNotMatch(body, /probe-v54-enforcement-health\.mjs/);
   assert.doesNotMatch(body, /releases\/download\/v5\.4\.0/);
