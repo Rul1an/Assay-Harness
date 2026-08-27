@@ -18,6 +18,10 @@ export const MEASUREMENT_SURFACE_PATHS = [
 ] as const;
 export const CARRIER_FILE = "enforcement-health.json";
 export const PROVENANCE_FILE = "recipe.provenance.json";
+export const COMMITTED_CARRIER_PATH =
+  "harness/fixtures/suite-compatibility/enforcement-health/enforcement-health.json";
+export const COMMITTED_PROVENANCE_PATH =
+  "harness/fixtures/suite-compatibility/enforcement-health/recipe.provenance.json";
 
 export type PromotionFailureCode =
   | "wrong_workflow"
@@ -164,7 +168,10 @@ async function verifyChangedRun(
 
   if (deps.readCommitted) {
     const committed = await deps.readCommitted();
-    if (committed && (!committed.carrier.equals(carrier) || !committed.provenance.equals(provenanceBytes))) {
+    if (!committed) {
+      return failed("api_failure", "committed carrier or provenance could not be read");
+    }
+    if (!committed.carrier.equals(carrier) || !committed.provenance.equals(provenanceBytes)) {
       return failed("artifact_changed", "downloaded artifacts do not match the committed carrier or provenance");
     }
   }

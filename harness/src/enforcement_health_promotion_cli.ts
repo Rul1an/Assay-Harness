@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { EXIT } from "./cli_exit.js";
 import { materializePromotionArtifacts, productionZipIo } from "./enforcement_health_artifact.js";
 import {
@@ -11,6 +12,8 @@ import {
   requireSafePositiveArtifactId,
 } from "./enforcement_health_github.js";
 import {
+  COMMITTED_CARRIER_PATH,
+  COMMITTED_PROVENANCE_PATH,
   findEnforcementHealthRow,
   type ApiErrorResult,
   type GithubJob,
@@ -51,6 +54,22 @@ function gitText(repoRoot: string, args: string[]): { ok: true; stdout: string }
   return { ok: false, message: child.stderr || child.stdout || "git failed", status: child.status ?? 128 };
 }
 
+function gitBytes(repoRoot: string, args: string[]): { ok: true; stdout: Buffer } | { ok: false; message: string; status: number } {
+  const child = spawnSync("git", ["-C", repoRoot, ...args]);
+  const stdout = Buffer.isBuffer(child.stdout) ? child.stdout : Buffer.from(child.stdout ?? "");
+  const stderr = Buffer.isBuffer(child.stderr) ? child.stderr : Buffer.from(child.stderr ?? "");
+  if (child.status === 0) return { ok: true, stdout };
+  return { ok: false, message: stderr.toString("utf8") || stdout.toString("utf8") || "git failed", status: child.status ?? 128 };
+}
+
+export function readCommittedTree(repoRoot: string, ref: string): { carrier: Buffer; provenance: Buffer } {
+  const carrier = gitBytes(repoRoot, ["show", `${ref}:${COMMITTED_CARRIER_PATH}`]);
+  if (!carrier.ok) throw new Error(`committed carrier read failed: ${carrier.message}`);
+  const provenance = gitBytes(repoRoot, ["show", `${ref}:${COMMITTED_PROVENANCE_PATH}`]);
+  if (!provenance.ok) throw new Error(`committed provenance read failed: ${provenance.message}`);
+  return { carrier: carrier.stdout, provenance: provenance.stdout };
+}
+
 async function githubJson(url: URL, token: string): Promise<unknown | ApiErrorResult> {
   try {
     const response = await githubFetch(url, token);
@@ -61,7 +80,7 @@ async function githubJson(url: URL, token: string): Promise<unknown | ApiErrorRe
   }
 }
 
-function productionDeps(repoRoot: string, token: string): PromotionDeps {
+export function productionDeps(repoRoot: string, token: string, promotingHead: string): PromotionDeps {
   return {
     async getRun(runId) {
       const data = await githubJson(buildGithubApiUrl({ kind: "run", runId }), token);
@@ -117,6 +136,9 @@ function productionDeps(repoRoot: string, token: string): PromotionDeps {
       if (!result.ok) throw new Error(`diff failed: ${result.message}`);
       return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
     },
+    async readCommitted() {
+      return readCommittedTree(repoRoot, promotingHead);
+    },
   };
 }
 
@@ -134,35 +156,44 @@ function exitFor(verdict: PromotionVerdict): number {
   }
 }
 
-const argv = process.argv.slice(2);
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
-const repo = process.env.GH_REPOSITORY ?? process.env.GITHUB_REPOSITORY;
-if (!token || !repo) {
-  console.error("[config_error] GH_TOKEN and GH_REPOSITORY are required");
-  process.exit(EXIT.CONFIG_ERROR);
-}
-try {
-  requireAllowedRepo(repo);
-} catch (error) {
-  console.error(`[config_error] ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(EXIT.CONFIG_ERROR);
+function invokedAsMain(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return fileURLToPath(import.meta.url) === resolve(entry);
 }
 
-const verdict = await verifyEnforcementHealthPromotion({
-  baseRow: findEnforcementHealthRow(readMatrix(argValue(argv, "base-matrix"))),
-  headRow: findEnforcementHealthRow(readMatrix(argValue(argv, "head-matrix"))),
-  promotingHead: argValue(argv, "promoting-head"),
-  deps: productionDeps(argValue(argv, "repo-root"), token),
-});
+if (invokedAsMain()) {
+  const argv = process.argv.slice(2);
+  const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+  const repo = process.env.GH_REPOSITORY ?? process.env.GITHUB_REPOSITORY;
+  if (!token || !repo) {
+    console.error("[config_error] GH_TOKEN and GH_REPOSITORY are required");
+    process.exit(EXIT.CONFIG_ERROR);
+  }
+  try {
+    requireAllowedRepo(repo);
+  } catch (error) {
+    console.error(`[config_error] ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(EXIT.CONFIG_ERROR);
+  }
 
-if (verdict.status === "skipped") {
-  process.stdout.write(`enforcement-health promotion skipped: ${verdict.reason}\n`);
-} else if (verdict.status === "passed") {
-  process.stdout.write("enforcement-health promotion passed\n");
-} else if (verdict.status === "failed") {
-  console.error(`[artifact_contract] ${verdict.code}: ${verdict.message}`);
-} else {
-  const _never: never = verdict;
-  throw new Error(`unexpected verdict: ${JSON.stringify(_never)}`);
+  const promotingHead = argValue(argv, "promoting-head");
+  const verdict = await verifyEnforcementHealthPromotion({
+    baseRow: findEnforcementHealthRow(readMatrix(argValue(argv, "base-matrix"))),
+    headRow: findEnforcementHealthRow(readMatrix(argValue(argv, "head-matrix"))),
+    promotingHead,
+    deps: productionDeps(argValue(argv, "repo-root"), token, promotingHead),
+  });
+
+  if (verdict.status === "skipped") {
+    process.stdout.write(`enforcement-health promotion skipped: ${verdict.reason}\n`);
+  } else if (verdict.status === "passed") {
+    process.stdout.write("enforcement-health promotion passed\n");
+  } else if (verdict.status === "failed") {
+    console.error(`[artifact_contract] ${verdict.code}: ${verdict.message}`);
+  } else {
+    const _never: never = verdict;
+    throw new Error(`unexpected verdict: ${JSON.stringify(_never)}`);
+  }
+  process.exit(exitFor(verdict));
 }
-process.exit(exitFor(verdict));
