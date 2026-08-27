@@ -543,6 +543,34 @@ test("CLI suite generate no-op on a clean projection is byte-stable and digest-i
   assert.equal(validateSuiteCompatibility(parsed).valid, true);
 });
 
+test("CLI suite generate --check rejects extra generated fields without a canonicalize crash", () => {
+  const { matrixPath: cleanPath } = stageGeneratedWorkspace(() => {});
+  const clean = runCli("generate", "--matrix", cleanPath, "--check");
+  assert.equal(clean.status, 0, clean.stderr);
+
+  let deep = {};
+  for (let i = 0; i < 64; i++) deep = { nest: deep };
+  const extras = [
+    (matrix) => {
+      matrix.generated.confidence = 1.5;
+    },
+    (matrix) => {
+      matrix.generated.meta = { score: 0.5 };
+    },
+    (matrix) => {
+      matrix.generated.deep = deep;
+    },
+  ];
+  for (const mutate of extras) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => mutate(matrix));
+    const before = readFileSync(matrixPath);
+    const r = runCli("generate", "--matrix", matrixPath, "--check");
+    assert.equal(r.status, 3, r.stderr);
+    assert.doesNotMatch(r.stderr, /TypeError|RangeError|at canonicalize|Maximum call stack/);
+    assert.deepEqual(readFileSync(matrixPath), before, "--check must not rewrite extra generated fields");
+  }
+});
+
 test("Harness CI suite generate --check step is reachable and structurally pinned", () => {
   const workflowText = readFileSync(WORKFLOW, "utf8");
   assert.ok(workflowText.includes(GENERATE_CHECK_STEP), "committed workflow must contain the exact generate --check step");

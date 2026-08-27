@@ -4,6 +4,7 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- contracts: `suite generate --check` compares `generated` as an exact four-field projection and rejects extra or non-profile values as artifact-contract (3) without walking them through `canonicalize` (#168).
 - contracts: `suite generate` rejects a non-object matrix root as artifact-contract (3) with no stack trace, and `generated.verified_on` must be a canonical real `YYYY-MM-DD` calendar date (#168). `docs/contracts/EXIT_CODES.md` documents the additive `suite generate` / `--check` 0/2/3 routing (not a policy or regression verdict).
 - contracts: `suite generate` rejects unknown flags and any `--check` value that is not the bare flag, before reading or writing the matrix (#168). `last_verified_assay` is documented as the highest explicitly recorded `proof.assay_version`, not the last version every row proved; `verified_on` may predate later row runs.
 - contracts: derive `suite-compatibility.json` `generated` from one function and fail CI on drift (#168 PR1). `harness_version` comes from `harness/package.json`; `last_verified_assay` is `max(proof.assay_version)` (today `v3.28.0`), with `assay_default` kept as a deprecated equal alias; `verified_on` stays the committed historical date. `suite generate --check` is read-only. Regeneration may change `generated` only — rows, proofs, and `manifest.digest` stay put. Not a current Assay support claim and not a proof refresh.

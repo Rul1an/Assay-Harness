@@ -3,7 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXIT } from "./cli_exit.js";
 import {
-  canonicalize,
   deriveGenerated,
   driftAgainstRegistry,
   formatSuiteMarkdown,
@@ -82,6 +81,21 @@ function siblingHarnessVersion(matrixPath: string): string | null {
 
 const SUITE_GENERATE_KEYS = new Set(["_command", "_file", "matrix", "check"]);
 
+const GENERATED_KEYS = ["assay_default", "harness_version", "last_verified_assay", "verified_on"] as const;
+
+function generatedProjectionMatches(
+  committed: Record<string, unknown> | null,
+  expected: { assay_default: string; harness_version: string; last_verified_assay: string; verified_on: string },
+): boolean {
+  if (committed === null) return false;
+  const keys = Object.keys(committed);
+  if (keys.length !== GENERATED_KEYS.length) return false;
+  for (const key of GENERATED_KEYS) {
+    if (!Object.hasOwn(committed, key) || committed[key] !== expected[key]) return false;
+  }
+  return true;
+}
+
 function rejectSuiteGenerateArgs(args: Record<string, string | boolean>): void {
   for (const key of Object.keys(args)) {
     if (!SUITE_GENERATE_KEYS.has(key)) {
@@ -145,7 +159,7 @@ function cmdSuiteGenerate(args: Record<string, string | boolean>): void {
     process.exit(EXIT.ARTIFACT_CONTRACT);
   }
   if (checkOnly) {
-    if (canonicalize(committedGenerated ?? null) !== canonicalize(expected)) {
+    if (!generatedProjectionMatches(committedGenerated, expected)) {
       console.error("[artifact_contract] suite generate --check: generated projection drifted (SUITE_GENERATED_DRIFT)");
       process.exit(EXIT.ARTIFACT_CONTRACT);
     }
