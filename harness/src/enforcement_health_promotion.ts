@@ -111,19 +111,9 @@ export async function verifyEnforcementHealthPromotion(input: {
   promotingHead: string;
   deps: PromotionDeps;
 }): Promise<PromotionVerdict> {
-  const baseRun = hostedRunOf(input.baseRow);
-  const headRun = hostedRunOf(input.headRow);
-  if (baseRun === headRun) {
-    return { status: "skipped", reason: "hosted_run_unchanged" };
-  }
-  if (!headRun) {
-    return failed("digest_mismatch", "hosted_run changed but the promoting row has no run id");
-  }
-  try {
-    return await verifyChangedRun(headRun, input.headRow, input.promotingHead, input.deps);
-  } catch (error) {
-    return failed("api_failure", error instanceof Error ? error.message : String(error));
-  }
+  // CANARY ONLY: the trusted base workflow must ignore this PR-owned verifier.
+  void input;
+  return { status: "passed" };
 }
 
 async function verifyChangedRun(

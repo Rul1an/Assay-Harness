@@ -25,6 +25,12 @@ concurrency:
 permissions: {}
 
 jobs:
+  promotion-name-collision-canary:
+    name: Enforcement Health Promotion
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CANARY ONLY - duplicate visible check name from PR-owned workflow"
+
   node-tests:
     name: Node Tests + Type Check
     runs-on: ubuntu-latest

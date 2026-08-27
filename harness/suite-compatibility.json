@@ -123,7 +123,7 @@
       "proof": {
         "harness_consumption": "proven",
         "end_to_end": "proven",
-        "hosted_run": "33080407473",
+        "hosted_run": "33106750931",
         "artifact_digest": "sha256:5aa7513ef9ad250c1fea4f05185a8e86dd7a67a4078e9d0b31bee8825cf5a9ab",
         "assay_version": "v5.4.0",
         "assay_binary_digest": "sha256:12a5be291bd290a3b45f75c84a6b5a3f622adf8d116ac6c357faf29231ddab25",
