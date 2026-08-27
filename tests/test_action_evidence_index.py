@@ -167,9 +167,20 @@ class TestWorkflowCallsite(unittest.TestCase):
         self.assertIn("name: Verify Evidence", self.text)
 
     def test_live_job_require_slice_comment(self):
-        """This dedicated job is the require slice; do not broaden other jobs."""
-        self.assertIn("requires a verified Action evidence index", self.text)
-        self.assertNotIn("later require-slice", self.text)
+        """Pin only-callsite wording; reject leftover later-require implication."""
+        self.assertIn("Only validator callsite", self.text)
+        self.assertIn("no later require-slice", self.text)
+        self.assertIn(
+            "sandbox-command: true proves index/bundle integrity only",
+            self.text,
+        )
+        self.assertIn("not a whole-action verdict", self.text)
+        leftover = self.text.replace("no later require-slice", "")
+        leftover = leftover.replace("There is no later require-slice", "")
+        leftover = leftover.replace("there is no later require-slice", "")
+        self.assertNotIn("later require-slice", leftover)
+        self.assertNotIn("Other jobs stay unchanged", self.text)
+        self.assertNotIn("do not broaden the consumer to every job", self.text)
 
 
 class TestWorkflowStructuralGuard(unittest.TestCase):
@@ -215,6 +226,54 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
         run = self.step["run"]
         self.assertNotIn("--if-present", run)
         self.assertIn("python3 ci/validate_action_evidence_index.py", run)
+
+    def test_workflow_callsite_all_empty_refuses(self):
+        """Workflow-level all-empty refuse at the only validator callsite.
+
+        Missing RED is this callsite, not unit tests. Existing
+        test_cli_require_verified_rejects_absent_and_empty and
+        _validate(..., require_verified=True) already prove all-empty refuse
+        at the CLI/API; those are not this RED.
+
+        Extracts the parsed Validate step run line and executes that exact
+        command with empty INDEX_PATH / INDEX_DIGEST / EVIDENCE_STATE /
+        VERIFIED and GITHUB_WORKSPACE=temp. Expects non-zero. Fails if the
+        callsite still has --if-present, because then all-empty would pass.
+
+        Non-claim: a future Windows producer can hard-fail via
+        assay-action#37 (Windows drive-letter / index_abs). Not a code path,
+        not a skip, not a Windows job. sandbox-command: true is not a
+        whole-action verdict.
+        """
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertEqual(
+            text.count("ci/validate_action_evidence_index.py"),
+            1,
+            "validator must appear exactly once (only callsite; no later-require jobs)",
+        )
+        step = _validate_action_evidence_index_step(self.data)
+        run = step["run"]
+        if "--if-present" in run:
+            self.fail("'--if-present' unexpectedly")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["INDEX_PATH"] = ""
+            env["INDEX_DIGEST"] = ""
+            env["EVIDENCE_STATE"] = ""
+            env["VERIFIED"] = ""
+            env["GITHUB_WORKSPACE"] = tmp
+            proc = subprocess.run(
+                ["sh", "-c", run],
+                cwd=str(REPO_ROOT),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(
+                proc.returncode,
+                0,
+                f"empty handshake accepted: rc={proc.returncode} stderr={proc.stderr!r}",
+            )
 
     def test_this_module_does_not_import_pyyaml(self):
         tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))

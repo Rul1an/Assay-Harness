@@ -388,8 +388,10 @@ jobs:
             echo "- failure: ${failure_events} events"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Dedicated live producing job requires a verified Action evidence index.
-  # Other jobs stay unchanged; do not broaden the consumer to every job.
+  # Only validator callsite. There is no later require-slice.
+  # sandbox-command: true proves index/bundle integrity only (not a whole-action verdict).
+  # A future Windows producer can hard-fail via assay-action#37
+  # (Windows drive-letter / index_abs); that is a non-claim, not a code path.
   action-evidence-index:
     name: Action Evidence Index
     runs-on: ubuntu-latest
