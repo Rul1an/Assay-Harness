@@ -315,6 +315,11 @@ def validate_index(
     if isinstance(verified, str):
         verified_value = verified.strip()
 
+    if if_present and require_verified:
+        raise ValidationError(
+            "--if-present and --require-verified are incompatible"
+        )
+
     empties = (
         _is_empty(index_path),
         _is_empty(digest_text) and _is_empty(digest),

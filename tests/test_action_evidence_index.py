@@ -706,6 +706,41 @@ class TestActionEvidenceIndexValidator(unittest.TestCase):
             ws = Path(tmp)
             self._validate(ws, "", "", "", "", if_present=True)
 
+    def test_if_present_plus_require_verified_api_rejects_all_empty(self):
+        """Combined flags must fail before the if_present all-empty return."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            exc = self._expect_error(
+                ws, "", "", "", "", if_present=True, require_verified=True
+            )
+            self.assertIn("incompatible", str(exc))
+
+    def test_if_present_plus_require_verified_cli_rejects_all_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--workspace",
+                    str(ws),
+                    "--index",
+                    "",
+                    "--digest",
+                    "",
+                    "--evidence-state",
+                    "",
+                    "--verified",
+                    "",
+                    "--if-present",
+                    "--require-verified",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertIn("incompatible", proc.stderr)
+
     def test_if_present_partial_handshake_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
