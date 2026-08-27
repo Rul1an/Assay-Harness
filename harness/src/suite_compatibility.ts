@@ -69,10 +69,6 @@ export interface CarrierRowProof {
   end_to_end: string;
   hosted_run?: string | null;
   artifact_digest?: string | null;
-  // End-to-end proof provenance (required when end_to_end === "proven" on a carrier
-  // row): the released producer version, its binary digest, the committed fixture the
-  // hermetic run was scoped to, the exact command, and the runner OS. A proof without
-  // these is too thin to be machine-verifiable.
   assay_version?: string | null;
   assay_binary_digest?: string | null;
   fixture_digest?: string | null;
@@ -267,21 +263,14 @@ function validateProof(
       });
     }
   }
-  // A `proven` end-to-end claim must carry its evidence. Every proven row needs a
-  // hosted run + a content anchor; a CARRIER row additionally needs the hermetic-proof
-  // provenance (released producer version + the committed fixture digest) so the proof
-  // is machine-verifiable, not just a human run-link. Absence is an unbacked claim.
   if (p.end_to_end === "proven") {
-    const baseOk = nonEmptyString(p.hosted_run) && nonEmptyString(p.artifact_digest);
-    const carrierOk =
-      !opts.requireHarnessConsumption || (nonEmptyString(p.assay_version) && nonEmptyString(p.fixture_digest));
-    if (!(baseOk && carrierOk)) {
-      const need = opts.requireHarnessConsumption
-        ? "hosted_run + artifact_digest + assay_version + fixture_digest"
-        : "hosted_run + artifact_digest";
+    const need = opts.requireHarnessConsumption
+      ? ["hosted_run", "artifact_digest", "assay_version", "assay_binary_digest", "fixture_digest", "command", "runner_os"]
+      : ["hosted_run", "artifact_digest"];
+    if (!need.every((f) => nonEmptyString(p[f]))) {
       errors.push({
         code: "SUITE_PROVEN_WITHOUT_PROOF",
-        message: `${path}.proof.end_to_end is "proven" but its evidence is incomplete (need ${need})`,
+        message: `${path}.proof.end_to_end is "proven" but its evidence is incomplete (need ${need.join(" + ")})`,
         path: `${path}.proof`,
       });
     }
@@ -331,9 +320,10 @@ function validateCarrierRow(row: unknown, path: string, errors: SuiteValidationE
   if (r.limits !== undefined && !(Array.isArray(r.limits) && r.limits.every((x) => typeof x === "string"))) {
     errors.push({ code: "SUITE_ROW_INVALID", message: `${path}.limits must be an array of strings`, path: `${path}.limits` });
   }
-  // A declared (not-yet-proven) carrier row must carry a machine-readable gap reason,
-  // so the matrix reads as a roadmap rather than silent omission.
   const proof = r.proof as Record<string, unknown> | undefined;
+  if (proof && proof.end_to_end === "proven" && r.end_to_end_gap !== undefined) {
+    errors.push({ code: "SUITE_GAP_ON_PROVEN", message: `${path}.end_to_end_gap is forbidden when proof.end_to_end is "proven"`, path: `${path}.end_to_end_gap` });
+  }
   if (proof && proof.end_to_end === "declared") {
     const gap = r.end_to_end_gap as Record<string, unknown> | undefined;
     if (
@@ -349,12 +339,12 @@ function validateCarrierRow(row: unknown, path: string, errors: SuiteValidationE
       });
     }
   }
-  // proof_scope, when present, must be hermetic-shaped.
-  if (r.proof_scope !== undefined) {
-    const ps = r.proof_scope as Record<string, unknown>;
-    if (typeof ps !== "object" || ps === null || !nonEmptyString(ps.runner_os) || typeof ps.hosted !== "boolean" || typeof ps.ambient_scan !== "boolean") {
-      errors.push({ code: "SUITE_PROOF_SCOPE_INVALID", message: `${path}.proof_scope must be { runner_os: string, hosted: bool, ambient_scan: bool }`, path: `${path}.proof_scope` });
-    }
+  const ps = r.proof_scope as Record<string, unknown> | undefined;
+  const scopeOk = typeof ps === "object" && ps !== null && nonEmptyString(ps.runner_os) && typeof ps.hosted === "boolean" && typeof ps.ambient_scan === "boolean";
+  if (proof && proof.end_to_end === "proven" && (!scopeOk || ps?.ambient_scan !== false || ps?.hosted !== true || proof.runner_os !== ps?.runner_os)) {
+    errors.push({ code: "SUITE_PROOF_SCOPE_INVALID", message: `${path}.proof_scope must be { runner_os, hosted:true, ambient_scan:false } and runner_os must equal proof.runner_os`, path: `${path}.proof_scope` });
+  } else if (proof?.end_to_end !== "proven" && r.proof_scope !== undefined && !scopeOk) {
+    errors.push({ code: "SUITE_PROOF_SCOPE_INVALID", message: `${path}.proof_scope must be { runner_os: string, hosted: bool, ambient_scan: bool }`, path: `${path}.proof_scope` });
   }
   validateProof(r.proof, path, errors, { requireHarnessConsumption: true });
 }

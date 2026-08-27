@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,11 +18,15 @@ import {
   loadSuiteReport,
   formatSuiteMarkdown,
 } from "../dist/suite_compatibility.js";
+import { verifyEnforcementHealthPromotion } from "../dist/enforcement_health_promotion.js";
 
 const fixture = (name) =>
   fileURLToPath(new URL(`../fixtures/suite-compatibility/${name}`, import.meta.url));
 // The canonical, checked-in suite asset (CI gates the real matrix, not a copy).
 const ASSET = fileURLToPath(new URL("../suite-compatibility.json", import.meta.url));
+const EH_PROVENANCE = fileURLToPath(
+  new URL("../fixtures/suite-compatibility/enforcement-health/recipe.provenance.json", import.meta.url),
+);
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
 const COMPAT_DOC = fileURLToPath(new URL("../../docs/ASSAY_COMPATIBILITY.md", import.meta.url));
@@ -132,12 +137,11 @@ test("real golden matrix validates", () => {
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
   assert.equal(r.recipe_count, 2);
-  // honest split: the release-compat recipe rail + the inventory carrier (H-next-2) + the
-  // supply_chain carrier (A5a-2, v3.28.0 valid-not-clean) + the supply-chain DSSE clean/pass
-  // recipe row (A5a-3, v3.29.0) are e2e-proven; three carriers remain declared/pending behind
-  // their producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 4);
-  assert.equal(r.e2e_declared_count, 3);
+  // honest split: release-compat recipe + inventory + supply_chain + DSSE recipe +
+  // enforcement-health (hosted v5.4.0) are e2e-proven; render-safety and token-passthrough
+  // remain declared/pending behind producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 5);
+  assert.equal(r.e2e_declared_count, 2);
 });
 
 test("wrong schema id is rejected", () => {
@@ -185,6 +189,201 @@ test("a proven carrier row needs hermetic-proof metadata, not just run+digest", 
   const r = buildSuiteReport(fixture("proven-thin.suite.json"));
   assert.equal(r.validation.valid, false, "run+digest alone is too thin for a carrier proof");
   assert.ok(r.validation.errors.some((e) => e.code === "SUITE_PROVEN_WITHOUT_PROOF"));
+});
+
+const ZIP_ARTIFACT_DIGEST = "sha256:7b585ac9c31e8d5a566625f1390ea3706296ef7298dacddaec416dbb9d7f933e";
+const TARBALL_ASSET_DIGEST = "sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3";
+const HERMETIC_CARRIER_PROOF_FIELDS = [
+  "hosted_run",
+  "artifact_digest",
+  "assay_version",
+  "assay_binary_digest",
+  "fixture_digest",
+  "command",
+  "runner_os",
+];
+
+function mutateProvenCarrier(mutate) {
+  const matrix = committedMatrix();
+  const row = matrix.carrier_rows.find((r) => r.carrier === "assay.mcp_server_inventory.v0");
+  mutate(row);
+  matrix.manifest.digest = computeMatrixDigest(matrix);
+  return validateSuiteCompatibility(matrix);
+}
+
+test("end_to_end=proven with end_to_end_gap is a contract error (the found false-green)", () => {
+  const v = mutateProvenCarrier((row) => {
+    row.end_to_end_gap = { reason_code: "awaiting_hosted_recipe_run", owner: "harness" };
+  });
+  assert.equal(v.valid, false, "proven + gap must fail-closed; keeping both is the found false-green");
+  assert.ok(
+    v.errors.some((e) => e.code === "SUITE_GAP_ON_PROVEN" && e.path?.includes("end_to_end_gap")),
+    JSON.stringify(v.errors),
+  );
+});
+
+test("a proven carrier row requires every hermetic proof field through one shared rule", () => {
+  for (const field of HERMETIC_CARRIER_PROOF_FIELDS) {
+    const v = mutateProvenCarrier((row) => {
+      delete row.proof[field];
+    });
+    assert.equal(v.valid, false, `deleting proof.${field} must fail-closed`);
+    assert.ok(
+      v.errors.some((e) => e.code === "SUITE_PROVEN_WITHOUT_PROOF"),
+      `${field}: ${JSON.stringify(v.errors)}`,
+    );
+  }
+  const missingScope = mutateProvenCarrier((row) => {
+    delete row.proof_scope;
+  });
+  assert.equal(missingScope.valid, false, "a proven carrier row must carry proof_scope");
+  assert.ok(
+    missingScope.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"),
+    JSON.stringify(missingScope.errors),
+  );
+});
+
+test("a proven carrier row with proof_scope.ambient_scan=true is rejected", () => {
+  const v = mutateProvenCarrier((row) => {
+    row.proof_scope.ambient_scan = true;
+  });
+  assert.equal(v.valid, false, "ambient_scan=true is not a hermetic proof");
+  assert.ok(
+    v.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"),
+    JSON.stringify(v.errors),
+  );
+});
+
+test("a proven carrier row with proof_scope.hosted=false is rejected", () => {
+  const v = mutateProvenCarrier((row) => {
+    row.proof_scope.hosted = false;
+  });
+  assert.equal(v.valid, false, "hosted=false contradicts a required hosted_run");
+  assert.ok(
+    v.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"),
+    JSON.stringify(v.errors),
+  );
+});
+
+test("a proven carrier row with proof.runner_os != proof_scope.runner_os is rejected", () => {
+  const v = mutateProvenCarrier((row) => {
+    row.proof.runner_os = "linux";
+    row.proof_scope.runner_os = "ubuntu-latest";
+  });
+  assert.equal(v.valid, false, "the two authored runner_os copies must be exactly equal");
+  assert.ok(
+    v.errors.some((e) => e.code === "SUITE_PROOF_SCOPE_INVALID"),
+    JSON.stringify(v.errors),
+  );
+});
+
+test("enforcement-health fold is proven and corresponds to the committed provenance fixture", () => {
+  const row = committedMatrix().carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  const prov = JSON.parse(readFileSync(EH_PROVENANCE, "utf8"));
+  assert.equal(row.proof.harness_consumption, "proven");
+  assert.equal(row.proof.end_to_end, "proven");
+  assert.equal(row.end_to_end_gap, undefined);
+  assert.equal(row.proof.hosted_run, "33080407473");
+  assert.equal(row.proof.hosted_run, prov.hosted_run);
+  assert.equal(row.proof.artifact_digest, prov.artifact.digest);
+  assert.equal(row.proof.assay_version, prov.assay.version);
+  assert.equal(row.proof.assay_binary_digest, prov.assay.binary_digest);
+  assert.equal(row.proof.fixture_digest, prov.fixture.digest);
+  assert.equal(row.proof.command, prov.assay.command);
+  assert.equal(row.proof.runner_os, prov.runner_os);
+  assert.equal(row.proof.runner_os, row.proof_scope.runner_os);
+  assert.equal(row.proof_scope.hosted, true);
+  assert.equal(row.proof_scope.ambient_scan, false);
+  assert.notEqual(row.proof.artifact_digest, ZIP_ARTIFACT_DIGEST);
+  assert.notEqual(row.proof.artifact_digest, TARBALL_ASSET_DIGEST);
+  assert.equal(prov.release_asset.digest, TARBALL_ASSET_DIGEST);
+});
+
+function sha256(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function promotionFiles(artifactDigest, carrierBytes) {
+  const prov = JSON.parse(readFileSync(EH_PROVENANCE, "utf8"));
+  prov.artifact.digest = artifactDigest;
+  return {
+    "enforcement-health.json": carrierBytes,
+    "recipe.provenance.json": Buffer.from(`${JSON.stringify(prov, null, 2)}\n`),
+  };
+}
+
+function promotionDeps(files) {
+  return {
+    getRun: async () => ({
+      id: 33080407473,
+      path: ".github/workflows/harness-ci.yml",
+      name: "Harness CI",
+      head_sha: "17ce084491f333ef92561d33f654760f5df8b564",
+      status: "completed",
+      conclusion: "success",
+    }),
+    getJobs: async () => [{ name: "Assay Enforcement Health Probe", conclusion: "success", status: "completed" }],
+    getArtifactFiles: async () => files,
+    isAncestor: async () => true,
+    changedPaths: async () => ["harness/suite-compatibility.json"],
+  };
+}
+
+test("enforcement-health promotion is promoted when hosted_run changes, not hosted_run_unchanged", async () => {
+  const row = committedMatrix().carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  const carrier = Buffer.from(`{"schema":"assay.enforcement_health.v1","probe":${JSON.stringify(row.proof.hosted_run)}}\n`);
+  const digest = sha256(carrier);
+  const head = { carrier: row.carrier, proof: { ...row.proof, artifact_digest: digest, assay_binary_digest: row.proof.assay_binary_digest, fixture_digest: row.proof.fixture_digest } };
+  const files = promotionFiles(digest, carrier);
+  const promoted = await verifyEnforcementHealthPromotion({
+    baseRow: { carrier: row.carrier, proof: { hosted_run: null } },
+    headRow: head,
+    promotingHead: "26e426621532e77e138c77c2517f8f29511bb09c",
+    deps: promotionDeps(files),
+  });
+  assert.notEqual(promoted.status, "skipped");
+  assert.notEqual(promoted.reason, "hosted_run_unchanged");
+  assert.equal(promoted.status, "passed", JSON.stringify(promoted));
+
+  const skipped = await verifyEnforcementHealthPromotion({
+    baseRow: { carrier: row.carrier, proof: { hosted_run: row.proof.hosted_run } },
+    headRow: { carrier: row.carrier, proof: { hosted_run: row.proof.hosted_run } },
+    promotingHead: "26e426621532e77e138c77c2517f8f29511bb09c",
+    deps: {
+      getRun: async () => {
+        throw new Error("skip must not call GitHub");
+      },
+      getJobs: async () => [],
+      getArtifactFiles: async () => ({}),
+      isAncestor: async () => true,
+      changedPaths: async () => [],
+    },
+  });
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.reason, "hosted_run_unchanged");
+});
+
+test("zip or tarball artifact_digest substitutions fail-closed in the promotion verifier", async () => {
+  const row = committedMatrix().carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  const carrier = Buffer.from('{"schema":"assay.enforcement_health.v1","status":"active"}\n');
+  const carrierDigest = sha256(carrier);
+  for (const [label, wrong] of [
+    ["zip", ZIP_ARTIFACT_DIGEST],
+    ["tarball", TARBALL_ASSET_DIGEST],
+  ]) {
+    const head = {
+      carrier: row.carrier,
+      proof: { ...row.proof, artifact_digest: wrong },
+    };
+    const verdict = await verifyEnforcementHealthPromotion({
+      baseRow: { carrier: row.carrier, proof: { hosted_run: null } },
+      headRow: head,
+      promotingHead: "26e426621532e77e138c77c2517f8f29511bb09c",
+      deps: promotionDeps(promotionFiles(carrierDigest, carrier)),
+    });
+    assert.equal(verdict.status, "failed", `${label} must fail-closed: ${JSON.stringify(verdict)}`);
+    assert.equal(verdict.code, "digest_mismatch", `${label}: ${JSON.stringify(verdict)}`);
+  }
 });
 
 test("an ill-shaped proof_scope is rejected", () => {
@@ -410,7 +609,7 @@ test("CLI suite matrix: --format json stays complete + parseable above the 8KB p
 // Generated projection (one derivation path; digest-invariant)
 // ---------------------------------------------------------------------------
 
-const PINNED_LAST_VERIFIED = "v3.28.0";
+const PINNED_LAST_VERIFIED = "v5.4.0";
 const PINNED_VERIFIED_ON = "2026-06-17";
 
 function committedMatrix() {

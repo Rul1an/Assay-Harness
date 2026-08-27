@@ -2,8 +2,8 @@
   "schema": "suite.compatibility.v0",
   "generated": {
     "harness_version": "0.10.2",
-    "last_verified_assay": "v3.28.0",
-    "assay_default": "v3.28.0",
+    "last_verified_assay": "v5.4.0",
+    "assay_default": "v5.4.0",
     "verified_on": "2026-06-17"
   },
   "carrier_rows": [
@@ -122,18 +122,24 @@
       },
       "proof": {
         "harness_consumption": "proven",
-        "end_to_end": "declared",
-        "hosted_run": null,
-        "artifact_digest": null,
-        "note": "vendored real producer golden; released-binary emit + hosted recipe is H-next-2"
-      },
-      "end_to_end_gap": {
-        "reason_code": "requires_privileged_runtime",
-        "owner": "assay"
+        "end_to_end": "proven",
+        "hosted_run": "33080407473",
+        "artifact_digest": "sha256:5aa7513ef9ad250c1fea4f05185a8e86dd7a67a4078e9d0b31bee8825cf5a9ab",
+        "assay_version": "v5.4.0",
+        "assay_binary_digest": "sha256:12a5be291bd290a3b45f75c84a6b5a3f622adf8d116ac6c357faf29231ddab25",
+        "fixture_digest": "sha256:6544cfcead35fea7568945bad3b90d6ee428f256aaad115a6bcd6efc23bf2e07",
+        "command": "assay sandbox --enforce --enforce-net --probe-enforcement --enforcement-health /tmp/enforcement-health.json --policy fixtures/suite-compatibility/enforcement-health/probe-policy.yaml -- true",
+        "runner_os": "ubuntu-latest",
+        "note": "hermetic E2E: released v5.4.0 x86_64 binary emitted assay.enforcement_health.v1 (hosted ubuntu-latest, fixture-scoped) and Harness consumed it via carrier enforcement-health => exit 0. Not a universal-host claim and not an aarch64 measurement."
       },
       "limits": [
         "assay.enforcement_health.v0 not covered by this adapter"
-      ]
+      ],
+      "proof_scope": {
+        "runner_os": "ubuntu-latest",
+        "hosted": true,
+        "ambient_scan": false
+      }
     },
     {
       "carrier": "assay.mcp_server_inventory.v0",
@@ -217,6 +223,6 @@
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:ce7640673f9b6f1160e88378aea9f64ef77ae98074fdb067cf21492fcdfd8ea7"
+    "digest": "sha256:6aba502f9aca3fc5d78c35eaa72560bfc4a82f535628554fc2a01836f76c4da2"
   }
 }

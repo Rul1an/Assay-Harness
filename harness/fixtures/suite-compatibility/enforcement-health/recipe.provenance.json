@@ -1,0 +1,33 @@
+{
+  "schema": "suite.recipe_provenance.v0",
+  "recipe": "assay_enforcement_health_e2e",
+  "hosted_run": "33080407473",
+  "runner_os": "ubuntu-latest",
+  "hosted": true,
+  "ambient_scan": false,
+  "assay": {
+    "version": "v5.4.0",
+    "binary_digest": "sha256:12a5be291bd290a3b45f75c84a6b5a3f622adf8d116ac6c357faf29231ddab25",
+    "command": "assay sandbox --enforce --enforce-net --probe-enforcement --enforcement-health /tmp/enforcement-health.json --policy fixtures/suite-compatibility/enforcement-health/probe-policy.yaml -- true"
+  },
+  "release_asset": {
+    "path": "assay-v5.4.0-x86_64-unknown-linux-gnu.tar.gz",
+    "digest": "sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3"
+  },
+  "fixture": {
+    "path": "fixtures/suite-compatibility/enforcement-health/probe-policy.yaml",
+    "digest": "sha256:6544cfcead35fea7568945bad3b90d6ee428f256aaad115a6bcd6efc23bf2e07"
+  },
+  "artifact": {
+    "path": "carriers/assay.enforcement_health.v1.json",
+    "digest": "sha256:5aa7513ef9ad250c1fea4f05185a8e86dd7a67a4078e9d0b31bee8825cf5a9ab"
+  },
+  "harness": {
+    "version": "0.10.2",
+    "command": "assay-harness carrier enforcement-health --carrier carriers/assay.enforcement_health.v1.json"
+  },
+  "result": {
+    "exit_code": 0,
+    "classification": "success"
+  }
+}
