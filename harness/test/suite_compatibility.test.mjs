@@ -11,6 +11,7 @@ import {
   validateSuiteCompatibility,
   computeMatrixDigest,
   deriveGenerated,
+  parseAssayReleaseTag,
   driftAgainstRegistry,
   buildSuiteReport,
   loadSuiteReport,
@@ -493,4 +494,64 @@ test("Harness CI invokes read-only suite generate --check (removing it must fail
     "harness-ci.yml must invoke `suite generate --matrix suite-compatibility.json --check` in a job step run, not a comment",
   );
   assert.doesNotMatch(invocation, /(?<!-)--write\b/);
+});
+
+const EXACT_RELEASE_TAGS = ["v0.8.0", "v3.9.0", "v3.27.0", "v3.28.0", "v9.9.9"];
+const MALFORMED_RELEASE_TAGS = ["garbage", "v999junk", "v3.x.9", "v3.28.0-rc.1", "3.28.0", "v3.28", "V3.28.0"];
+
+test("parseAssayReleaseTag accepts only vMAJOR.MINOR.PATCH and is the shared exact-tag rule", () => {
+  for (const tag of EXACT_RELEASE_TAGS) {
+    const parsed = parseAssayReleaseTag(tag);
+    assert.ok(parsed, `exact tag ${tag} must parse`);
+    const [, major, minor, patch] = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+    assert.deepEqual(parsed, [Number(major), Number(minor), Number(patch)]);
+  }
+  for (const tag of MALFORMED_RELEASE_TAGS) {
+    assert.equal(parseAssayReleaseTag(tag), null, `non-exact tag ${tag} must be rejected`);
+  }
+  assert.equal(parseAssayReleaseTag(null), null);
+  assert.equal(parseAssayReleaseTag(328), null);
+});
+
+test("deriveGenerated refuses malformed proof.assay_version instead of emitting it", () => {
+  for (const tag of MALFORMED_RELEASE_TAGS) {
+    assert.throws(
+      () =>
+        deriveGenerated({
+          harnessVersion: "0.10.2",
+          carrier_rows: [{ proof: { assay_version: tag } }],
+          recipe_rows: [],
+          verifiedOn: PINNED_VERIFIED_ON,
+        }),
+      /assay_version|release.?tag|invalid/i,
+      `deriveGenerated must not emit ${tag}`,
+    );
+  }
+});
+
+test("validateSuiteCompatibility rejects a present non-exact proof.assay_version", () => {
+  const matrix = committedMatrix();
+  matrix.carrier_rows[0].proof.assay_version = "v3.28.0-rc.1";
+  matrix.manifest.digest = computeMatrixDigest(matrix);
+  const v = validateSuiteCompatibility(matrix);
+  assert.equal(v.valid, false);
+  assert.ok(
+    v.errors.some((e) => e.code === "SUITE_ASSAY_VERSION_INVALID" && e.path?.includes("assay_version")),
+    JSON.stringify(v.errors),
+  );
+});
+
+test("CLI suite generate --check cannot pass when generated mirrors a malformed proof.assay_version", () => {
+  for (const tag of ["garbage", "v999junk", "v3.x.9", "v3.28.0-rc.1"]) {
+    const { matrixPath } = stageGeneratedWorkspace(({ matrix }) => {
+      matrix.carrier_rows[0].proof.assay_version = tag;
+      matrix.generated.last_verified_assay = tag;
+      matrix.generated.assay_default = tag;
+    });
+    const before = readFileSync(matrixPath);
+    const r = runCli("generate", "--matrix", matrixPath, "--check");
+    assert.notEqual(r.status, 0, `--check must not pass for mirrored ${tag}: ${r.stderr}`);
+    assert.equal(r.status, 3, r.stderr);
+    assert.deepEqual(readFileSync(matrixPath), before, "--check must never rewrite");
+  }
 });

@@ -193,49 +193,44 @@ export interface GeneratedProjection {
   verified_on: string;
 }
 
+const ASSAY_RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
+
+export function parseAssayReleaseTag(value: unknown): [number, number, number] | null {
+  if (typeof value !== "string") return null;
+  const match = ASSAY_RELEASE_TAG.exec(value);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
 function proofAssayVersions(rows: unknown): string[] {
   if (!Array.isArray(rows)) return [];
   const versions: string[] = [];
   for (const row of rows) {
-    if (typeof row !== "object" || row === null) continue;
-    const version = (row as { proof?: { assay_version?: unknown } }).proof?.assay_version;
-    if (typeof version === "string" && version.length > 0) versions.push(version);
+    const version = row && typeof row === "object" ? (row as { proof?: { assay_version?: unknown } }).proof?.assay_version : undefined;
+    if (version == null || version === "") continue;
+    if (!parseAssayReleaseTag(version)) throw new Error(`invalid proof.assay_version ${JSON.stringify(version)}`);
+    versions.push(version as string);
   }
   return versions;
 }
 
 function maxAssayVersion(versions: string[]): string {
-  if (versions.length === 0) {
-    throw new Error("no proof.assay_version values to derive last_verified_assay");
-  }
+  if (versions.length === 0) throw new Error("no proof.assay_version values to derive last_verified_assay");
   return versions.reduce((best, current) => {
-    const left = best.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0);
-    const right = current.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0);
-    for (let i = 0; i < Math.max(left.length, right.length); i++) {
-      const delta = (right[i] ?? 0) - (left[i] ?? 0);
-      if (delta !== 0) return delta > 0 ? current : best;
-    }
+    const left = parseAssayReleaseTag(best)!;
+    const right = parseAssayReleaseTag(current)!;
+    for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return right[i] > left[i] ? current : best;
     return best;
   });
 }
 
-/** One production derivation path for the top-level `generated` object. */
 export function deriveGenerated(input: {
   harnessVersion: string;
   carrier_rows: unknown;
   recipe_rows: unknown;
   verifiedOn: string;
 }): GeneratedProjection {
-  const lastVerified = maxAssayVersion([
-    ...proofAssayVersions(input.carrier_rows),
-    ...proofAssayVersions(input.recipe_rows),
-  ]);
-  return {
-    harness_version: input.harnessVersion,
-    last_verified_assay: lastVerified,
-    assay_default: lastVerified,
-    verified_on: input.verifiedOn,
-  };
+  const lastVerified = maxAssayVersion([...proofAssayVersions(input.carrier_rows), ...proofAssayVersions(input.recipe_rows)]);
+  return { harness_version: input.harnessVersion, last_verified_assay: lastVerified, assay_default: lastVerified, verified_on: input.verifiedOn };
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +252,9 @@ function validateProof(
     return;
   }
   const p = proof as Record<string, unknown>;
+  if (p.assay_version != null && p.assay_version !== "" && !parseAssayReleaseTag(p.assay_version)) {
+    errors.push({ code: "SUITE_ASSAY_VERSION_INVALID", message: `${path}.proof.assay_version must be vMAJOR.MINOR.PATCH; got ${JSON.stringify(p.assay_version)}`, path: `${path}.proof.assay_version` });
+  }
   const fields = opts.requireHarnessConsumption ? ["harness_consumption", "end_to_end"] : ["end_to_end"];
   for (const f of fields) {
     if (!KNOWN_PROOF_STATES.includes(p[f] as string)) {
