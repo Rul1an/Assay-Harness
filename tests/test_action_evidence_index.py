@@ -131,6 +131,39 @@ def _action_evidence_index_job(data=None):
     return job
 
 
+
+SELF_REPO_SETUP_NODE_HARNESS = "$/.github/actions/setup-node-harness"
+LEGACY_LOCAL_SETUP_NODE_HARNESS = "./.github/actions/setup-node-harness"
+
+
+def require_setup_node_harness_before_tests(job):
+    """Acceptance rule: Action Evidence Index installs js-yaml via self-repo harness before tests.
+
+    GitHub Actions same-repository syntax is `$/.github/actions/...` (runner >= 2.336.0).
+    Legacy workspace-relative `./.github/actions/...` must not satisfy this rule.
+    """
+    uses = [step.get("uses") for step in job["steps"]]
+    names = [step.get("name") for step in job["steps"]]
+    if SELF_REPO_SETUP_NODE_HARNESS not in uses:
+        raise AssertionError(
+            f"expected {SELF_REPO_SETUP_NODE_HARNESS} before tests, got uses={uses!r}"
+        )
+    if LEGACY_LOCAL_SETUP_NODE_HARNESS in uses:
+        raise AssertionError(
+            "legacy workspace-relative ./ setup-node-harness must be absent"
+        )
+    harness_i = uses.index(SELF_REPO_SETUP_NODE_HARNESS)
+    try:
+        test_i = names.index("Run action evidence index tests")
+    except ValueError as exc:
+        raise AssertionError("missing Run action evidence index tests step") from exc
+    if not harness_i < test_i:
+        raise AssertionError(
+            f"setup-node-harness (index {harness_i}) must precede tests (index {test_i})"
+        )
+    return harness_i, test_i
+
+
 def _validate_action_evidence_index_step(data=None):
     job = _action_evidence_index_job(data)
     for step in job["steps"]:
@@ -305,33 +338,20 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
         self.assertEqual(lock["packages"]["node_modules/js-yaml"]["version"], "5.2.2")
 
     def test_job_installs_js_yaml_via_setup_node_harness_before_tests(self):
-        job = _action_evidence_index_job(self.data)
-        uses = [step.get("uses") for step in job["steps"]]
-        names = [step.get("name") for step in job["steps"]]
-        self.assertIn("$/.github/actions/setup-node-harness", uses)
-        self.assertNotIn(
-            "./.github/actions/setup-node-harness",
-            uses,
-            "legacy workspace-relative ./ setup-node-harness must be absent",
-        )
-        harness_i = uses.index("$/.github/actions/setup-node-harness")
-        test_i = names.index("Run action evidence index tests")
-        self.assertLess(harness_i, test_i)
+        require_setup_node_harness_before_tests(_action_evidence_index_job(self.data))
 
     def test_restoring_legacy_local_setup_node_harness_fails_self_repo_guard(self):
-        """Bite: restoring ./ must not satisfy the self-repository install guard."""
+        """Bite: restoring ./ must fail the shared production/acceptance helper."""
         job = copy.deepcopy(_action_evidence_index_job(self.data))
         restored = False
         for step in job["steps"]:
-            if step.get("uses") == "$/.github/actions/setup-node-harness":
-                step["uses"] = "./.github/actions/setup-node-harness"
+            if step.get("uses") == SELF_REPO_SETUP_NODE_HARNESS:
+                step["uses"] = LEGACY_LOCAL_SETUP_NODE_HARNESS
                 restored = True
                 break
         self.assertTrue(restored, "expected a self-repository setup-node-harness use to mutate")
-        uses = [step.get("uses") for step in job["steps"]]
         with self.assertRaises(AssertionError):
-            self.assertIn("$/.github/actions/setup-node-harness", uses)
-            self.assertNotIn("./.github/actions/setup-node-harness", uses)
+            require_setup_node_harness_before_tests(job)
 
 
 class TestValidatorExportsAndPolicy(unittest.TestCase):
