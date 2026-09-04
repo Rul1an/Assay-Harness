@@ -10,6 +10,7 @@ Run with:
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import json
@@ -105,7 +106,7 @@ def _load_workflow():
     if not js_yaml.is_dir():
         raise AssertionError(
             "js-yaml 5.2.2 is not installed; the Action Evidence Index job "
-            "must run ./.github/actions/setup-node-harness before tests"
+            "must run $/.github/actions/setup-node-harness before tests"
         )
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _JS_YAML_LOAD, str(WORKFLOW_PATH)],
@@ -307,10 +308,30 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
         job = _action_evidence_index_job(self.data)
         uses = [step.get("uses") for step in job["steps"]]
         names = [step.get("name") for step in job["steps"]]
-        self.assertIn("./.github/actions/setup-node-harness", uses)
-        harness_i = uses.index("./.github/actions/setup-node-harness")
+        self.assertIn("$/.github/actions/setup-node-harness", uses)
+        self.assertNotIn(
+            "./.github/actions/setup-node-harness",
+            uses,
+            "legacy workspace-relative ./ setup-node-harness must be absent",
+        )
+        harness_i = uses.index("$/.github/actions/setup-node-harness")
         test_i = names.index("Run action evidence index tests")
         self.assertLess(harness_i, test_i)
+
+    def test_restoring_legacy_local_setup_node_harness_fails_self_repo_guard(self):
+        """Bite: restoring ./ must not satisfy the self-repository install guard."""
+        job = copy.deepcopy(_action_evidence_index_job(self.data))
+        restored = False
+        for step in job["steps"]:
+            if step.get("uses") == "$/.github/actions/setup-node-harness":
+                step["uses"] = "./.github/actions/setup-node-harness"
+                restored = True
+                break
+        self.assertTrue(restored, "expected a self-repository setup-node-harness use to mutate")
+        uses = [step.get("uses") for step in job["steps"]]
+        with self.assertRaises(AssertionError):
+            self.assertIn("$/.github/actions/setup-node-harness", uses)
+            self.assertNotIn("./.github/actions/setup-node-harness", uses)
 
 
 class TestValidatorExportsAndPolicy(unittest.TestCase):

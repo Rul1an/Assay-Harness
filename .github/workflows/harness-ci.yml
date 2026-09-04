@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Type check
         working-directory: harness
@@ -130,7 +130,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Run hardening tests
         run: python3 -m unittest tests.test_hardening -v
@@ -155,7 +155,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Validate policy - allowed tool
         working-directory: harness
@@ -191,7 +191,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Verify valid evidence (all categories)
         working-directory: harness
@@ -212,7 +212,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Run compare
         id: compare
@@ -426,7 +426,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Run action evidence index tests
         run: python3 -m unittest tests.test_action_evidence_index -v
@@ -461,7 +461,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Resolve Assay release tag
         # The workflow_dispatch input is read via env to prevent shell
@@ -575,7 +575,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Resolve + download released Assay binary
         env:
@@ -731,7 +731,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Resolve + download released Assay binary
         env:
@@ -913,7 +913,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Resolve + download released Assay binary
         env:
@@ -1075,7 +1075,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-node-harness
+      - uses: $/.github/actions/setup-node-harness
 
       - name: Download pinned v5.4.0 x86_64 release asset
         run: |
