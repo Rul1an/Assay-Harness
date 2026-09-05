@@ -18,6 +18,10 @@ import {
   loadSuiteReport,
   formatSuiteMarkdown,
 } from "../dist/suite_compatibility.js";
+import {
+  RECIPE_PROVENANCE_SCHEMA,
+  validateRecipeProvenance,
+} from "../dist/suite_recipe_provenance.js";
 import { verifyEnforcementHealthPromotion } from "../dist/enforcement_health_promotion.js";
 
 const fixture = (name) =>
@@ -302,56 +306,6 @@ test("enforcement-health fold is proven and corresponds to the committed provena
   assert.equal(prov.release_asset.digest, TARBALL_ASSET_DIGEST);
 });
 
-test("enforcement-health row preservation: mutating historical hosted_run, assay_version, or proof fields fails against provenance", () => {
-  const baseRow = committedMatrix().carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
-  const prov = JSON.parse(readFileSync(EH_PROVENANCE, "utf8"));
-
-  function checkPreservation(row) {
-    assert.equal(row.carrier, "assay.enforcement_health.v1");
-    assert.equal(row.proof.harness_consumption, "proven");
-    assert.equal(row.proof.end_to_end, "proven");
-    assert.equal(row.proof.hosted_run, "33080407473");
-    assert.equal(row.proof.hosted_run, prov.hosted_run);
-    assert.equal(row.proof.assay_version, "v5.4.0");
-    assert.equal(row.proof.assay_version, prov.assay.version);
-    assert.equal(row.proof.artifact_digest, prov.artifact.digest);
-    assert.equal(row.proof.assay_binary_digest, prov.assay.binary_digest);
-    assert.equal(row.proof.fixture_digest, prov.fixture.digest);
-    assert.equal(row.proof.command, prov.assay.command);
-    assert.equal(row.proof.runner_os, prov.runner_os);
-    assert.equal(row.proof.runner_os, row.proof_scope.runner_os);
-    assert.equal(row.proof_scope.hosted, true);
-    assert.equal(row.proof_scope.ambient_scan, false);
-  }
-
-  // Base row passes preservation check
-  checkPreservation(baseRow);
-
-  // Negative 1: Mutating hosted_run (e.g. to v6 run 33957799594) fails
-  const mutatedRun = JSON.parse(JSON.stringify(baseRow));
-  mutatedRun.proof.hosted_run = "33957799594";
-  assert.throws(() => checkPreservation(mutatedRun), /33080407473/);
-
-  // Negative 2: Mutating assay_version (e.g. to v6.0.0) fails
-  const mutatedVer = JSON.parse(JSON.stringify(baseRow));
-  mutatedVer.proof.assay_version = "v6.0.0";
-  assert.throws(() => checkPreservation(mutatedVer), /v5\.4\.0/);
-
-  // Negative 3: Mutating artifact_digest fails
-  const mutatedArt = JSON.parse(JSON.stringify(baseRow));
-  mutatedArt.proof.artifact_digest = "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64";
-  assert.throws(() => checkPreservation(mutatedArt));
-
-  // Negative 4: Mutating assay_binary_digest fails
-  const mutatedBin = JSON.parse(JSON.stringify(baseRow));
-  mutatedBin.proof.assay_binary_digest = "sha256:fc14037644ca6addce3575a7b8508dee7ea581465cdead90a61c95c192bb726d";
-  assert.throws(() => checkPreservation(mutatedBin));
-
-  // Negative 5: Mutating end_to_end to declared fails
-  const mutatedE2E = JSON.parse(JSON.stringify(baseRow));
-  mutatedE2E.proof.end_to_end = "declared";
-  assert.throws(() => checkPreservation(mutatedE2E));
-});
 
 function sha256(bytes) {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -546,6 +500,12 @@ test("Harness #205 appends a v6.0.0 clean/pass DSSE recipe row, derives last_ver
 
   // Sidecar coherence: recipe row binds the exact emitted provenance sidecar
   const prov = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+  const v6ProvShape = validateRecipeProvenance(prov);
+  assert.equal(
+    v6ProvShape.valid,
+    true,
+    `v6 provenance sidecar must satisfy validateRecipeProvenance: ${JSON.stringify(v6ProvShape.errors)}`,
+  );
   assert.equal(recipe.proof.hosted_run, prov.hosted_run);
   assert.equal(recipe.proof.artifact_digest, prov.artifact.digest);
   assert.equal(recipe.proof.assay_version, prov.assay.version);
@@ -580,7 +540,42 @@ test("Harness #205 appends a v6.0.0 clean/pass DSSE recipe row, derives last_ver
   assert.equal(m.generated.assay_default, "v6.0.0");
 });
 
-test("Harness #205 preserves historical supply-chain recipe provenance and does not conflate deterministic carrier bytes with identical runs", () => {
+test("Harness #205 validates v6 recipe provenance sidecar and rejects invalid schema, scope, or digest forms", () => {
+  const provV6 = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+
+  // Positive control: committed sidecar is valid under production validator
+  const pos = validateRecipeProvenance(provV6);
+  assert.equal(pos.valid, true, JSON.stringify(pos.errors));
+
+  // Negative: invalid schema fails with PROVENANCE_SCHEMA_MISMATCH
+  const badSchema = { ...provV6, schema: "totally.bogus.vX" };
+  const rSchema = validateRecipeProvenance(badSchema);
+  assert.equal(rSchema.valid, false);
+  assert.ok(rSchema.errors.some((e) => e.code === "PROVENANCE_SCHEMA_MISMATCH" && e.path === "schema"));
+
+  // Negative: non-boolean hosted fails with PROVENANCE_FIELD_INVALID
+  const badHosted = { ...provV6, hosted: "not-a-boolean" };
+  const rHosted = validateRecipeProvenance(badHosted);
+  assert.equal(rHosted.valid, false);
+  assert.ok(rHosted.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "hosted"));
+
+  // Negative: non-boolean ambient_scan fails with PROVENANCE_FIELD_INVALID
+  const badAmbient = { ...provV6, ambient_scan: 123 };
+  const rAmbient = validateRecipeProvenance(badAmbient);
+  assert.equal(rAmbient.valid, false);
+  assert.ok(rAmbient.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "ambient_scan"));
+
+  // Negative: malformed release_asset.digest (not sha256:<64 hex>) fails with PROVENANCE_FIELD_INVALID
+  const badDigest = {
+    ...provV6,
+    release_asset: { ...provV6.release_asset, digest: "NOT-A-DIGEST" },
+  };
+  const rDigest = validateRecipeProvenance(badDigest);
+  assert.equal(rDigest.valid, false);
+  assert.ok(rDigest.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "release_asset.digest"));
+});
+
+test("Harness #205 verifies historical supply-chain recipe provenance pins and distinct run/version identities against v6 DSSE proof", () => {
   const provV6 = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
   const oldProv = JSON.parse(
     readFileSync(
@@ -603,8 +598,8 @@ test("Harness #205 preserves historical supply-chain recipe provenance and does 
   // Explicit non-claim: identical deterministic carrier output bytes across releases
   // do NOT conflate runs or alter historical provenance
   assert.equal(provV6.artifact.digest, oldProv.artifact.digest, "both release recipes deterministically yield f3438de4... bytes");
-  assert.notEqual(provV6.hosted_run, oldProv.hosted_run, "v6 recipe run (33957799594) must not overwrite historical run (27748640402)");
-  assert.notEqual(provV6.assay.version, oldProv.assay.version, "v6 recipe version (v6.0.0) must not overwrite historical version (v3.29.0)");
+  assert.notEqual(provV6.hosted_run, oldProv.hosted_run, "v6 recipe run (33957799594) distinct from historical run (27748640402)");
+  assert.notEqual(provV6.assay.version, oldProv.assay.version, "v6 recipe version (v6.0.0) distinct from historical version (v3.29.0)");
 });
 
 

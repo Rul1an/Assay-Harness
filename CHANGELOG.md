@@ -4,6 +4,8 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+- compatibility: record digest-bound Assay v6.0.0 clean/pass DSSE recipe proof from hosted run `33957799594` (#205). Adds fixture-scoped DSSE supply-chain recipe row with artifact digest `sha256:f3438de4…` matching verified carrier raw bytes; derives `last_verified_assay` and deprecated alias `assay_default` as `v6.0.0`. Validates v6 recipe provenance sidecar via production `validateRecipeProvenance`. Preserves historical `v3.29.0` supply-chain recipe provenance and unrefreshed `v5.4.0` enforcement-health carrier row. Not a claim of universal host compatibility, Darwin/aarch64 execution, whole-action endorsement, or general release-rail refresh.
+
 ## [0.10.3] - 2026-08-27
 
 - dependencies: refresh four optional MCP-server transitives to clear the release-line npm advisory inventory: `@hono/node-server` 1.19.17, `hono` 4.13.5, `fast-uri` 3.1.6, and `ip-address` 10.5.0 (#196). This changes no direct dependency range or Harness runtime source.

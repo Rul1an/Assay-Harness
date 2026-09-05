@@ -99,13 +99,14 @@ on 2026-06-01. The recipes were re-verified against Assay `v3.14.0` in
 [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
 on 2026-06-01, and against Assay `v3.19.1` in
 [`Harness CI` run 27091183205](https://github.com/Rul1an/Assay-Harness/actions/runs/27091183205)
-on 2026-06-07. The latest re-verification passed against Assay `v3.27.0` in
+on 2026-06-07. The historical release-compatibility recipe rail retains its recorded
+proof against Assay `v3.27.0` in
 [`Harness CI` run 27651437917](https://github.com/Rul1an/Assay-Harness/actions/runs/27651437917)
-on 2026-06-17, the first recorded proof since `v3.19.1`; the workflow
-`assay_version` default (previously `v3.26.0` from #115, without a recorded
-proof) is aligned to the proved `v3.27.0` binary in the same change.
-A sibling v6.0.0 DSSE clean/pass recipe row proves consumer compatibility with
-released Assay `v6.0.0` in
+on 2026-06-17 (retained historical proof, not refreshed in this slice); the workflow
+`assay_version` default remains aligned to that historical run.
+A sibling v6.0.0 DSSE clean/pass supply-chain recipe row records consumer
+compatibility for the hermetic DSSE conformance command path against released
+Assay `v6.0.0` in
 [`Harness CI` run 33957799594](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
 on 2026-09-05.
 
