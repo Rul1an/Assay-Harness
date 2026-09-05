@@ -18,6 +18,7 @@ import {
   loadSuiteReport,
   formatSuiteMarkdown,
 } from "../dist/suite_compatibility.js";
+import { validateRecipeProvenance } from "../dist/suite_recipe_provenance.js";
 import { verifyEnforcementHealthPromotion } from "../dist/enforcement_health_promotion.js";
 
 const fixture = (name) =>
@@ -26,6 +27,9 @@ const fixture = (name) =>
 const ASSET = fileURLToPath(new URL("../suite-compatibility.json", import.meta.url));
 const EH_PROVENANCE = fileURLToPath(
   new URL("../fixtures/suite-compatibility/enforcement-health/recipe.provenance.json", import.meta.url),
+);
+const V6_DSSE_PROVENANCE = fileURLToPath(
+  new URL("../fixtures/suite-compatibility/supply-chain-dsse/v6-recipe.provenance.dsse.json", import.meta.url),
 );
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
@@ -136,11 +140,11 @@ test("real golden matrix validates", () => {
   const r = buildSuiteReport(ASSET);
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
-  assert.equal(r.recipe_count, 2);
-  // honest split: release-compat recipe + inventory + supply_chain + DSSE recipe +
-  // enforcement-health (hosted v5.4.0) are e2e-proven; render-safety and token-passthrough
-  // remain declared/pending behind producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 5);
+  assert.equal(r.recipe_count, 3);
+  // honest split: release-compat recipe + inventory + supply_chain + DSSE v3.29 recipe +
+  // DSSE v6.0.0 recipe + enforcement-health (hosted v5.4.0) are e2e-proven; render-safety
+  // and token-passthrough remain declared/pending behind producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 6);
   assert.equal(r.e2e_declared_count, 2);
 });
 
@@ -298,6 +302,7 @@ test("enforcement-health fold is proven and corresponds to the committed provena
   assert.notEqual(row.proof.artifact_digest, TARBALL_ASSET_DIGEST);
   assert.equal(prov.release_asset.digest, TARBALL_ASSET_DIGEST);
 });
+
 
 function sha256(bytes) {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -474,6 +479,127 @@ test("A5a-3 appends a clean/pass DSSE recipe row and preserves the A5a-2 carrier
   );
 });
 
+test("Harness #205 appends a v6.0.0 clean/pass DSSE recipe row, derives last_verified_assay v6.0.0, and preserves historical rows", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const recipe = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe (v6.0.0)");
+  assert.ok(recipe, "the clean/pass DSSE v6.0.0 recipe row must exist");
+  assert.equal(recipe.support_mode, "recipe");
+  assert.equal(recipe.backing, "public-only");
+  assert.equal(recipe.proof.end_to_end, "proven");
+  assert.equal(recipe.proof.hosted_run, "33957799594");
+  assert.equal(recipe.proof.artifact_digest, "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64");
+  assert.equal(recipe.proof.assay_version, "v6.0.0");
+  assert.equal(recipe.emits.producer, "assay");
+  assert.equal(recipe.emits.min_version, "v6.0.0");
+  assert.equal(recipe.consumes.consumer, "harness");
+  assert.equal(recipe.consumes.min_version, "v0.10.3");
+  assert.match(recipe.proof.note, /released v6\.0\.0 DSSE path -> policy_result=pass carrier consumed by Harness at exit 0 \(passed=true\)/);
+
+  // Sidecar coherence: recipe row binds the exact emitted provenance sidecar
+  const prov = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+  const v6ProvShape = validateRecipeProvenance(prov);
+  assert.equal(
+    v6ProvShape.valid,
+    true,
+    `v6 provenance sidecar must satisfy validateRecipeProvenance: ${JSON.stringify(v6ProvShape.errors)}`,
+  );
+  assert.equal(recipe.proof.hosted_run, prov.hosted_run);
+  assert.equal(recipe.proof.artifact_digest, prov.artifact.digest);
+  assert.equal(recipe.proof.assay_version, prov.assay.version);
+  assert.equal(prov.result.exit_code, 0);
+  assert.equal(prov.result.classification, "success");
+
+  // Carrier source bytes & fixture digest binding
+  const inputFixture = fileURLToPath(new URL("../fixtures/suite-compatibility/supply-chain-dsse/input.dsse.example.json", import.meta.url));
+  const inputDigest = `sha256:${createHash("sha256").update(readFileSync(inputFixture)).digest("hex")}`;
+  assert.equal(prov.fixture.digest, inputDigest, "emitted provenance fixture digest must match input.dsse.example.json bytes");
+
+  // Option B: Carrier raw-byte verification against existing valid-supply-chain carrier bytes
+  const carrierFixture = fileURLToPath(new URL("../fixtures/evidence-pack/valid-supply-chain/carriers/assay.supply_chain_conformance.v0.json", import.meta.url));
+  const carrierBytes = readFileSync(carrierFixture);
+  const carrierDigest = `sha256:${createHash("sha256").update(carrierBytes).digest("hex")}`;
+  assert.equal(carrierDigest, "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64", "carrier bytes must hash to f3438de4...");
+  assert.equal(prov.artifact.digest, carrierDigest, "emitted provenance artifact digest must match verified carrier raw bytes");
+  assert.equal(recipe.proof.artifact_digest, carrierDigest, "matrix recipe row artifact_digest must match verified carrier raw bytes");
+
+  // Preserved historical rows
+  const oldRecipe = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe");
+  assert.ok(oldRecipe, "historical v3.29.0 clean/pass DSSE recipe row must be preserved");
+  assert.equal(oldRecipe.proof.hosted_run, "27748640402");
+
+  const eh = m.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  assert.ok(eh, "enforcement-health carrier row must be preserved");
+  assert.equal(eh.proof.hosted_run, "33080407473");
+  assert.equal(eh.proof.assay_version, "v5.4.0");
+
+  // Generated projection derives v6.0.0 from the new recipe row
+  assert.equal(m.generated.last_verified_assay, "v6.0.0");
+  assert.equal(m.generated.assay_default, "v6.0.0");
+});
+
+test("Harness #205 validates v6 recipe provenance sidecar and rejects invalid schema, scope, or digest forms", () => {
+  const provV6 = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+
+  // Positive control: committed sidecar is valid under production validator
+  const pos = validateRecipeProvenance(provV6);
+  assert.equal(pos.valid, true, JSON.stringify(pos.errors));
+
+  // Negative: invalid schema fails with PROVENANCE_SCHEMA_MISMATCH
+  const badSchema = { ...provV6, schema: "totally.bogus.vX" };
+  const rSchema = validateRecipeProvenance(badSchema);
+  assert.equal(rSchema.valid, false);
+  assert.ok(rSchema.errors.some((e) => e.code === "PROVENANCE_SCHEMA_MISMATCH" && e.path === "schema"));
+
+  // Negative: non-boolean hosted fails with PROVENANCE_FIELD_INVALID
+  const badHosted = { ...provV6, hosted: "not-a-boolean" };
+  const rHosted = validateRecipeProvenance(badHosted);
+  assert.equal(rHosted.valid, false);
+  assert.ok(rHosted.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "hosted"));
+
+  // Negative: non-boolean ambient_scan fails with PROVENANCE_FIELD_INVALID
+  const badAmbient = { ...provV6, ambient_scan: 123 };
+  const rAmbient = validateRecipeProvenance(badAmbient);
+  assert.equal(rAmbient.valid, false);
+  assert.ok(rAmbient.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "ambient_scan"));
+
+  // Negative: malformed release_asset.digest (not sha256:<64 hex>) fails with PROVENANCE_FIELD_INVALID
+  const badDigest = {
+    ...provV6,
+    release_asset: { ...provV6.release_asset, digest: "NOT-A-DIGEST" },
+  };
+  const rDigest = validateRecipeProvenance(badDigest);
+  assert.equal(rDigest.valid, false);
+  assert.ok(rDigest.errors.some((e) => e.code === "PROVENANCE_FIELD_INVALID" && e.path === "release_asset.digest"));
+});
+
+test("Harness #205 verifies historical supply-chain recipe provenance pins and distinct run/version identities against v6 DSSE proof", () => {
+  const provV6 = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+  const oldProv = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL(
+          "../fixtures/evidence-pack/valid-supply-chain/provenance/recipe.provenance.json",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    ),
+  );
+
+  // Historical provenance remains bound to historical v3.29.0 hosted run 27748640402
+  assert.equal(oldProv.recipe, "assay_supply_chain_conformance_dsse_clean_pass");
+  assert.equal(oldProv.hosted_run, "27748640402");
+  assert.equal(oldProv.assay.version, "v3.29.0");
+  assert.equal(oldProv.artifact.digest, "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64");
+
+  // Explicit non-claim: identical deterministic carrier output bytes across releases
+  // do NOT conflate runs or alter historical provenance
+  assert.equal(provV6.artifact.digest, oldProv.artifact.digest, "both release recipes deterministically yield f3438de4... bytes");
+  assert.notEqual(provV6.hosted_run, oldProv.hosted_run, "v6 recipe run (33957799594) distinct from historical run (27748640402)");
+  assert.notEqual(provV6.assay.version, oldProv.assay.version, "v6 recipe version (v6.0.0) distinct from historical version (v3.29.0)");
+});
+
+
 test("reviews must not leak a private min_version in the public matrix", () => {
   const v = validateSuiteCompatibility({
     schema: SUITE_COMPATIBILITY_SCHEMA,
@@ -609,7 +735,7 @@ test("CLI suite matrix: --format json stays complete + parseable above the 8KB p
 // Generated projection (one derivation path; digest-invariant)
 // ---------------------------------------------------------------------------
 
-const PINNED_LAST_VERIFIED = "v5.4.0";
+const PINNED_LAST_VERIFIED = "v6.0.0";
 const PINNED_VERIFIED_ON = "2026-06-17";
 
 function committedMatrix() {
