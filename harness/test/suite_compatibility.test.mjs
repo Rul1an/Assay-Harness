@@ -18,10 +18,7 @@ import {
   loadSuiteReport,
   formatSuiteMarkdown,
 } from "../dist/suite_compatibility.js";
-import {
-  RECIPE_PROVENANCE_SCHEMA,
-  validateRecipeProvenance,
-} from "../dist/suite_recipe_provenance.js";
+import { validateRecipeProvenance } from "../dist/suite_recipe_provenance.js";
 import { verifyEnforcementHealthPromotion } from "../dist/enforcement_health_promotion.js";
 
 const fixture = (name) =>
