@@ -2,8 +2,8 @@
   "schema": "suite.compatibility.v0",
   "generated": {
     "harness_version": "0.10.3",
-    "last_verified_assay": "v5.4.0",
-    "assay_default": "v5.4.0",
+    "last_verified_assay": "v6.0.0",
+    "assay_default": "v6.0.0",
     "verified_on": "2026-06-17"
   },
   "carrier_rows": [
@@ -219,10 +219,31 @@
         "run_date": "2026-06-18",
         "note": "released v3.29.0 DSSE path -> policy_result=pass carrier consumed by Harness at exit 0 (passed=true)"
       }
+    },
+    {
+      "recipe": "supply-chain DSSE clean/pass recipe (v6.0.0)",
+      "support_mode": "recipe",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v6.0.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.10.3"
+      },
+      "proof": {
+        "end_to_end": "proven",
+        "hosted_run": "33957799594",
+        "artifact_digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64",
+        "assay_version": "v6.0.0",
+        "run_date": "2026-09-05",
+        "note": "released v6.0.0 DSSE path -> policy_result=pass carrier consumed by Harness at exit 0 (passed=true)"
+      }
     }
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:6aba502f9aca3fc5d78c35eaa72560bfc4a82f535628554fc2a01836f76c4da2"
+    "digest": "sha256:5e0d9ffc70735d6b98160fac932f73daa5527299be385426e4ec2e84e2271904"
   }
 }

@@ -53,10 +53,12 @@ current clock.
 
 Assay `v3.8.0` remains the minimum exact tag that opened this Trust Basis
 compatibility line. The suite matrix last-verified Assay pin is derived from
-recorded proofs and is not a current-support claim. The enforcement-health
-carrier row is now `end_to_end=proven` at Assay `v5.4.0` on hosted
-`ubuntu-latest`; render-safety and token-passthrough remain declared producer
-gaps. The local-asset probe is not itself the hosted proof.
+recorded proofs (`last_verified_assay = v6.0.0` derived from the v6.0.0 DSSE
+recipe proof, run `33957799594`) and is not a current-support claim. The
+enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
+`v5.4.0` on hosted `ubuntu-latest` (run `33080407473`); render-safety and
+token-passthrough remain declared producer gaps. The local-asset probe is not
+itself the hosted proof.
 
 ## Release-Binary Proof
 
@@ -102,6 +104,10 @@ on 2026-06-07. The latest re-verification passed against Assay `v3.27.0` in
 on 2026-06-17, the first recorded proof since `v3.19.1`; the workflow
 `assay_version` default (previously `v3.26.0` from #115, without a recorded
 proof) is aligned to the proved `v3.27.0` binary in the same change.
+A sibling v6.0.0 DSSE clean/pass recipe row proves consumer compatibility with
+released Assay `v6.0.0` in
+[`Harness CI` run 33957799594](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
+on 2026-09-05.
 
 ## Harness Boundary
 
