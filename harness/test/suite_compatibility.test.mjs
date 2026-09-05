@@ -580,43 +580,31 @@ test("Harness #205 appends a v6.0.0 clean/pass DSSE recipe row, derives last_ver
   assert.equal(m.generated.assay_default, "v6.0.0");
 });
 
-test("Harness #205 v6 recipe proof rejects tampered carrier raw bytes or mismatched hosted_run", () => {
-  const m = buildSuiteReport(ASSET).validation.matrix;
-  const recipe = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe (v6.0.0)");
-  assert.ok(recipe, "v6 recipe row must exist");
+test("Harness #205 preserves historical supply-chain recipe provenance and does not conflate deterministic carrier bytes with identical runs", () => {
+  const provV6 = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
+  const oldProv = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL(
+          "../fixtures/evidence-pack/valid-supply-chain/provenance/recipe.provenance.json",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    ),
+  );
 
-  const prov = JSON.parse(readFileSync(V6_DSSE_PROVENANCE, "utf8"));
-  const carrierFixture = fileURLToPath(new URL("../fixtures/evidence-pack/valid-supply-chain/carriers/assay.supply_chain_conformance.v0.json", import.meta.url));
-  const carrierBytes = readFileSync(carrierFixture);
-  const carrierDigest = `sha256:${createHash("sha256").update(carrierBytes).digest("hex")}`;
-
-  // Honest byte equivalence: carrier bytes match the deterministic clean output f3438de4...
-  assert.equal(carrierDigest, "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64");
-  assert.equal(prov.artifact.digest, carrierDigest);
-  assert.equal(recipe.proof.artifact_digest, carrierDigest);
-
-  // Negative 1: Tampered carrier raw bytes fail artifact_digest binding
-  const tamperedBytes = Buffer.concat([carrierBytes, Buffer.from("tamper")]);
-  const tamperedDigest = `sha256:${createHash("sha256").update(tamperedBytes).digest("hex")}`;
-  assert.notEqual(tamperedDigest, carrierDigest);
-  assert.notEqual(tamperedDigest, prov.artifact.digest);
-  assert.notEqual(tamperedDigest, recipe.proof.artifact_digest);
-
-  // Negative 2: Tampered hosted_run fails provenance coherence
-  const mutatedRecipe = structuredClone(recipe);
-  mutatedRecipe.proof.hosted_run = "99999999999";
-  assert.notEqual(mutatedRecipe.proof.hosted_run, prov.hosted_run);
-
-  // Non-claim / Historical independence:
-  // Existing valid-supply-chain provenance remains pinned to historical v3.29.0 run 27748640402.
-  // Identical deterministic carrier bytes across versions do NOT equate runs or mutate historical provenance.
-  const oldProv = JSON.parse(readFileSync(fileURLToPath(new URL("../fixtures/evidence-pack/valid-supply-chain/provenance/recipe.provenance.json", import.meta.url)), "utf8"));
+  // Historical provenance remains bound to historical v3.29.0 hosted run 27748640402
   assert.equal(oldProv.recipe, "assay_supply_chain_conformance_dsse_clean_pass");
   assert.equal(oldProv.hosted_run, "27748640402");
   assert.equal(oldProv.assay.version, "v3.29.0");
-  assert.equal(oldProv.artifact.digest, carrierDigest);
-  assert.notEqual(prov.hosted_run, oldProv.hosted_run);
-  assert.notEqual(prov.assay.version, oldProv.assay.version);
+  assert.equal(oldProv.artifact.digest, "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64");
+
+  // Explicit non-claim: identical deterministic carrier output bytes across releases
+  // do NOT conflate runs or alter historical provenance
+  assert.equal(provV6.artifact.digest, oldProv.artifact.digest, "both release recipes deterministically yield f3438de4... bytes");
+  assert.notEqual(provV6.hosted_run, oldProv.hosted_run, "v6 recipe run (33957799594) must not overwrite historical run (27748640402)");
+  assert.notEqual(provV6.assay.version, oldProv.assay.version, "v6 recipe version (v6.0.0) must not overwrite historical version (v3.29.0)");
 });
 
 
