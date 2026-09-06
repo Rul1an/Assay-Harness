@@ -395,3 +395,23 @@ test("claimsParity is true when claim levels match even if card schema is invali
   assert.ok(result.errors.some((e) => e.code === "TRUST_CARD_SCHEMA_INVALID"));
   assert.equal(result.claimsParity, true, "claimsParity must remain true when claim levels match");
 });
+
+test("refuses positive claimsParity when card claims array is empty (H2)", () => {
+  const emptyClaimsCard = {
+    ...makeValidCard(),
+    claims: [],
+  };
+  const matchingBasis = makeValidPairedBasis();
+  const result = validateTrustCardCompatibility(emptyClaimsCard, matchingBasis);
+  assert.equal(result.valid, false);
+  assert.equal(result.claimsParity, false, "empty claims cannot yield positive claimsParity");
+});
+
+test("refuses positive claimsParity when a card claim has invalid level (H2)", () => {
+  const invalidClaimCard = makeValidCard();
+  invalidClaimCard.claims[0].level = "not_a_valid_level";
+  const matchingBasis = makeValidPairedBasis();
+  const result = validateTrustCardCompatibility(invalidClaimCard, matchingBasis);
+  assert.equal(result.valid, false);
+  assert.equal(result.claimsParity, false, "invalid claim level cannot yield positive claimsParity");
+});

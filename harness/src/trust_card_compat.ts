@@ -419,7 +419,12 @@ export function validateTrustCardCompatibility(
   }
 
   const hasBasisErrors = errors.some((e) => e.code.startsWith("PAIRED_BASIS_"));
-  const claimsParity = pairedBasis !== undefined && !hasBasisErrors;
+  const hasCardClaimErrors =
+    cardClaimsById === null ||
+    cardClaimsById.size !== TRUST_CARD_CLAIM_IDS.length ||
+    errors.some((e) => e.code.startsWith("TRUST_CARD_CLAIM"));
+  const claimsParity =
+    pairedBasis !== undefined && !hasBasisErrors && !hasCardClaimErrors;
 
   return {
     valid: errors.length === 0,

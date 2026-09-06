@@ -394,6 +394,25 @@ if (outDir) {
 }
 process.exit(0);
 `;
+  } else if (behavior === "empty_claims") {
+    // Producer emits card with empty claims array (H2)
+    const emptyCard = makeValidCard();
+    emptyCard.claims = [];
+    const cardJson = JSON.stringify(emptyCard, null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
+process.exit(0);
+`;
   }
 
   writeFileSync(path, scriptContent, "utf8");
@@ -1221,6 +1240,46 @@ test("probe script fails when producer emits its own diagnostic.json and preserv
   }
 });
 
+test("probe script fails and records false claims_parity in diagnostic when producer emits empty claims (H2)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "empty_claims");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+
+    assert.notEqual(run.status, 0, "probe must fail when card claims are empty");
+    assert.match(run.stderr, /Trust Card compatibility validation failed/);
+
+    const diagPath = join(outDir, "diagnostic.json");
+    const diag = JSON.parse(readFileSync(diagPath, "utf8"));
+    assert.equal(diag.valid, false);
+    assert.equal(diag.claims_parity, false, "retained diagnostic must reflect false claims_parity (H2)");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("readBoundedRegularFile rejects symlink without following target (F4)", () => {
   const dir = tempDir();
   try {
@@ -1594,6 +1653,11 @@ export function assertTrustCardStepWiring(workflow) {
     "must output to results/assay-release-compatibility/promptfoo-nonregression/trustcard",
   );
 
+  // Behavioral shell failure propagation invariant (H1):
+  // The actual YAML-selected step must propagate a reached failing probe (exit 23 -> exit 23)
+  // and pass a successful probe (exit 0 -> exit 0) with inert npm/node interception.
+  assertTrustCardStepFailurePropagation(runScript);
+
   const uploadStep = steps.find((s) => String(s?.uses ?? "").startsWith("actions/upload-artifact@"));
   assert.ok(uploadStep, "missing upload-artifact step");
   assert.match(
@@ -1610,6 +1674,50 @@ export function assertTrustCardStepWiring(workflow) {
   const shaIdx = dlRun.indexOf("sha256sum -c");
   const tarIdx = dlRun.indexOf("tar -xzf");
   assert.ok(shaIdx !== -1 && tarIdx !== -1 && shaIdx < tarIdx, "checksum-before-extraction violated");
+}
+
+export function assertTrustCardStepFailurePropagation(runScript) {
+  // Test failure propagation: when inert probe exits 23, the step must propagate exit 23
+  const failSubprocess = spawnSync(
+    "bash",
+    [
+      "-c",
+      `npm() { return 0; }\nnode() { for arg in "$@"; do if [[ "$arg" == *"probe-trust-card-compat.mjs"* ]]; then echo "INERT_PROBE_REACHED"; return 23; fi; done; echo "UNEXPECTED_NODE_INVOCATION: $@"; return 99; }\nASSAY_BIN="inert-never-executed"\n${runScript}`,
+    ],
+    { encoding: "utf8", timeout: 5000 },
+  );
+
+  assert.match(
+    failSubprocess.stdout ?? "",
+    /INERT_PROBE_REACHED/,
+    "failing probe command was not reached or executed during step execution",
+  );
+  assert.equal(
+    failSubprocess.status,
+    23,
+    `step must propagate probe nonzero exit status (expected 23, got ${failSubprocess.status}). stderr: ${failSubprocess.stderr}`,
+  );
+
+  // Positive / no-op control: when inert probe exits 0, the step must succeed with exit 0
+  const passSubprocess = spawnSync(
+    "bash",
+    [
+      "-c",
+      `npm() { return 0; }\nnode() { for arg in "$@"; do if [[ "$arg" == *"probe-trust-card-compat.mjs"* ]]; then echo "INERT_PROBE_REACHED"; return 0; fi; done; echo "UNEXPECTED_NODE_INVOCATION: $@"; return 99; }\nASSAY_BIN="inert-never-executed"\n${runScript}`,
+    ],
+    { encoding: "utf8", timeout: 5000 },
+  );
+
+  assert.match(
+    passSubprocess.stdout ?? "",
+    /INERT_PROBE_REACHED/,
+    "successful probe command was not reached or executed during step execution",
+  );
+  assert.equal(
+    passSubprocess.status,
+    0,
+    `step must succeed when probe exits 0 (expected 0, got ${passSubprocess.status}). stderr: ${passSubprocess.stderr}`,
+  );
 }
 
 function loadHarnessWorkflow() {
@@ -1735,5 +1843,34 @@ test("workflow contract test bites if checksum-before-extraction order is invert
   assert.throws(
     () => assertTrustCardStepWiring(inverted),
     /checksum-before-extraction violated/,
+  );
+});
+
+test("workflow contract test bites if probe failure is suppressed with || true (H1)", () => {
+  const base = loadHarnessWorkflow();
+  const masked = JSON.parse(JSON.stringify(base));
+  const step = masked.jobs["assay-release-compatibility"].steps.find(
+    (s) => s.name === "Measure released Assay Trust Card compatibility",
+  );
+  step.run = step.run.replace(
+    /--out-dir [^\n]+/,
+    "$& || true",
+  );
+  assert.throws(
+    () => assertTrustCardStepWiring(masked),
+    /step must propagate probe nonzero exit status/,
+  );
+});
+
+test("workflow contract test bites if probe command is not reached during execution (H1)", () => {
+  const base = loadHarnessWorkflow();
+  const unreached = JSON.parse(JSON.stringify(base));
+  const step = unreached.jobs["assay-release-compatibility"].steps.find(
+    (s) => s.name === "Measure released Assay Trust Card compatibility",
+  );
+  step.run = `set -euo pipefail\nnpm --prefix harness run build\nexit 0\n${step.run}`;
+  assert.throws(
+    () => assertTrustCardStepWiring(unreached),
+    /failing probe command was not reached or executed during step execution/,
   );
 });
