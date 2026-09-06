@@ -31,6 +31,9 @@ const EH_PROVENANCE = fileURLToPath(
 const V6_DSSE_PROVENANCE = fileURLToPath(
   new URL("../fixtures/suite-compatibility/supply-chain-dsse/v6-recipe.provenance.dsse.json", import.meta.url),
 );
+const V6_RECEIPT_RECORD = fileURLToPath(
+  new URL("../fixtures/suite-compatibility/receipt-v6/receipt-compatibility.record.json", import.meta.url),
+);
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
 const COMPAT_DOC = fileURLToPath(new URL("../../docs/ASSAY_COMPATIBILITY.md", import.meta.url));
@@ -140,11 +143,11 @@ test("real golden matrix validates", () => {
   const r = buildSuiteReport(ASSET);
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
-  assert.equal(r.recipe_count, 3);
+  assert.equal(r.recipe_count, 4);
   // honest split: release-compat recipe + inventory + supply_chain + DSSE v3.29 recipe +
-  // DSSE v6.0.0 recipe + enforcement-health (hosted v5.4.0) are e2e-proven; render-safety
-  // and token-passthrough remain declared/pending behind producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 6);
+  // DSSE v6.0.0 recipe + release-compat v6.0.0 recipe + enforcement-health (hosted v5.4.0) are e2e-proven;
+  // render-safety and token-passthrough remain declared/pending behind producer-emitter gaps.
+  assert.equal(r.e2e_proven_count, 7);
   assert.equal(r.e2e_declared_count, 2);
 });
 
@@ -599,6 +602,199 @@ test("Harness #205 verifies historical supply-chain recipe provenance pins and d
   assert.notEqual(provV6.assay.version, oldProv.assay.version, "v6 recipe version (v6.0.0) distinct from historical version (v3.29.0)");
 });
 
+test("Harness #205 appends a v6.0.0 receipt compatibility sibling recipe row, binds release peel and asset digests, and preserves historical records", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const recipe = m.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail (v6.0.0)");
+  assert.ok(recipe, "the established release-compatibility recipe rail (v6.0.0) row must exist");
+  assert.equal(recipe.support_mode, "recipe");
+  assert.equal(recipe.backing, "public-only");
+  assert.equal(recipe.proof.end_to_end, "proven");
+  assert.equal(recipe.proof.hosted_run, "33957799594");
+  assert.equal(recipe.proof.artifact_digest, "sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c");
+  assert.equal(recipe.proof.assay_version, "v6.0.0");
+  assert.equal(recipe.emits.producer, "assay");
+  assert.equal(recipe.emits.min_version, "v6.0.0");
+  assert.equal(recipe.consumes.consumer, "harness");
+  assert.equal(recipe.consumes.min_version, "v0.10.3");
+  assert.match(recipe.proof.note, /released v6\.0\.0.*promptfoo.*openfeature.*cyclonedx/);
+
+  // Sibling evidence fixture coherence
+  const record = JSON.parse(readFileSync(V6_RECEIPT_RECORD, "utf8"));
+  assert.equal(record.schema, "suite.receipt_compatibility_record.v0");
+  assert.equal(record.recipe, "established release-compatibility recipe rail (v6.0.0)");
+  assert.equal(record.hosted_run, "33957799594");
+  assert.equal(record.job_id, "101284180437");
+  assert.equal(record.job_name, "Assay Release Compatibility Recipes");
+  assert.equal(record.measured_head, "e5471842e5c0b2d58330d52c7aa31308cf916e23");
+  assert.equal(record.runner_os, "ubuntu-latest");
+  assert.equal(record.hosted, true);
+  assert.equal(record.ambient_scan, false);
+
+  // Authoritative release evidence bindings
+  assert.equal(record.assay.version, "v6.0.0");
+  assert.equal(record.assay.release_peel, "7df13b3f8767b4227b412fc104c319eb1c5e6aae");
+  assert.equal(record.release_asset.path, "assay-v6.0.0-x86_64-unknown-linux-gnu.tar.gz");
+  assert.equal(record.release_asset.digest, "sha256:71f0854b469da9fc71fff21565f3880fa0eb2a014dad490302dd3f8282ec7190");
+
+  // Archive vs member digest distinctions
+  assert.equal(record.archive.artifact_id, "9966936033");
+  assert.equal(record.archive.size_bytes, 53541);
+  assert.equal(record.archive.digest, "sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c");
+  assert.equal(recipe.proof.artifact_digest, record.archive.digest);
+
+  // Member family arms: pinned to verified retained run artifact evidence
+  // promptfoo: exit 0 nonregression and exit 1 regression fixture with diff v1
+  assert.equal(record.members.promptfoo.nonregression.exit_code, 0);
+  assert.equal(record.members.promptfoo.nonregression.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.promptfoo.nonregression.diff_digest, "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99");
+  assert.equal(record.members.promptfoo.nonregression.unchanged_claims, 10);
+  assert.equal(record.members.promptfoo.nonregression.regressed_claims, 0);
+  assert.equal(record.members.promptfoo.regression_fixture.exit_code, 1);
+  assert.equal(record.members.promptfoo.regression_fixture.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.promptfoo.regression_fixture.diff_digest, "sha256:5af439fd56c5d7cf21fc291e5e1f8688ed3df9169c63e765c99f61fe248fd7bb");
+  assert.equal(record.members.promptfoo.regression_fixture.regressed_claim_id, "external_eval_receipt_boundary_visible");
+
+  // openfeature: exit 0 nonregression and exit 1 regression fixture with diff v1
+  assert.equal(record.members.openfeature.nonregression.exit_code, 0);
+  assert.equal(record.members.openfeature.nonregression.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.openfeature.nonregression.diff_digest, "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99");
+  assert.equal(record.members.openfeature.nonregression.unchanged_claims, 10);
+  assert.equal(record.members.openfeature.nonregression.regressed_claims, 0);
+  assert.equal(record.members.openfeature.regression_fixture.exit_code, 1);
+  assert.equal(record.members.openfeature.regression_fixture.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.openfeature.regression_fixture.diff_digest, "sha256:9ceabfadf81c7f19f255b695a9fb2471aa2175897aa5db5ec2acb3abd0356d82");
+  assert.equal(record.members.openfeature.regression_fixture.regressed_claim_id, "external_decision_receipt_boundary_visible");
+
+  // cyclonedx: exit 0 nonregression and exit 1 regression fixture with diff v1
+  assert.equal(record.members.cyclonedx.nonregression.exit_code, 0);
+  assert.equal(record.members.cyclonedx.nonregression.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.cyclonedx.nonregression.diff_digest, "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99");
+  assert.equal(record.members.cyclonedx.nonregression.unchanged_claims, 10);
+  assert.equal(record.members.cyclonedx.nonregression.regressed_claims, 0);
+  assert.equal(record.members.cyclonedx.regression_fixture.exit_code, 1);
+  assert.equal(record.members.cyclonedx.regression_fixture.diff_schema, "assay.trust-basis.diff.v1");
+  assert.equal(record.members.cyclonedx.regression_fixture.diff_digest, "sha256:562c68d5d589ea3feae9ee467875fa50dff3154071d8928ea92928f9d5509db5");
+  assert.equal(record.members.cyclonedx.regression_fixture.regressed_claim_id, "external_inventory_receipt_boundary_visible");
+
+  // Explicit non-claims: no Trust Card schema=5 or binary digest inferred from artifact
+  assert.equal(record.non_claims.trust_card_schema_v5_proven, false);
+  assert.equal(record.non_claims.binary_digest_proven, false);
+  assert.equal(record.non_claims.enforcement_health_v6_proven, false);
+
+  // Historical rows are preserved and byte-equivalent
+  const oldRail = m.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail");
+  assert.ok(oldRail, "historical release-compatibility rail row must exist");
+  assert.equal(oldRail.proof.hosted_run, "27651437917");
+  assert.equal(oldRail.proof.artifact_digest, "git:8eb28b953a693bccebf3831e6fb18c5ed0ce175e");
+
+  const oldDsse = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe");
+  assert.ok(oldDsse, "historical DSSE clean/pass recipe row must exist");
+  assert.equal(oldDsse.proof.hosted_run, "27748640402");
+
+  const dsseV6 = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe (v6.0.0)");
+  assert.ok(dsseV6, "v6 DSSE clean/pass recipe row must exist");
+  assert.equal(dsseV6.proof.hosted_run, "33957799594");
+
+  const eh = m.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  assert.ok(eh, "enforcement-health carrier row must exist");
+  assert.equal(eh.proof.hosted_run, "33080407473");
+  assert.equal(eh.proof.assay_version, "v5.4.0");
+
+  // Generated projection derives v6.0.0
+  assert.equal(m.generated.last_verified_assay, "v6.0.0");
+  assert.equal(m.generated.assay_default, "v6.0.0");
+});
+
+test("Harness #205 negative controls distinguish checksum tampering from semantic binding", async () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+
+  // Positive control: committed matrix is valid under production validator
+  const pos = validateSuiteCompatibility(m);
+  assert.equal(pos.valid, true, JSON.stringify(pos.errors));
+
+  // --- Part A: Checksum-tamper controls (unrehashed mutations fail manifest digest check) ---
+  // A1: version-only substitution without manifest recomputation fails digest check
+  const tamperedVersion = JSON.parse(JSON.stringify(m));
+  const railRow = tamperedVersion.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail");
+  railRow.proof.assay_version = "v6.0.0";
+  const rVersion = validateSuiteCompatibility(tamperedVersion);
+  assert.equal(rVersion.valid, false);
+  assert.ok(rVersion.errors.some((e) => e.code === "SUITE_DIGEST_MISMATCH"));
+
+  // A2: artifact-digest tampering in receipt row fails manifest digest check
+  const tamperedDigest = JSON.parse(JSON.stringify(m));
+  const receiptRow = tamperedDigest.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail (v6.0.0)");
+  receiptRow.proof.artifact_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+  const rDigest = validateSuiteCompatibility(tamperedDigest);
+  assert.equal(rDigest.valid, false);
+  assert.ok(rDigest.errors.some((e) => e.code === "SUITE_DIGEST_MISMATCH"));
+
+  // --- Part B: Semantic binding controls (rehashing does NOT evade semantic guards) ---
+  // B1: Rehashing a matrix where enforcement-health is falsely promoted to v6.0.0 on run 33957799594
+  // Even if manifest.digest is recomputed so validateSuiteCompatibility accepts the matrix checksum,
+  // the semantic promotion rejector verifyEnforcementHealthPromotion STILL REFUSES because the probe job was skipped.
+  const rehashedEH = JSON.parse(JSON.stringify(m));
+  const rehashedEHRow = rehashedEH.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  rehashedEHRow.proof.hosted_run = "33957799594";
+  rehashedEHRow.proof.assay_version = "v6.0.0";
+  rehashedEH.manifest.digest = computeMatrixDigest({
+    carrier_rows: rehashedEH.carrier_rows,
+    recipe_rows: rehashedEH.recipe_rows,
+  });
+  // Checksum check passes on the rehashed matrix:
+  const vRehashed = validateSuiteCompatibility(rehashedEH);
+  assert.equal(vRehashed.valid, true, "rehashed matrix passes manifest checksum validation");
+
+  // But semantic promotion verifier REFUSES the skipped probe:
+  const ehRowCommitted = m.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  const promotedSkipped = await verifyEnforcementHealthPromotion({
+    baseRow: { carrier: ehRowCommitted.carrier, proof: { hosted_run: ehRowCommitted.proof.hosted_run } },
+    headRow: rehashedEHRow,
+    promotingHead: "e5471842e5c0b2d58330d52c7aa31308cf916e23",
+    deps: {
+      getRun: async () => ({
+        path: ".github/workflows/harness-ci.yml",
+        conclusion: "success",
+        head_sha: "e5471842e5c0b2d58330d52c7aa31308cf916e23",
+      }),
+      getJobs: async () => [
+        { name: "Assay Release Compatibility Recipes", conclusion: "success" },
+        { name: "Assay Enforcement Health Probe", conclusion: "skipped" },
+      ],
+      getArtifactFiles: async () => ({}),
+      isAncestor: async () => true,
+      changedPaths: async () => ["harness/suite-compatibility.json"],
+    },
+  });
+  assert.equal(promotedSkipped.status, "failed");
+  assert.equal(promotedSkipped.code, "job_not_success", "rehashing cannot evade promotion refusal on skipped probe");
+
+  // B2: Rehashing a matrix where historical rows are altered:
+  // Even if an altered historical row is rehashed so validateSuiteCompatibility checksum passes,
+  // the committed matrix's historical rows are semantically bound to their exact historical evidence:
+  const rehashedHist = JSON.parse(JSON.stringify(m));
+  const histRail = rehashedHist.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail");
+  histRail.emits.min_version = "v6.0.0";
+  rehashedHist.manifest.digest = computeMatrixDigest({
+    carrier_rows: rehashedHist.carrier_rows,
+    recipe_rows: rehashedHist.recipe_rows,
+  });
+  assert.equal(validateSuiteCompatibility(rehashedHist).valid, true, "rehashed matrix passes manifest checksum validation");
+
+  // Semantic binding guard: The committed matrix preserves historical v3.27.0 release rail and v5.4.0 EH
+  const committedRail = m.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail");
+  assert.equal(committedRail.emits.min_version, "v3.27.0", "historical rail must remain v3.27.0");
+  assert.equal(committedRail.proof.hosted_run, "27651437917", "historical rail must remain run 27651437917");
+  assert.equal(committedRail.proof.artifact_digest, "git:8eb28b953a693bccebf3831e6fb18c5ed0ce175e");
+
+  const committedEH = m.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  assert.equal(committedEH.proof.assay_version, "v5.4.0", "historical enforcement-health must remain v5.4.0");
+  assert.equal(committedEH.proof.hosted_run, "33080407473", "historical enforcement-health must remain run 33080407473");
+
+  // Explicit non-claim: Literal assertions verify structural schema conformance and historical
+  // record preservation; they do NOT claim production cryptographic authentication, agent identity delegation,
+  // or whole-action trust.
+});
 
 test("reviews must not leak a private min_version in the public matrix", () => {
   const v = validateSuiteCompatibility({
