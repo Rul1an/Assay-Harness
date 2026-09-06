@@ -58,9 +58,9 @@ Assay pin is derived from recorded proofs (`last_verified_assay = v6.0.0` derive
 from recorded v6.0.0 recipe proofs, run `33957799594`) and is not a current-support
 claim. The latest specifically measured Trust Basis receipt recipe line is released
 Assay `v6.0.0`, re-measured across the three receipt families in hosted run `33957799594`.
-The emitted `trust-basis.json` has `claims` only without a `schema_version = 5` key,
-and the binary digest is not recorded in the artifact; these residual gaps remain visible.
-The enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
+The receipt recipes exercise Trust Basis only; the Trust Card surface was not exercised
+by this run, the binary digest is not recorded in the artifact, and residual acceptance
+remains open. The enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
 `v5.4.0` on hosted `ubuntu-latest` (run `33080407473`); render-safety and
 token-passthrough remain declared producer gaps. The local-asset probe is not
 itself the hosted proof.
