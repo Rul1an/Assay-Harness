@@ -536,6 +536,16 @@ jobs:
           run_recipe cyclonedx demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh nonregression 0
           run_recipe cyclonedx demo/run-cyclonedx-mlbom-model-receipt-pipeline.sh trust-basis-regression-fixture 1
 
+      - name: Measure released Assay Trust Card compatibility
+        run: |
+          set -euo pipefail
+          npm --prefix harness run build
+          node harness/scripts/probe-trust-card-compat.mjs \
+            --assay-bin "$ASSAY_BIN" \
+            --bundle results/assay-release-compatibility/promptfoo-nonregression/baseline/baseline.evidence.tar.gz \
+            --paired-basis results/assay-release-compatibility/promptfoo-nonregression/baseline/baseline.trust-basis.json \
+            --out-dir results/assay-release-compatibility/promptfoo-nonregression/trustcard
+
       - name: Compatibility summary
         if: always()
         run: |
