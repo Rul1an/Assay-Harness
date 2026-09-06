@@ -54,7 +54,7 @@ jobs:
       - name: Set up trusted Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "20"
+          node-version-file: .node-version
 
       - name: Install trusted verifier dependencies
         working-directory: harness
