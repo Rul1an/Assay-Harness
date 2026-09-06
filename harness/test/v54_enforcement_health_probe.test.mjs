@@ -28,7 +28,7 @@ const PINNED_SCHEMA = "assay.enforcement_health.v1";
 const DOTTED_SCHEMA = "assay.enforcement.health.v1";
 const PINNED_ASSET_DIGEST = "sha256:352cd390dc59fb5adacecae5adf51976419f18ae50918f8f1504952869e94ad3";
 const PINNED_PEEL = "bbb5e7fe4b03bc6160d18e2966e75a7586c062ef";
-const PINNED_MATRIX_DIGEST = "sha256:9b28282518af97b8774aee9a24644cb0f958c6e01b3f61c962b4a269c312ab0d";
+const PINNED_MATRIX_DIGEST = "sha256:0bd0e39efc6313821ddd77f8a2661f863f840609fbf9052e53befe0a3139d215";
 const LAYOUT = "assay-v5.4.0-x86_64-unknown-linux-gnu";
 const PEEL_CLAIM = `${PINNED_SCHEMA} active at peel ${PINNED_PEEL}`;
 const FIXED_ALLOWED_PORT = 443;
@@ -521,5 +521,5 @@ test("committed matrix pins the hosted v5.4.0 enforcement-health fold", () => {
   assert.equal(enforcement.proof.end_to_end, "proven");
   assert.equal(enforcement.proof.hosted_run, "33080407473");
   assert.equal(enforcement.end_to_end_gap, undefined);
-  assert.match(raw, /"digest": "sha256:9b28282518af97b8774aee9a24644cb0f958c6e01b3f61c962b4a269c312ab0d"/);
+  assert.match(raw, /"digest": "sha256:0bd0e39efc6313821ddd77f8a2661f863f840609fbf9052e53befe0a3139d215"/);
 });

@@ -34,6 +34,9 @@ const V6_DSSE_PROVENANCE = fileURLToPath(
 const V6_RECEIPT_RECORD = fileURLToPath(
   new URL("../fixtures/suite-compatibility/receipt-v6/receipt-compatibility.record.json", import.meta.url),
 );
+const V6_TRUST_CARD_RECORD = fileURLToPath(
+  new URL("../fixtures/suite-compatibility/trust-card-v6/trust-card-compatibility.record.json", import.meta.url),
+);
 const PACKAGE = fileURLToPath(new URL("../package.json", import.meta.url));
 const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/harness-ci.yml", import.meta.url));
 const COMPAT_DOC = fileURLToPath(new URL("../../docs/ASSAY_COMPATIBILITY.md", import.meta.url));
@@ -143,11 +146,11 @@ test("real golden matrix validates", () => {
   const r = buildSuiteReport(ASSET);
   assert.equal(r.validation.valid, true, JSON.stringify(r.validation.errors));
   assert.equal(r.carrier_count, 5);
-  assert.equal(r.recipe_count, 4);
+  assert.equal(r.recipe_count, 5);
   // honest split: release-compat recipe + inventory + supply_chain + DSSE v3.29 recipe +
-  // DSSE v6.0.0 recipe + release-compat v6.0.0 recipe + enforcement-health (hosted v5.4.0) are e2e-proven;
+  // DSSE v6.0.0 recipe + release-compat v6.0.0 recipe + Trust Card v6.0.0 recipe + enforcement-health (hosted v5.4.0) are e2e-proven;
   // render-safety and token-passthrough remain declared/pending behind producer-emitter gaps.
-  assert.equal(r.e2e_proven_count, 7);
+  assert.equal(r.e2e_proven_count, 8);
   assert.equal(r.e2e_declared_count, 2);
 });
 
@@ -703,6 +706,91 @@ test("Harness #205 appends a v6.0.0 receipt compatibility sibling recipe row, bi
   // Generated projection derives v6.0.0
   assert.equal(m.generated.last_verified_assay, "v6.0.0");
   assert.equal(m.generated.assay_default, "v6.0.0");
+});
+
+test("Harness #205 appends a v6.0.0 Trust Card compatibility sibling recipe row, binds release peel and asset digests, and preserves historical records", () => {
+  const m = buildSuiteReport(ASSET).validation.matrix;
+  const recipe = m.recipe_rows.find((r) => r.recipe === "released Assay Trust Card compatibility (v6.0.0)");
+  assert.ok(recipe, "the released Assay Trust Card compatibility (v6.0.0) row must exist");
+  assert.equal(recipe.support_mode, "recipe");
+  assert.equal(recipe.backing, "public-only");
+  assert.equal(recipe.proof.end_to_end, "proven");
+  assert.equal(recipe.proof.hosted_run, "34054714155");
+  assert.equal(recipe.proof.artifact_digest, "sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc");
+  assert.equal(recipe.proof.assay_version, "v6.0.0");
+  assert.equal(recipe.emits.producer, "assay");
+  assert.equal(recipe.emits.min_version, "v6.0.0");
+  assert.equal(recipe.consumes.consumer, "harness");
+  assert.equal(recipe.consumes.min_version, "v0.10.3");
+  assert.match(recipe.proof.note, /released v6\.0\.0 Trust Card schema 5 compatibility probe.*exit 0/);
+
+  // Sibling evidence fixture coherence
+  const record = JSON.parse(readFileSync(V6_TRUST_CARD_RECORD, "utf8"));
+  assert.equal(record.schema, "suite.trust_card_compatibility_record.v0");
+  assert.equal(record.recipe, "released Assay Trust Card compatibility (v6.0.0)");
+  assert.equal(record.hosted_run, "34054714155");
+  assert.equal(record.job_id, "101544394501");
+  assert.equal(record.job_name, "Assay Release Compatibility Recipes");
+  assert.equal(record.step_number, 7);
+  assert.equal(record.step_name, "Measure released Assay Trust Card compatibility");
+  assert.equal(record.measured_head, "fc013f84d38dd60fb241ad55831865b4cac58214");
+  assert.equal(record.runner_os, "ubuntu-latest");
+  assert.equal(record.hosted, true);
+  assert.equal(record.ambient_scan, false);
+
+  // Authoritative release evidence bindings
+  assert.equal(record.assay.version, "v6.0.0");
+  assert.equal(record.assay.release_peel, "7df13b3f8767b4227b412fc104c319eb1c5e6aae");
+  assert.equal(record.release_asset.path, "assay-v6.0.0-x86_64-unknown-linux-gnu.tar.gz");
+  assert.equal(record.release_asset.digest, "sha256:71f0854b469da9fc71fff21565f3880fa0eb2a014dad490302dd3f8282ec7190");
+
+  // Archive vs member digest distinctions
+  assert.equal(record.archive.artifact_id, "9995607013");
+  assert.equal(record.archive.size_bytes, 60097);
+  assert.equal(record.archive.digest, "sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc");
+  assert.equal(recipe.proof.artifact_digest, record.archive.digest);
+
+  // Member bindings
+  assert.equal(record.members.bundle.path, "members/promptfoo-nonregression/trustcard/bundle.evidence.tar.gz");
+  assert.equal(record.members.bundle.size_bytes, 837);
+  assert.equal(record.members.bundle.digest, "sha256:5bab6faa74290fde674f3da664443aa5bdb0b8dc2324ab163aecc2294cb96c8c");
+  assert.equal(record.members.paired_basis.path, "members/promptfoo-nonregression/trustcard/paired.trust-basis.json");
+  assert.equal(record.members.paired_basis.size_bytes, 2032);
+  assert.equal(record.members.paired_basis.digest, "sha256:306b74b258d8ede7d7f7f4de0191c7c87e60e9516787a22e5c1dfe34a1f22076");
+  assert.equal(record.members.paired_basis.claim_count, 10);
+  assert.equal(record.members.trust_card.path, "members/promptfoo-nonregression/trustcard/trustcard.json");
+  assert.equal(record.members.trust_card.size_bytes, 2200);
+  assert.equal(record.members.trust_card.digest, "sha256:22accdf6efefca75ee092c9b687357b619e203a475436f9c98c94a2bdd4ab4cd");
+  assert.equal(record.members.trust_card.schema_version, 5);
+  assert.equal(record.members.trust_card.claim_count, 10);
+  assert.equal(record.members.diagnostic.path, "members/promptfoo-nonregression/trustcard/diagnostic.json");
+  assert.equal(record.members.diagnostic.size_bytes, 1441);
+  assert.equal(record.members.diagnostic.digest, "sha256:d75661de94b1f35a4080bd449d42f34b01ab541832f003713fd68f3f01fb0166");
+  assert.equal(record.members.diagnostic.valid, true);
+  assert.equal(record.members.diagnostic.claims_parity, true);
+
+  // Explicit non-claims
+  assert.equal(record.non_claims.binary_digest_proven, false);
+  assert.equal(record.non_claims.enforcement_health_v6_proven, false);
+  assert.equal(record.non_claims.cross_binary_corroboration, false);
+  assert.equal(record.non_claims.origin_authentication, false);
+
+  // Historical rows remain preserved
+  const oldRail = m.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail");
+  assert.ok(oldRail, "historical release-compatibility rail row must exist");
+  assert.equal(oldRail.proof.hosted_run, "27651437917");
+
+  const v6Receipt = m.recipe_rows.find((r) => r.recipe === "established release-compatibility recipe rail (v6.0.0)");
+  assert.ok(v6Receipt, "v6 receipt rail row must exist");
+  assert.equal(v6Receipt.proof.hosted_run, "33957799594");
+
+  const dsseV6 = m.recipe_rows.find((r) => r.recipe === "supply-chain DSSE clean/pass recipe (v6.0.0)");
+  assert.ok(dsseV6, "v6 DSSE clean/pass recipe row must exist");
+  assert.equal(dsseV6.proof.hosted_run, "33957799594");
+
+  const eh = m.carrier_rows.find((r) => r.carrier === "assay.enforcement_health.v1");
+  assert.ok(eh, "enforcement-health carrier row must exist");
+  assert.equal(eh.proof.hosted_run, "33080407473");
 });
 
 test("Harness #205 negative controls distinguish checksum tampering from semantic binding", async () => {
