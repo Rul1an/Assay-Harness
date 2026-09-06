@@ -57,10 +57,9 @@ compatibility line. Current published Assay release is `v6.0.0`
 Assay pin is derived from recorded proofs (`last_verified_assay = v6.0.0` derived
 from recorded v6.0.0 recipe proofs, run `33957799594`) and is not a current-support
 claim. The latest specifically measured Trust Basis receipt recipe line is released
-Assay `v6.0.0`, re-measured across the three receipt families in hosted run `33957799594`.
-The receipt recipes exercise Trust Basis only; the Trust Card surface was not exercised
-by this run, the binary digest is not recorded in the artifact, and residual acceptance
-remains open. The enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
+Assay `v6.0.0`, re-measured across the three receipt families in hosted run `33957799594`
+and for Trust Card in hosted run `34054714155`. The binary digest is not recorded in the artifact,
+and residual acceptance remains open. The enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
 `v5.4.0` on hosted `ubuntu-latest` (run `33080407473`); render-safety and
 token-passthrough remain declared producer gaps. The local-asset probe is not
 itself the hosted proof.
@@ -118,14 +117,15 @@ consumer compatibility for the Promptfoo, OpenFeature, and CycloneDX receipt
 pipelines against released Assay `v6.0.0` in that same hosted run
 [`33957799594`](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
 with artifact `sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c`.
-Measurement machinery and workflow wiring for released Assay Trust Card
-compatibility (`harness/src/trust_card_compat.ts`,
-`harness/scripts/probe-trust-card-compat.mjs`, and the in-job step in
-`assay-release-compatibility`) are added; hosted proof for this measurement
-remains pending until the next hosted dispatch run is executed and retained.
-The historical receipt recipe run `33957799594` retains its recorded proof for
-Promptfoo, OpenFeature, and CycloneDX receipt pipelines; the Trust Card surface
-was not exercised by that historical run. Trust Card claim parity against the
+A sibling v6.0.0 Trust Card compatibility recipe row records consumer compatibility
+for released Assay `v6.0.0` Trust Card artifacts against paired Trust Basis in hosted run
+[`34054714155`](https://github.com/Rul1an/Assay-Harness/actions/runs/34054714155)
+on 2026-09-06 with artifact `sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc`.
+The probe verified schema version 5, all 10 frozen claims, and claims parity
+against the paired Trust Basis across two invocations of released Assay `v6.0.0`
+on the Promptfoo baseline bundle. The historical receipt recipe run `33957799594`
+retains its recorded proof for Promptfoo, OpenFeature, and CycloneDX receipt
+pipelines; the Trust Card surface was not exercised by that historical run. Trust Card claim parity against the
 paired Trust Basis measures intra-binary consistency across two invocations of the
 same producer binary on the same bundle. Because `source` and `boundary` are
 structurally hardcoded per claim ID and `note` is emitted as `null` by the

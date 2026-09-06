@@ -261,10 +261,31 @@
         "run_date": "2026-09-05",
         "note": "released v6.0.0 3-family receipt compatibility rail (promptfoo, openfeature, cyclonedx) -> exit 0 (nonregression) and exit 1 (regression fixture) with trust-basis.diff.v1"
       }
+    },
+    {
+      "recipe": "released Assay Trust Card compatibility (v6.0.0)",
+      "support_mode": "recipe",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v6.0.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.10.3"
+      },
+      "proof": {
+        "end_to_end": "proven",
+        "hosted_run": "34054714155",
+        "artifact_digest": "sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc",
+        "assay_version": "v6.0.0",
+        "run_date": "2026-09-06",
+        "note": "released v6.0.0 Trust Card schema 5 compatibility probe (promptfoo baseline) -> exit 0 (card valid, claimsParity: true against paired basis)"
+      }
     }
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:9b28282518af97b8774aee9a24644cb0f958c6e01b3f61c962b4a269c312ab0d"
+    "digest": "sha256:0bd0e39efc6313821ddd77f8a2661f863f840609fbf9052e53befe0a3139d215"
   }
 }
