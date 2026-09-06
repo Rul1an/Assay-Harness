@@ -164,3 +164,44 @@ test("runHarness resumes a rejected tool call without executing it", async () =>
     1
   );
 });
+
+const call = (id, content) => ({type: "function_call", callId: id, name: "write_file",
+  arguments: JSON.stringify({path: "/tmp/inert", content})});
+
+for (const decision of ["approve", "reject"]) {
+  test(`runHarness ${decision}s distinct simultaneous calls using their own interruptions`, async () => {
+    const executions = {count: 0};
+    const agent = new Agent({name: `parallel-${decision}`, model: new ScriptedModel([
+      {usage: emptyUsage(), output: [call(`${decision}-a`, "first"), call(`${decision}-b`, "second")]},
+      finalMessage(`${decision}-both-complete`),
+    ]), tools: [approvalTool(executions)]});
+    const result = await runHarness({agent, policy: policy(["write_file"]), runId: `parallel-${decision}`,
+      autoApprove: decision === "approve", autoDeny: decision === "reject"}, "inert");
+    assert.equal(result.finalOutput, `${decision}-both-complete`);
+    assert.equal(executions.count, decision === "approve" ? 2 : 0);
+    assert.equal(result[decision === "approve" ? "approved" : "rejected"].length, 2);
+    const pause = result.evidence.events.find(e => e.type === "assay.harness.approval-interruption");
+    const resume = result.evidence.events.find(e => e.type === "assay.harness.resumed-run");
+    assert.ok(pause && resume);
+    assert.equal(pause.data.interruptions.length, 2);
+    assert.deepEqual(pause.data.interruptions.map(x => x.tool_call_id), [`${decision}-a`, `${decision}-b`]);
+    assert.notEqual(pause.data.interruptions[0].arguments_hash, pause.data.interruptions[1].arguments_hash);
+    assert.equal(resume.data.resume_state_ref, pause.data.resume_state_ref);
+    assert.equal(resume.data.resumed_from_artifact_hash, pause.assaycontenthash);
+  });
+
+  test(`runHarness ${decision} remains per-call on a later same-named tool`, async () => {
+    const executions = {count: 0};
+    const model = new ScriptedModel([
+      {usage: emptyUsage(), output: [call(`${decision}-first`, "first")]},
+      {usage: emptyUsage(), output: [call(`${decision}-later`, "later")]},
+      finalMessage("permanent-decision-sentinel"),
+    ]);
+    const agent = new Agent({name: `per-call-${decision}`, model, tools: [approvalTool(executions)]});
+    const result = await runHarness({agent, policy: policy(["write_file"]), runId: `per-call-${decision}`,
+      autoApprove: decision === "approve", autoDeny: decision === "reject"}, "inert");
+    assert.equal(result.finalOutput, null);
+    assert.equal(executions.count, decision === "approve" ? 1 : 0);
+    assert.equal(model.responses.length, 1, "later call must still require its own decision");
+  });
+}
