@@ -66,11 +66,30 @@ jobs:
             echo "without widening the audit surface to unrelated PRs."
           fi
 
-      - name: Install zizmor
-        if: steps.changes.outputs.audit_needed == 'true'
+      - name: Install zizmor (pinned PR/push enforcement)
+        if: >-
+          steps.changes.outputs.audit_needed == 'true' &&
+          (github.event_name == 'pull_request' || github.event_name == 'push')
+        env:
+          ZIZMOR_VERSION: "1.30.0"
+        run: |
+          set -euo pipefail
+          pipx install "zizmor==${ZIZMOR_VERSION}"
+          echo "zizmor pinned version=${ZIZMOR_VERSION}"
+          zizmor --version
+
+      - name: Install zizmor (floating scheduled/manual canary)
+        # Intentionally unpinned: schedule/workflow_dispatch discovers upstream
+        # rule drift. This floating canary is non-required for merge results and
+        # must not redefine PR/push enforcement without review.
+        if: >-
+          steps.changes.outputs.audit_needed == 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           pipx install zizmor
+          echo "zizmor floating canary install (non-required)"
+          zizmor --version
 
       - name: Run zizmor (high confidence)
         if: steps.changes.outputs.audit_needed == 'true'

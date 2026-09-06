@@ -1,0 +1,14 @@
+{
+  "schema": "suite.recipe_provenance.v0",
+  "recipe": "assay_supply_chain_conformance_dsse_clean_pass",
+  "hosted_run": "33957799594",
+  "runner_os": "ubuntu-latest",
+  "hosted": true,
+  "ambient_scan": false,
+  "assay": { "version": "v6.0.0", "binary_digest": "sha256:fc14037644ca6addce3575a7b8508dee7ea581465cdead90a61c95c192bb726d", "command": "assay registry supply-chain-conformance --input fixtures/suite-compatibility/supply-chain-dsse/input.dsse.example.json --out /tmp/supply-chain-conformance.dsse.json --offline" },
+  "release_asset": { "path": "assay-v6.0.0-x86_64-unknown-linux-gnu.tar.gz", "digest": "sha256:71f0854b469da9fc71fff21565f3880fa0eb2a014dad490302dd3f8282ec7190" },
+  "fixture": { "path": "fixtures/suite-compatibility/supply-chain-dsse/input.dsse.example.json", "digest": "sha256:68f62dd3e4b854daa4dde999671b3258af9171658791ded61158f22a63ed7f1f" },
+  "artifact": { "path": "carriers/assay.supply_chain_conformance.v0.json", "digest": "sha256:f3438de4b9609799fbef9cf1b071f40bdba248308dc6dc7d3727347d0fed6e64" },
+  "harness": { "version": "0.10.3", "command": "assay-harness carrier supply-chain --carrier carriers/assay.supply_chain_conformance.v0.json" },
+  "result": { "exit_code": 0, "classification": "success" }
+}

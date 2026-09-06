@@ -1,0 +1,80 @@
+{
+  "schema": "suite.receipt_compatibility_record.v0",
+  "recipe": "established release-compatibility recipe rail (v6.0.0)",
+  "hosted_run": "33957799594",
+  "job_id": "101284180437",
+  "job_name": "Assay Release Compatibility Recipes",
+  "measured_head": "e5471842e5c0b2d58330d52c7aa31308cf916e23",
+  "workflow": ".github/workflows/harness-ci.yml",
+  "runner_os": "ubuntu-latest",
+  "hosted": true,
+  "ambient_scan": false,
+  "assay": {
+    "version": "v6.0.0",
+    "release_peel": "7df13b3f8767b4227b412fc104c319eb1c5e6aae",
+    "binary_digest_proven_by_artifact": false
+  },
+  "release_asset": {
+    "path": "assay-v6.0.0-x86_64-unknown-linux-gnu.tar.gz",
+    "digest": "sha256:71f0854b469da9fc71fff21565f3880fa0eb2a014dad490302dd3f8282ec7190"
+  },
+  "archive": {
+    "name": "assay-release-compatibility-recipes-v6.0.0",
+    "artifact_id": "9966936033",
+    "size_bytes": 53541,
+    "digest": "sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c"
+  },
+  "members": {
+    "promptfoo": {
+      "nonregression": {
+        "exit_code": 0,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99",
+        "unchanged_claims": 10,
+        "regressed_claims": 0
+      },
+      "regression_fixture": {
+        "exit_code": 1,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:5af439fd56c5d7cf21fc291e5e1f8688ed3df9169c63e765c99f61fe248fd7bb",
+        "regressed_claim_id": "external_eval_receipt_boundary_visible"
+      }
+    },
+    "openfeature": {
+      "nonregression": {
+        "exit_code": 0,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99",
+        "unchanged_claims": 10,
+        "regressed_claims": 0
+      },
+      "regression_fixture": {
+        "exit_code": 1,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:9ceabfadf81c7f19f255b695a9fb2471aa2175897aa5db5ec2acb3abd0356d82",
+        "regressed_claim_id": "external_decision_receipt_boundary_visible"
+      }
+    },
+    "cyclonedx": {
+      "nonregression": {
+        "exit_code": 0,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:dd04a0aee16f63a9c78a6220201f09c19039e708b87256eed3e389b2f6312c99",
+        "unchanged_claims": 10,
+        "regressed_claims": 0
+      },
+      "regression_fixture": {
+        "exit_code": 1,
+        "diff_schema": "assay.trust-basis.diff.v1",
+        "diff_digest": "sha256:562c68d5d589ea3feae9ee467875fa50dff3154071d8928ea92928f9d5509db5",
+        "regressed_claim_id": "external_inventory_receipt_boundary_visible"
+      }
+    }
+  },
+  "non_claims": {
+    "trust_card_schema_v5_proven": false,
+    "binary_digest_proven": false,
+    "enforcement_health_v6_proven": false,
+    "note": "emitted trust-basis.json has claims array only without schema_version; binary digest was not recorded in artifact; enforcement-health probe was skipped in run 33957799594"
+  }
+}

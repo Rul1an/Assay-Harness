@@ -1,0 +1,64 @@
+{
+  "schema": "suite.trust_card_compatibility_record.v0",
+  "recipe": "released Assay Trust Card compatibility (v6.0.0)",
+  "hosted_run": "34054714155",
+  "job_id": "101544394501",
+  "job_name": "Assay Release Compatibility Recipes",
+  "step_number": 7,
+  "step_name": "Measure released Assay Trust Card compatibility",
+  "measured_head": "fc013f84d38dd60fb241ad55831865b4cac58214",
+  "workflow": ".github/workflows/harness-ci.yml",
+  "runner_os": "ubuntu-latest",
+  "hosted": true,
+  "ambient_scan": false,
+  "assay": {
+    "version": "v6.0.0",
+    "release_peel": "7df13b3f8767b4227b412fc104c319eb1c5e6aae",
+    "binary_digest_proven_by_artifact": false
+  },
+  "release_asset": {
+    "path": "assay-v6.0.0-x86_64-unknown-linux-gnu.tar.gz",
+    "digest": "sha256:71f0854b469da9fc71fff21565f3880fa0eb2a014dad490302dd3f8282ec7190"
+  },
+  "archive": {
+    "name": "assay-release-compatibility-recipes-v6.0.0",
+    "artifact_id": "9995607013",
+    "size_bytes": 60097,
+    "digest": "sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc"
+  },
+  "members": {
+    "bundle": {
+      "path": "members/promptfoo-nonregression/trustcard/bundle.evidence.tar.gz",
+      "size_bytes": 837,
+      "digest": "sha256:5bab6faa74290fde674f3da664443aa5bdb0b8dc2324ab163aecc2294cb96c8c"
+    },
+    "paired_basis": {
+      "path": "members/promptfoo-nonregression/trustcard/paired.trust-basis.json",
+      "size_bytes": 2032,
+      "digest": "sha256:306b74b258d8ede7d7f7f4de0191c7c87e60e9516787a22e5c1dfe34a1f22076",
+      "claim_count": 10
+    },
+    "trust_card": {
+      "path": "members/promptfoo-nonregression/trustcard/trustcard.json",
+      "size_bytes": 2200,
+      "digest": "sha256:22accdf6efefca75ee092c9b687357b619e203a475436f9c98c94a2bdd4ab4cd",
+      "schema_version": 5,
+      "claim_count": 10
+    },
+    "diagnostic": {
+      "path": "members/promptfoo-nonregression/trustcard/diagnostic.json",
+      "size_bytes": 1441,
+      "digest": "sha256:d75661de94b1f35a4080bd449d42f34b01ab541832f003713fd68f3f01fb0166",
+      "schema": "assay.trust_card_compat_diagnostic.v1",
+      "valid": true,
+      "claims_parity": true
+    }
+  },
+  "non_claims": {
+    "binary_digest_proven": false,
+    "enforcement_health_v6_proven": false,
+    "cross_binary_corroboration": false,
+    "origin_authentication": false,
+    "note": "Trust Card claim parity against paired Trust Basis measures same-producer consistency across two invocations of released Assay v6.0.0 on the same bundle (single degree of freedom: level). Binary digest was not recorded in artifact; enforcement-health probe was skipped in run 34054714155; render-safety and token-passthrough remain declared."
+  }
+}

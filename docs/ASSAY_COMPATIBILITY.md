@@ -52,11 +52,17 @@ current clock.
 | Receipt schema registry | Assay-owned; Harness does not validate receipt payloads |
 
 Assay `v3.8.0` remains the minimum exact tag that opened this Trust Basis
-compatibility line. The suite matrix last-verified Assay pin is derived from
-recorded proofs and is not a current-support claim. The enforcement-health
-carrier row is now `end_to_end=proven` at Assay `v5.4.0` on hosted
-`ubuntu-latest`; render-safety and token-passthrough remain declared producer
-gaps. The local-asset probe is not itself the hosted proof.
+compatibility line. Current published Assay release is `v6.0.0`
+(peel `7df13b3f8767b4227b412fc104c319eb1c5e6aae`). The suite matrix last-verified
+Assay pin is derived from recorded proofs (`last_verified_assay = v6.0.0` derived
+from recorded v6.0.0 recipe proofs, run `33957799594`) and is not a current-support
+claim. The latest specifically measured Trust Basis receipt recipe line is released
+Assay `v6.0.0`, re-measured across the three receipt families in hosted run `33957799594`
+and for Trust Card in hosted run `34054714155`. The binary digest is not recorded in the artifact,
+and residual acceptance remains open. The enforcement-health carrier row remains frozen and `end_to_end=proven` at Assay
+`v5.4.0` on hosted `ubuntu-latest` (run `33080407473`); render-safety and
+token-passthrough remain declared producer gaps. The local-asset probe is not
+itself the hosted proof.
 
 ## Release-Binary Proof
 
@@ -97,11 +103,34 @@ on 2026-06-01. The recipes were re-verified against Assay `v3.14.0` in
 [`Harness CI` run 26774284155](https://github.com/Rul1an/Assay-Harness/actions/runs/26774284155)
 on 2026-06-01, and against Assay `v3.19.1` in
 [`Harness CI` run 27091183205](https://github.com/Rul1an/Assay-Harness/actions/runs/27091183205)
-on 2026-06-07. The latest re-verification passed against Assay `v3.27.0` in
+on 2026-06-07. The historical release-compatibility recipe rail retains its recorded
+proof against Assay `v3.27.0` in
 [`Harness CI` run 27651437917](https://github.com/Rul1an/Assay-Harness/actions/runs/27651437917)
-on 2026-06-17, the first recorded proof since `v3.19.1`; the workflow
-`assay_version` default (previously `v3.26.0` from #115, without a recorded
-proof) is aligned to the proved `v3.27.0` binary in the same change.
+on 2026-06-17 (retained historical proof, not refreshed in this slice); the workflow
+`assay_version` default remains aligned to that historical run.
+A sibling v6.0.0 DSSE clean/pass supply-chain recipe row records consumer
+compatibility for the hermetic DSSE conformance command path against released
+Assay `v6.0.0` in
+[`Harness CI` run 33957799594](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
+on 2026-09-05. A sibling v6.0.0 release-compatibility recipe rail row records
+consumer compatibility for the Promptfoo, OpenFeature, and CycloneDX receipt
+pipelines against released Assay `v6.0.0` in that same hosted run
+[`33957799594`](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
+with artifact `sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c`.
+A sibling v6.0.0 Trust Card compatibility recipe row records consumer compatibility
+for released Assay `v6.0.0` Trust Card artifacts against paired Trust Basis in hosted run
+[`34054714155`](https://github.com/Rul1an/Assay-Harness/actions/runs/34054714155)
+on 2026-09-06 with artifact `sha256:e9b16e3a26b2ade6531ca0ad7c502322267494c03fefdaca4b7ad084b5f00efc`.
+The probe verified schema version 5, all 10 frozen claims, and claims parity
+against the paired Trust Basis across two invocations of released Assay `v6.0.0`
+on the Promptfoo baseline bundle. The historical receipt recipe run `33957799594`
+retains its recorded proof for Promptfoo, OpenFeature, and CycloneDX receipt
+pipelines; the Trust Card surface was not exercised by that historical run. Trust Card claim parity against the
+paired Trust Basis measures intra-binary consistency across two invocations of the
+same producer binary on the same bundle. Because `source` and `boundary` are
+structurally hardcoded per claim ID and `note` is emitted as `null` by the
+producer, the check has a single degree of freedom per claim (`level`); it is not
+independent cross-binary corroboration or origin authentication.
 
 ## Harness Boundary
 
