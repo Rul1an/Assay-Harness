@@ -6,7 +6,7 @@
  * interruption + resumable state flow.
  */
 
-import { Agent, tool } from "@openai/agents";
+import { Agent, getDefaultModel, tool } from "@openai/agents";
 import { z } from "zod";
 
 // --- Tools ---
@@ -83,6 +83,10 @@ export const allTools = [
 export function createHarnessAgent(): Agent {
   return new Agent({
     name: "harness-mvp-agent",
+    // Own the fallback while retaining the SDK's environment override semantics.
+    model: process.env.OPENAI_DEFAULT_MODEL === undefined
+      ? "gpt-5.4-mini"
+      : getDefaultModel(),
     instructions: `You are a file management assistant. You can read files, list directories,
 write files (requires approval), and execute shell commands (requires approval).
 When asked to perform a task, use the appropriate tool.
