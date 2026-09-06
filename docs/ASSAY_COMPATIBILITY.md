@@ -118,6 +118,14 @@ consumer compatibility for the Promptfoo, OpenFeature, and CycloneDX receipt
 pipelines against released Assay `v6.0.0` in that same hosted run
 [`33957799594`](https://github.com/Rul1an/Assay-Harness/actions/runs/33957799594)
 with artifact `sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c`.
+Measurement machinery and workflow wiring for released Assay Trust Card
+compatibility (`harness/src/trust_card_compat.ts`,
+`harness/scripts/probe-trust-card-compat.mjs`, and the in-job step in
+`assay-release-compatibility`) are added; hosted proof for this measurement
+remains pending until the next hosted dispatch run is executed and retained.
+The historical receipt recipe run `33957799594` retains its recorded proof for
+Promptfoo, OpenFeature, and CycloneDX receipt pipelines; the Trust Card surface
+was not exercised by that historical run.
 
 ## Harness Boundary
 
