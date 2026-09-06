@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
 
       - name: Run OSV scanner
-        uses: google/osv-scanner-action/osv-scanner-action@8e5cf47b818121e8b405931c82126c2630b0b20d # v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@8e5cf47b818121e8b405931c82126c2630b0b20d # container image v2.5.1
         with:
           scan-args: |-
             --format=json
@@ -32,7 +32,7 @@ jobs:
         continue-on-error: true
 
       - name: Build advisory SARIF
-        uses: google/osv-scanner-action/osv-reporter-action@8e5cf47b818121e8b405931c82126c2630b0b20d # v2.3.8
+        uses: google/osv-scanner-action/osv-reporter-action@8e5cf47b818121e8b405931c82126c2630b0b20d # container image v2.5.1
         with:
           scan-args: |-
             --output=osv-results.sarif
