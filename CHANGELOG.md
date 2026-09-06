@@ -4,6 +4,10 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve SDK function-call IDs in approval-interruption evidence instead of emitting `unknown`.
+
 - dependencies: update js-yaml to 5.4.1 and bind structural workflow parsing to the declared range, lock selection, and actual installed ESM loader. This includes the upstream merge-budget repair; the current default-schema policy loader does not enable merge keys.
 
 - ci: require Node.js 22 or newer and select Node 22 for CI, release, SBOM, and promotion workflows through one `.node-version` file.
