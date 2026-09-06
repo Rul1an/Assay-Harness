@@ -751,15 +751,19 @@ test("Harness #205 appends a v6.0.0 Trust Card compatibility sibling recipe row,
   assert.equal(recipe.proof.artifact_digest, record.archive.digest);
 
   // Member bindings
+  assert.equal(record.members.bundle.path, "members/promptfoo-nonregression/trustcard/bundle.evidence.tar.gz");
   assert.equal(record.members.bundle.size_bytes, 837);
   assert.equal(record.members.bundle.digest, "sha256:5bab6faa74290fde674f3da664443aa5bdb0b8dc2324ab163aecc2294cb96c8c");
+  assert.equal(record.members.paired_basis.path, "members/promptfoo-nonregression/trustcard/paired.trust-basis.json");
   assert.equal(record.members.paired_basis.size_bytes, 2032);
   assert.equal(record.members.paired_basis.digest, "sha256:306b74b258d8ede7d7f7f4de0191c7c87e60e9516787a22e5c1dfe34a1f22076");
   assert.equal(record.members.paired_basis.claim_count, 10);
+  assert.equal(record.members.trust_card.path, "members/promptfoo-nonregression/trustcard/trustcard.json");
   assert.equal(record.members.trust_card.size_bytes, 2200);
   assert.equal(record.members.trust_card.digest, "sha256:22accdf6efefca75ee092c9b687357b619e203a475436f9c98c94a2bdd4ab4cd");
   assert.equal(record.members.trust_card.schema_version, 5);
   assert.equal(record.members.trust_card.claim_count, 10);
+  assert.equal(record.members.diagnostic.path, "members/promptfoo-nonregression/trustcard/diagnostic.json");
   assert.equal(record.members.diagnostic.size_bytes, 1441);
   assert.equal(record.members.diagnostic.digest, "sha256:d75661de94b1f35a4080bd449d42f34b01ab541832f003713fd68f3f01fb0166");
   assert.equal(record.members.diagnostic.valid, true);

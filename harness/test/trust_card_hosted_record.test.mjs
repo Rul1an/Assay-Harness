@@ -8,11 +8,37 @@ import { computeMatrixDigest, validateSuiteCompatibility } from "../dist/suite_c
 
 const FIXTURE_DIR = new URL("../fixtures/suite-compatibility/trust-card-v6/", import.meta.url);
 const RECORD_PATH = fileURLToPath(new URL("trust-card-compatibility.record.json", FIXTURE_DIR));
-const CARD_PATH = fileURLToPath(new URL("trustcard.json", FIXTURE_DIR));
-const BASIS_PATH = fileURLToPath(new URL("paired.trust-basis.json", FIXTURE_DIR));
-const BUNDLE_PATH = fileURLToPath(new URL("bundle.evidence.tar.gz", FIXTURE_DIR));
-const DIAGNOSTIC_PATH = fileURLToPath(new URL("diagnostic.json", FIXTURE_DIR));
 const MATRIX_PATH = fileURLToPath(new URL("../suite-compatibility.json", import.meta.url));
+
+export const MEMBER_SUBJECT_LOCATORS = {
+  bundle: {
+    path: "members/promptfoo-nonregression/trustcard/bundle.evidence.tar.gz",
+    fixture: "bundle.evidence.tar.gz",
+  },
+  paired_basis: {
+    path: "members/promptfoo-nonregression/trustcard/paired.trust-basis.json",
+    fixture: "paired.trust-basis.json",
+  },
+  trust_card: {
+    path: "members/promptfoo-nonregression/trustcard/trustcard.json",
+    fixture: "trustcard.json",
+  },
+  diagnostic: {
+    path: "members/promptfoo-nonregression/trustcard/diagnostic.json",
+    fixture: "diagnostic.json",
+  },
+};
+
+export function resolveMemberFixture(memberKey, memberPath) {
+  for (const [key, subject] of Object.entries(MEMBER_SUBJECT_LOCATORS)) {
+    if (subject.path === memberPath) {
+      const fixtureFile = fileURLToPath(new URL(subject.fixture, FIXTURE_DIR));
+      assert.ok(existsSync(fixtureFile), `fixture must exist at ${fixtureFile}`);
+      return readFileSync(fixtureFile);
+    }
+  }
+  throw new Error(`unrecognized member locator for ${memberKey}: "${memberPath}"`);
+}
 
 function sha256(buf) {
   return "sha256:" + createHash("sha256").update(buf).digest("hex");
@@ -20,16 +46,12 @@ function sha256(buf) {
 
 function loadCheckedInEvidence() {
   assert.ok(existsSync(RECORD_PATH), `record fixture must exist at ${RECORD_PATH}`);
-  assert.ok(existsSync(CARD_PATH), `trustcard.json must exist at ${CARD_PATH}`);
-  assert.ok(existsSync(BASIS_PATH), `paired.trust-basis.json must exist at ${BASIS_PATH}`);
-  assert.ok(existsSync(BUNDLE_PATH), `bundle.evidence.tar.gz must exist at ${BUNDLE_PATH}`);
-  assert.ok(existsSync(DIAGNOSTIC_PATH), `diagnostic.json must exist at ${DIAGNOSTIC_PATH}`);
-
   const record = JSON.parse(readFileSync(RECORD_PATH, "utf8"));
-  const cardBytes = readFileSync(CARD_PATH);
-  const basisBytes = readFileSync(BASIS_PATH);
-  const bundleBytes = readFileSync(BUNDLE_PATH);
-  const diagnosticBytes = readFileSync(DIAGNOSTIC_PATH);
+
+  const cardBytes = resolveMemberFixture("trust_card", record.members.trust_card?.path);
+  const basisBytes = resolveMemberFixture("paired_basis", record.members.paired_basis?.path);
+  const bundleBytes = resolveMemberFixture("bundle", record.members.bundle?.path);
+  const diagnosticBytes = resolveMemberFixture("diagnostic", record.members.diagnostic?.path);
   const matrix = JSON.parse(readFileSync(MATRIX_PATH, "utf8"));
 
   return { record, cardBytes, basisBytes, bundleBytes, diagnosticBytes, matrix };
@@ -37,6 +59,7 @@ function loadCheckedInEvidence() {
 
 /**
  * Shared semantic and byte verification function for the hosted Trust Card compatibility record.
+ * Semantic validation is inseparable; no bypass option or parameter exists.
  */
 export function verifyTrustCardHostedRecord({
   record,
@@ -45,9 +68,17 @@ export function verifyTrustCardHostedRecord({
   bundleBytes,
   diagnosticBytes,
   matrix,
-  bypassSemanticValidation = false,
 }) {
-  // 1. Exact byte integrity check against member declarations
+  // 1. Member locator bindings to exact subjects within this frozen adoption record
+  for (const [key, subject] of Object.entries(MEMBER_SUBJECT_LOCATORS)) {
+    assert.equal(
+      record.members[key]?.path,
+      subject.path,
+      `record.members.${key}.path must bind to exact subject locator "${subject.path}"`,
+    );
+  }
+
+  // 2. Exact byte integrity check against member declarations
   const cardDigest = sha256(cardBytes);
   assert.equal(cardDigest, record.members.trust_card.digest, "card digest mismatch");
   assert.equal(cardBytes.length, record.members.trust_card.size_bytes, "card size mismatch");
@@ -64,35 +95,35 @@ export function verifyTrustCardHostedRecord({
   assert.equal(diagnosticDigest, record.members.diagnostic.digest, "diagnostic digest mismatch");
   assert.equal(diagnosticBytes.length, record.members.diagnostic.size_bytes, "diagnostic size mismatch");
 
-  // 2. Strict JSON parsing
+  // 3. Strict JSON parsing
   const card = JSON.parse(cardBytes.toString("utf8"));
   const basis = JSON.parse(basisBytes.toString("utf8"));
   const diag = JSON.parse(diagnosticBytes.toString("utf8"));
 
-  // 3. Shared semantic validation
-  let validation = { valid: true, claimsParity: true, errors: [] };
-  if (!bypassSemanticValidation) {
-    validation = validateTrustCardCompatibility(card, basis);
-    assert.equal(validation.valid, true, `shared semantic validation failed: ${JSON.stringify(validation.errors)}`);
-    assert.equal(validation.claimsParity, true, "shared claims parity validation failed");
-    assert.equal(validation.errors.length, 0, "expected zero validation errors");
-  }
+  // 4. Shared semantic validation (inseparable)
+  const validation = validateTrustCardCompatibility(card, basis);
+  assert.equal(validation.valid, true, `shared semantic validation failed: ${JSON.stringify(validation.errors)}`);
+  assert.equal(validation.claimsParity, true, "shared claims parity validation failed");
+  assert.equal(validation.errors.length, 0, "expected zero validation errors");
 
-  // 4. Diagnostic consistency against actual members and validation results
+  // 5. Diagnostic consistency against actual members, paths, and validation results
   assert.equal(diag.schema, "assay.trust_card_compat_diagnostic.v1");
   assert.equal(diag.valid, validation.valid, "diagnostic valid flag must match semantic validation");
   assert.equal(diag.claims_parity, validation.claimsParity, "diagnostic claims_parity must match semantic validation");
   assert.equal(diag.bundle.sha256, bundleDigest, "diagnostic bundle digest mismatch");
   assert.equal(diag.bundle.bytes, bundleBytes.length, "diagnostic bundle bytes mismatch");
+  assert.equal(diag.bundle.path.endsWith(record.members.bundle.path.replace(/^members\//, "")), true, "diagnostic bundle path mismatch");
   assert.equal(diag.paired_basis.sha256, basisDigest, "diagnostic paired_basis digest mismatch");
   assert.equal(diag.paired_basis.bytes, basisBytes.length, "diagnostic paired_basis bytes mismatch");
+  assert.equal(diag.paired_basis.path.endsWith(record.members.paired_basis.path.replace(/^members\//, "")), true, "diagnostic paired_basis path mismatch");
   assert.equal(diag.trust_card.sha256, cardDigest, "diagnostic trust_card digest mismatch");
   assert.equal(diag.trust_card.bytes, cardBytes.length, "diagnostic trust_card bytes mismatch");
+  assert.equal(diag.trust_card.path.endsWith(record.members.trust_card.path.replace(/^members\//, "")), true, "diagnostic trust_card path mismatch");
   assert.equal(diag.trust_card.schema_version, 5);
   assert.equal(diag.trust_card.claim_count, 10);
   assert.deepEqual(diag.errors, []);
 
-  // 5. Authoritative record metadata bindings
+  // 6. Authoritative record metadata bindings
   assert.equal(record.schema, "suite.trust_card_compatibility_record.v0");
   assert.equal(record.hosted_run, "34054714155");
   assert.equal(record.job_id, "101544394501");
@@ -122,7 +153,7 @@ export function verifyTrustCardHostedRecord({
   assert.equal(record.non_claims.cross_binary_corroboration, false);
   assert.equal(record.non_claims.origin_authentication, false);
 
-  // 6. Cross-binding against matrix recipe row
+  // 7. Cross-binding against matrix recipe row
   const row = matrix.recipe_rows.find((r) => r.recipe === record.recipe);
   assert.ok(row, `matrix must contain recipe row matching ${record.recipe}`);
   assert.equal(row.support_mode, "recipe");
@@ -266,7 +297,7 @@ test("discriminating control (e): altered version or hosted_run in matrix row fa
   );
 });
 
-test("discriminating control (f): bypassing shared semantic validator allows semantic corruption, proving validator invocation is load-bearing", () => {
+test("discriminating control (f): semantic validation is inseparable; passing a bypass option fails to suppress validation", () => {
   const env = loadCheckedInEvidence();
 
   // Create semantically invalid card with recomputed digests
@@ -285,8 +316,8 @@ test("discriminating control (f): bypassing shared semantic validator allows sem
   mutatedRecord.members.diagnostic.digest = sha256(mutatedDiagBytes);
   mutatedRecord.members.diagnostic.size_bytes = mutatedDiagBytes.length;
 
-  // With bypass, it does not throw (false-green)
-  assert.doesNotThrow(() => {
+  // Passing bypassSemanticValidation: true has no effect; semantic validation is inseparable
+  assert.throws(() => {
     verifyTrustCardHostedRecord({
       ...env,
       record: mutatedRecord,
@@ -294,18 +325,90 @@ test("discriminating control (f): bypassing shared semantic validator allows sem
       diagnosticBytes: mutatedDiagBytes,
       bypassSemanticValidation: true,
     });
-  });
-
-  // Without bypass, shared semantic validator catches it RED
-  assert.throws(() => {
-    verifyTrustCardHostedRecord({
-      ...env,
-      record: mutatedRecord,
-      cardBytes: mutatedCardBytes,
-      diagnosticBytes: mutatedDiagBytes,
-      bypassSemanticValidation: false,
-    });
   }, /shared semantic validation failed/);
+});
+
+test("discriminating control (R1): member locator substitution points to different bytes/digest and is rejected", () => {
+  const env = loadCheckedInEvidence();
+  const mutatedRecord = JSON.parse(JSON.stringify(env.record));
+  // Substitute card locator with paired_basis locator (Codex mutant record-card-path-substitution)
+  mutatedRecord.members.trust_card.path = mutatedRecord.members.paired_basis.path;
+
+  // 1. Locator binding assertion in verifyTrustCardHostedRecord rejects it:
+  assert.throws(
+    () => verifyTrustCardHostedRecord({ ...env, record: mutatedRecord }),
+    /record\.members\.trust_card\.path must bind to exact subject locator/,
+  );
+
+  // 2. Resolving fixture bytes from the substituted locator yields 2032-byte basis data
+  // with digest 306b74b2..., disagreeing with declared 2200-byte card digest 22accdf6...
+  const substitutedBytes = resolveMemberFixture("trust_card", mutatedRecord.members.trust_card.path);
+  assert.equal(substitutedBytes.length, 2032);
+  assert.equal(sha256(substitutedBytes), "sha256:306b74b258d8ede7d7f7f4de0191c7c87e60e9516787a22e5c1dfe34a1f22076");
+  assert.throws(
+    () => verifyTrustCardHostedRecord({ ...env, cardBytes: substitutedBytes }),
+    /card digest mismatch|card size mismatch/,
+  );
+});
+
+test("discriminating control (R2): adoption route inseparably executes semantic validation and rejects invalid claims and parity mismatches", () => {
+  const env = loadCheckedInEvidence();
+
+  // 1. Rehashed semantically invalid card (REVIEW_INVALID_LEVEL) is rejected at adoption route
+  const cardObj = JSON.parse(env.cardBytes.toString("utf8"));
+  cardObj.claims[0].level = "REVIEW_INVALID_LEVEL";
+  const mutatedCardBytes = Buffer.from(JSON.stringify(cardObj, null, 2), "utf8");
+
+  const mutatedRecord = JSON.parse(JSON.stringify(env.record));
+  mutatedRecord.members.trust_card.digest = sha256(mutatedCardBytes);
+  mutatedRecord.members.trust_card.size_bytes = mutatedCardBytes.length;
+
+  const diagObj = JSON.parse(env.diagnosticBytes.toString("utf8"));
+  diagObj.trust_card.sha256 = mutatedRecord.members.trust_card.digest;
+  diagObj.trust_card.bytes = mutatedRecord.members.trust_card.size_bytes;
+  const mutatedDiagBytes = Buffer.from(JSON.stringify(diagObj, null, 2), "utf8");
+  mutatedRecord.members.diagnostic.digest = sha256(mutatedDiagBytes);
+  mutatedRecord.members.diagnostic.size_bytes = mutatedDiagBytes.length;
+
+  assert.throws(
+    () =>
+      verifyTrustCardHostedRecord({
+        ...env,
+        record: mutatedRecord,
+        cardBytes: mutatedCardBytes,
+        diagnosticBytes: mutatedDiagBytes,
+        bypassSemanticValidation: true,
+      }),
+    /shared semantic validation failed/,
+  );
+
+  // 2. Coherently rehashed paired-basis mismatch (level absent vs verified) is rejected at adoption route
+  const basisObj = JSON.parse(env.basisBytes.toString("utf8"));
+  basisObj.claims[0].level = "absent";
+  const mutatedBasisBytes = Buffer.from(JSON.stringify(basisObj, null, 2), "utf8");
+
+  const mutatedRecord2 = JSON.parse(JSON.stringify(env.record));
+  mutatedRecord2.members.paired_basis.digest = sha256(mutatedBasisBytes);
+  mutatedRecord2.members.paired_basis.size_bytes = mutatedBasisBytes.length;
+
+  const diagObj2 = JSON.parse(env.diagnosticBytes.toString("utf8"));
+  diagObj2.paired_basis.sha256 = mutatedRecord2.members.paired_basis.digest;
+  diagObj2.paired_basis.bytes = mutatedBasisBytes.length;
+  const mutatedDiagBytes2 = Buffer.from(JSON.stringify(diagObj2, null, 2), "utf8");
+  mutatedRecord2.members.diagnostic.digest = sha256(mutatedDiagBytes2);
+  mutatedRecord2.members.diagnostic.size_bytes = mutatedDiagBytes2.length;
+
+  assert.throws(
+    () =>
+      verifyTrustCardHostedRecord({
+        ...env,
+        record: mutatedRecord2,
+        basisBytes: mutatedBasisBytes,
+        diagnosticBytes: mutatedDiagBytes2,
+        bypassSemanticValidation: true,
+      }),
+    /shared claims parity validation failed|shared semantic validation failed/,
+  );
 });
 
 test("discriminating control (g): historical v5.4.0 enforcement-health, historical receipt rail, and declared render/token carriers remain frozen", () => {
