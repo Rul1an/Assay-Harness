@@ -383,3 +383,15 @@ test("refuses paired basis with missing note property (F9)", () => {
     ),
   );
 });
+
+test("claimsParity is true when claim levels match even if card schema is invalid (G3)", () => {
+  const invalidSchemaCard = {
+    ...makeValidCard(),
+    schema_version: 4,
+  };
+  const matchingBasis = makeValidPairedBasis();
+  const result = validateTrustCardCompatibility(invalidSchemaCard, matchingBasis);
+  assert.equal(result.valid, false, "overall validation must fail due to schema_version");
+  assert.ok(result.errors.some((e) => e.code === "TRUST_CARD_SCHEMA_INVALID"));
+  assert.equal(result.claimsParity, true, "claimsParity must remain true when claim levels match");
+});

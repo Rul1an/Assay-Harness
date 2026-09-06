@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import fs, { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, constants as fsConstants, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -376,6 +376,24 @@ process.exit(0);
     scriptContent = `#!/usr/bin/env node
 setInterval(() => {}, 10000);
 `;
+  } else if (behavior === "writes_diagnostic") {
+    // Producer writes valid trustcard.json AND its own diagnostic.json sentinel (G4)
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+  fs.writeFileSync(path.join(outDir, 'diagnostic.json'), '{"sentinel":"producer-created-diagnostic"}\\n');
+}
+process.exit(0);
+`;
   }
 
   writeFileSync(path, scriptContent, "utf8");
@@ -434,6 +452,16 @@ test("probe script succeeds with valid inert producer and matching paired basis"
     const diag = JSON.parse(readFileSync(diagPath, "utf8"));
     assert.equal(diag.valid, true);
     assert.equal(diag.claims_parity, true);
+    assert.match(
+      diag.parity_claim,
+      /across two invocations of the same producer binary on the same bundle/,
+      "parity_claim must state consistency across two invocations of the same producer binary (G1)",
+    );
+    assert.match(
+      diag.parity_claim,
+      /does not authenticate same-bundle origin/,
+      "parity_claim must preserve origin/authentication nonclaims (G1)",
+    );
     assert.ok(diag.bundle.sha256.startsWith("sha256:"));
     assert.ok(diag.paired_basis.sha256.startsWith("sha256:"));
     assert.equal(diag.trust_card.sha256, cardDigest);
@@ -1150,6 +1178,49 @@ test("probe script fails when producer substitutes trustcard.json with a symlink
   }
 });
 
+test("probe script fails when producer emits its own diagnostic.json and preserves sentinel bytes (G4)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "writes_diagnostic");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+
+    assert.notEqual(run.status, 0, "probe must fail when diagnostic.json already exists");
+    assert.match(run.stderr, /failed to write diagnostic/);
+
+    const diagPath = join(outDir, "diagnostic.json");
+    const preservedContent = readFileSync(diagPath, "utf8");
+    assert.equal(
+      preservedContent,
+      '{"sentinel":"producer-created-diagnostic"}\n',
+      "producer-created diagnostic.json sentinel bytes must be preserved",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("readBoundedRegularFile rejects symlink without following target (F4)", () => {
   const dir = tempDir();
   try {
@@ -1254,6 +1325,56 @@ test("readBoundedRegularFile returns exact buffer for regular file within ceilin
   }
 });
 
+test("readBoundedRegularFile includes O_NONBLOCK in open flags to prevent blocking acquisition (G5)", () => {
+  const dir = tempDir();
+  try {
+    const filePath = join(dir, "test-flags.txt");
+    writeFileSync(filePath, "regular-file-content\n");
+
+    let capturedFlags = null;
+    const spyFs = Object.assign({}, fs, {
+      openSync(path, flags, ...rest) {
+        capturedFlags = flags;
+        return fs.openSync(path, flags, ...rest);
+      },
+    });
+
+    const buf = readBoundedRegularFile(filePath, 1000, "flags_test", spyFs);
+    assert.equal(buf.toString("utf8"), "regular-file-content\n");
+    assert.notEqual(capturedFlags, null, "openSync must be called");
+    assert.notEqual(
+      fsConstants.O_NONBLOCK,
+      undefined,
+      "fsConstants.O_NONBLOCK must be defined on supported platform",
+    );
+    assert.equal(
+      capturedFlags & fsConstants.O_NONBLOCK,
+      fsConstants.O_NONBLOCK,
+      "openSync flags must include O_NONBLOCK",
+    );
+    assert.equal(
+      capturedFlags & (fsConstants.O_NOFOLLOW ?? 0),
+      fsConstants.O_NOFOLLOW ?? 0,
+      "openSync flags must include O_NOFOLLOW",
+    );
+
+    // Outcome control: simulated non-regular file is rejected by isFile() check
+    const spyNonRegularFs = Object.assign({}, fs, {
+      fstatSync(fd) {
+        const realStat = fs.fstatSync(fd);
+        return Object.assign(Object.create(Object.getPrototypeOf(realStat)), realStat, {
+          isFile: () => false,
+        });
+      },
+    });
+    assert.throws(
+      () => readBoundedRegularFile(filePath, 1000, "nonregular_test", spyNonRegularFs),
+      /nonregular_test is not a regular file/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("probe script rejects non-integer or out-of-contract resource ceilings (P2b, P2c / F5)", () => {
   const dir = tempDir();

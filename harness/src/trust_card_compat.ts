@@ -8,7 +8,7 @@
  * Upstream contract:
  * - schema_version: 5 (integer, not string; no top-level schema string URI)
  * - non_goals: 3 frozen strings in exact order
- * - claims: 10 frozen claim IDs, exact keys { id, level, source, boundary, note? }
+ * - claims: 10 frozen claim IDs, exact keys { id, level, source, boundary, note } where note is required string | null
  * - enums: 4 levels (snake_case), 8 sources (snake_case), 9 boundaries (kebab-case)
  */
 

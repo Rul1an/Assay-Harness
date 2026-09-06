@@ -102,7 +102,7 @@ function parseArgs(argv) {
  * sources, and close reliably.
  */
 export function readBoundedRegularFile(filePath, maxBytes, label, fsImpl = fs) {
-  const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+  const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
   let fd;
   try {
     fd = fsImpl.openSync(filePath, flags);
@@ -282,7 +282,7 @@ function run() {
       claim_count: Array.isArray(cardJson?.claims) ? cardJson.claims.length : 0,
     },
     parity_claim:
-      "Parity confirms Trust Card claim levels, sources, boundaries, and notes match paired Trust Basis claims for the same producer invocation on the same bundle (single degree of freedom: claim levels, as source/boundary/note are frozen or hardcoded per claim ID in Assay v6.0.0). It does not authenticate same-bundle origin across arbitrary external bundles.",
+      "Parity confirms Trust Card claim levels, sources, boundaries, and notes match paired Trust Basis claims across two invocations of the same producer binary on the same bundle (single degree of freedom: claim levels, as source/boundary/note are frozen or hardcoded per claim ID in Assay v6.0.0). It does not authenticate same-bundle origin across arbitrary external bundles.",
     errors: validation.errors,
   };
 
