@@ -240,10 +240,31 @@
         "run_date": "2026-09-05",
         "note": "released v6.0.0 DSSE path -> policy_result=pass carrier consumed by Harness at exit 0 (passed=true)"
       }
+    },
+    {
+      "recipe": "established release-compatibility recipe rail (v6.0.0)",
+      "support_mode": "recipe",
+      "backing": "public-only",
+      "emits": {
+        "producer": "assay",
+        "min_version": "v6.0.0"
+      },
+      "consumes": {
+        "consumer": "harness",
+        "min_version": "v0.10.3"
+      },
+      "proof": {
+        "end_to_end": "proven",
+        "hosted_run": "33957799594",
+        "artifact_digest": "sha256:cac2d6b34e77a2fd58e4ac7d6f76b589f86c1b22dccc329ba4fa501a089fc61c",
+        "assay_version": "v6.0.0",
+        "run_date": "2026-09-05",
+        "note": "released v6.0.0 3-family receipt compatibility rail (promptfoo, openfeature, cyclonedx) -> exit 0 (nonregression) and exit 1 (regression fixture) with trust-basis.diff.v1"
+      }
     }
   ],
   "manifest": {
     "canonicalization": "jcs/rfc8785",
-    "digest": "sha256:5e0d9ffc70735d6b98160fac932f73daa5527299be385426e4ec2e84e2271904"
+    "digest": "sha256:9b28282518af97b8774aee9a24644cb0f958c6e01b3f61c962b4a269c312ab0d"
   }
 }
