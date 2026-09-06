@@ -1,0 +1,25 @@
+{
+  "schema": "assay.trust_card_compat_diagnostic.v1",
+  "timestamp": "2026-09-06T19:23:27.202Z",
+  "valid": true,
+  "claims_parity": true,
+  "bundle": {
+    "path": "/home/runner/work/Assay-Harness/Assay-Harness/results/assay-release-compatibility/promptfoo-nonregression/trustcard/bundle.evidence.tar.gz",
+    "sha256": "sha256:5bab6faa74290fde674f3da664443aa5bdb0b8dc2324ab163aecc2294cb96c8c",
+    "bytes": 837
+  },
+  "paired_basis": {
+    "path": "/home/runner/work/Assay-Harness/Assay-Harness/results/assay-release-compatibility/promptfoo-nonregression/trustcard/paired.trust-basis.json",
+    "sha256": "sha256:306b74b258d8ede7d7f7f4de0191c7c87e60e9516787a22e5c1dfe34a1f22076",
+    "bytes": 2032
+  },
+  "trust_card": {
+    "path": "/home/runner/work/Assay-Harness/Assay-Harness/results/assay-release-compatibility/promptfoo-nonregression/trustcard/trustcard.json",
+    "sha256": "sha256:22accdf6efefca75ee092c9b687357b619e203a475436f9c98c94a2bdd4ab4cd",
+    "bytes": 2200,
+    "schema_version": 5,
+    "claim_count": 10
+  },
+  "parity_claim": "Parity confirms Trust Card claim levels, sources, boundaries, and notes match paired Trust Basis claims across two invocations of the same producer binary on the same bundle (single degree of freedom: claim levels, as source/boundary/note are frozen or hardcoded per claim ID in Assay v6.0.0). It does not authenticate same-bundle origin across arbitrary external bundles.",
+  "errors": []
+}
