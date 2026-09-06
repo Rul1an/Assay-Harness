@@ -17,36 +17,42 @@ function makeValidClaims() {
       level: "verified",
       source: "bundle_verification",
       boundary: "bundle-wide",
+      note: null,
     },
     {
       id: "signing_evidence_present",
       level: "absent",
       source: "bundle_proof_surface",
       boundary: "proof-surfaces-only",
+      note: null,
     },
     {
       id: "provenance_backed_claims_present",
       level: "absent",
       source: "bundle_proof_surface",
       boundary: "proof-surfaces-only",
+      note: null,
     },
     {
       id: "delegation_context_visible",
       level: "verified",
       source: "canonical_decision_evidence",
       boundary: "supported-delegated-flows-only",
+      note: null,
     },
     {
       id: "authorization_context_visible",
       level: "absent",
       source: "canonical_decision_evidence",
       boundary: "supported-auth-projected-flows-only",
+      note: null,
     },
     {
       id: "containment_degradation_observed",
       level: "verified",
       source: "canonical_event_presence",
       boundary: "supported-containment-fallback-paths-only",
+      note: null,
     },
     {
       id: "external_eval_receipt_boundary_visible",
@@ -60,18 +66,21 @@ function makeValidClaims() {
       level: "absent",
       source: "external_decision_receipt",
       boundary: "supported-external-decision-receipt-events-only",
+      note: null,
     },
     {
       id: "external_inventory_receipt_boundary_visible",
       level: "absent",
       source: "external_inventory_receipt",
       boundary: "supported-external-inventory-receipt-events-only",
+      note: null,
     },
     {
       id: "applied_pack_findings_present",
       level: "absent",
       source: "pack_execution_results",
       boundary: "pack-execution-only",
+      note: null,
     },
   ];
 }
@@ -309,4 +318,68 @@ test("claims comparison is order-insensitive across arrays when all ten IDs matc
   const result = validateTrustCardCompatibility(card, reversedBasis);
   assert.equal(result.valid, true);
   assert.deepEqual(result.errors, []);
+});
+
+test("refuses claim with missing note property (F8)", () => {
+  const badClaims = makeValidClaims();
+  delete badClaims[0].note;
+  const result = validateTrustCardCompatibility({ ...makeValidCard(), claims: badClaims });
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.errors.some(
+      (e) => e.code === "TRUST_CARD_CLAIM_FIELD_INVALID" && e.path === "claims[0].note",
+    ),
+  );
+});
+
+test("refuses paired basis with unexpected top-level extra keys (F9)", () => {
+  const card = makeValidCard();
+  const badBasis = {
+    ...makeValidPairedBasis(),
+    schema_version: 99,
+    injected: "anything",
+  };
+  const result = validateTrustCardCompatibility(card, badBasis);
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.code === "PAIRED_BASIS_EXTRA_KEYS"));
+});
+
+test("refuses paired basis with duplicate claim id (F9)", () => {
+  const card = makeValidCard();
+  const dupBasisClaims = makeValidClaims();
+  dupBasisClaims[1] = { ...dupBasisClaims[0] };
+  const result = validateTrustCardCompatibility(card, { claims: dupBasisClaims });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.code === "PAIRED_BASIS_CLAIM_DUPLICATE"));
+});
+
+test("refuses paired basis when note type differs without coercion (F9)", () => {
+  const cardClaims = makeValidClaims();
+  cardClaims[0] = { ...cardClaims[0], note: "5" };
+  const card = { ...makeValidCard(), claims: cardClaims };
+
+  const basisClaims = makeValidClaims();
+  basisClaims[0] = { ...basisClaims[0], note: 5 };
+  const basis = { claims: basisClaims };
+
+  const result = validateTrustCardCompatibility(card, basis);
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.errors.some(
+      (e) => e.code === "TRUST_CARD_CLAIM_FIELD_INVALID" || e.code === "PAIRED_BASIS_CLAIM_MISMATCH",
+    ),
+  );
+});
+
+test("refuses paired basis with missing note property (F9)", () => {
+  const card = makeValidCard();
+  const basisClaims = makeValidClaims();
+  delete basisClaims[0].note;
+  const result = validateTrustCardCompatibility(card, { claims: basisClaims });
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.errors.some(
+      (e) => e.code === "PAIRED_BASIS_CLAIM_FIELD_INVALID" && e.path === "paired_basis.claims[0].note",
+    ),
+  );
 });

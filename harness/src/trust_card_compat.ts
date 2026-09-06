@@ -68,6 +68,7 @@ const FROZEN_LEVELS_SET = new Set<string>(TRUST_CARD_LEVELS);
 const FROZEN_SOURCES_SET = new Set<string>(TRUST_CARD_SOURCES);
 const FROZEN_BOUNDARIES_SET = new Set<string>(TRUST_CARD_BOUNDARIES);
 const ALLOWED_CARD_TOP_KEYS = new Set<string>(["schema_version", "claims", "non_goals"]);
+const ALLOWED_BASIS_TOP_KEYS = new Set<string>(["claims"]);
 const ALLOWED_CLAIM_KEYS = new Set<string>(["id", "level", "source", "boundary", "note"]);
 
 export interface TrustCardCompatError {
@@ -78,6 +79,7 @@ export interface TrustCardCompatError {
 
 export interface TrustCardCompatResult {
   valid: boolean;
+  claimsParity: boolean;
   errors: TrustCardCompatError[];
 }
 
@@ -86,7 +88,7 @@ export interface TrustCardClaim {
   level: string;
   source: string;
   boundary: string;
-  note?: string | null;
+  note: string | null;
 }
 
 export interface TrustCard {
@@ -99,9 +101,174 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeNote(note: unknown): string | null {
-  if (note === undefined || note === null) return null;
-  return String(note);
+/**
+ * Shared claim object validation for Trust Card claims and paired Trust Basis claims (F8, F9).
+ */
+function validateClaimObject(
+  rawClaim: unknown,
+  index: number,
+  prefix: string,
+  errors: TrustCardCompatError[],
+): TrustCardClaim | null {
+  const claimPath = `${prefix}[${index}]`;
+
+  if (!isPlainObject(rawClaim)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Claim at index ${index} must be a JSON object`,
+      path: claimPath,
+    });
+    return null;
+  }
+
+  const claim = rawClaim as Record<string, unknown>;
+
+  // Check for unexpected extra keys in claim object
+  for (const k of Object.keys(claim)) {
+    if (!ALLOWED_CLAIM_KEYS.has(k)) {
+      errors.push({
+        code: prefix === "claims" ? "TRUST_CARD_CLAIM_EXTRA_KEYS" : "PAIRED_BASIS_CLAIM_EXTRA_KEYS",
+        message: `Unexpected key in claim at index ${index}: ${k}`,
+        path: `${claimPath}.${k}`,
+      });
+    }
+  }
+
+  // id
+  const id = claim.id;
+  if (typeof id !== "string" || !FROZEN_CLAIM_IDS_SET.has(id)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_UNKNOWN" : "PAIRED_BASIS_CLAIM_UNKNOWN",
+      message: `Unknown or invalid claim id at index ${index}: ${JSON.stringify(id)}`,
+      path: `${claimPath}.id`,
+    });
+  }
+
+  // level
+  if (typeof claim.level !== "string" || !FROZEN_LEVELS_SET.has(claim.level)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Invalid claim level at index ${index}: ${JSON.stringify(claim.level)}`,
+      path: `${claimPath}.level`,
+    });
+  }
+
+  // source
+  if (typeof claim.source !== "string" || !FROZEN_SOURCES_SET.has(claim.source)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Invalid claim source at index ${index}: ${JSON.stringify(claim.source)}`,
+      path: `${claimPath}.source`,
+    });
+  }
+
+  // boundary
+  if (typeof claim.boundary !== "string" || !FROZEN_BOUNDARIES_SET.has(claim.boundary)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Invalid claim boundary at index ${index}: ${JSON.stringify(claim.boundary)}`,
+      path: `${claimPath}.boundary`,
+    });
+  }
+
+  // note: must be explicitly present and be string or null as emitted by Assay v6.0.0 (F8)
+  if (!Object.hasOwn(claim, "note") || claim.note === undefined) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Claim note at index ${index} must be present as string or null; property missing`,
+      path: `${claimPath}.note`,
+    });
+  } else if (claim.note !== null && typeof claim.note !== "string") {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIM_FIELD_INVALID" : "PAIRED_BASIS_CLAIM_FIELD_INVALID",
+      message: `Claim note at index ${index} must be string or null; got ${typeof claim.note}`,
+      path: `${claimPath}.note`,
+    });
+  }
+
+  if (
+    typeof id === "string" &&
+    FROZEN_CLAIM_IDS_SET.has(id) &&
+    typeof claim.level === "string" &&
+    FROZEN_LEVELS_SET.has(claim.level) &&
+    typeof claim.source === "string" &&
+    FROZEN_SOURCES_SET.has(claim.source) &&
+    typeof claim.boundary === "string" &&
+    FROZEN_BOUNDARIES_SET.has(claim.boundary) &&
+    Object.hasOwn(claim, "note") &&
+    (claim.note === null || typeof claim.note === "string")
+  ) {
+    return {
+      id,
+      level: claim.level,
+      source: claim.source,
+      boundary: claim.boundary,
+      note: claim.note as string | null,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Shared claims array validation: checks arrayness, exact count of 10, no duplicates, all 10 present (F8, F9).
+ */
+function validateClaimsArray(
+  claims: unknown,
+  prefix: string,
+  errors: TrustCardCompatError[],
+): Map<string, TrustCardClaim> | null {
+  if (!Array.isArray(claims)) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIMS_INVALID" : "PAIRED_BASIS_INVALID",
+      message: `${prefix} must be an array`,
+      path: prefix,
+    });
+    return null;
+  }
+
+  if (claims.length !== TRUST_CARD_CLAIM_IDS.length) {
+    errors.push({
+      code: prefix === "claims" ? "TRUST_CARD_CLAIMS_INVALID" : "PAIRED_BASIS_INVALID",
+      message: `${prefix} must have exactly ${TRUST_CARD_CLAIM_IDS.length} items; got ${claims.length}`,
+      path: prefix,
+    });
+  }
+
+  const claimsById = new Map<string, TrustCardClaim>();
+  const seenIds = new Set<string>();
+
+  for (let i = 0; i < claims.length; i++) {
+    const rawClaim = claims[i];
+    const rawId = isPlainObject(rawClaim) && typeof rawClaim.id === "string" ? rawClaim.id : undefined;
+
+    if (rawId !== undefined && seenIds.has(rawId)) {
+      errors.push({
+        code: prefix === "claims" ? "TRUST_CARD_CLAIM_DUPLICATE" : "PAIRED_BASIS_CLAIM_DUPLICATE",
+        message: `Duplicate claim id at index ${i}: ${rawId}`,
+        path: `${prefix}[${i}].id`,
+      });
+    } else if (rawId !== undefined) {
+      seenIds.add(rawId);
+    }
+
+    const validated = validateClaimObject(rawClaim, i, prefix, errors);
+    if (validated && !claimsById.has(validated.id)) {
+      claimsById.set(validated.id, validated);
+    }
+  }
+
+  for (const expectedId of TRUST_CARD_CLAIM_IDS) {
+    if (!seenIds.has(expectedId)) {
+      errors.push({
+        code: prefix === "claims" ? "TRUST_CARD_CLAIM_MISSING" : "PAIRED_BASIS_CLAIM_MISSING",
+        message: `Required claim id missing from ${prefix}: ${expectedId}`,
+        path: `${prefix}.${expectedId}`,
+      });
+    }
+  }
+
+  return claimsById;
 }
 
 /**
@@ -114,9 +281,11 @@ export function validateTrustCardCompatibility(
 ): TrustCardCompatResult {
   const errors: TrustCardCompatError[] = [];
 
+  // Root must be a plain JSON object
   if (!isPlainObject(card)) {
     return {
       valid: false,
+      claimsParity: false,
       errors: [
         {
           code: "TRUST_CARD_NOT_OBJECT",
@@ -178,142 +347,33 @@ export function validateTrustCardCompatibility(
     }
   }
 
-  // Check claims array
-  const cardClaimsById = new Map<string, TrustCardClaim>();
-
-  if (!Array.isArray(card.claims)) {
-    errors.push({
-      code: "TRUST_CARD_CLAIMS_INVALID",
-      message: "claims must be an array",
-      path: "claims",
-    });
-  } else {
-    if (card.claims.length !== TRUST_CARD_CLAIM_IDS.length) {
-      errors.push({
-        code: "TRUST_CARD_CLAIMS_INVALID",
-        message: `claims must have exactly ${TRUST_CARD_CLAIM_IDS.length} items; got ${card.claims.length}`,
-        path: "claims",
-      });
-    }
-
-    const seenClaimIds = new Set<string>();
-
-    for (let i = 0; i < card.claims.length; i++) {
-      const claim = card.claims[i];
-      const claimPath = `claims[${i}]`;
-
-      if (!isPlainObject(claim)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_FIELD_INVALID",
-          message: `Claim at index ${i} must be a JSON object`,
-          path: claimPath,
-        });
-        continue;
-      }
-
-      // Check for extra claim keys
-      for (const k of Object.keys(claim)) {
-        if (!ALLOWED_CLAIM_KEYS.has(k)) {
-          errors.push({
-            code: "TRUST_CARD_CLAIM_EXTRA_KEYS",
-            message: `Unexpected key in claim at index ${i}: ${k}`,
-            path: `${claimPath}.${k}`,
-          });
-        }
-      }
-
-      // id
-      const id = claim.id;
-      if (typeof id !== "string" || !FROZEN_CLAIM_IDS_SET.has(id)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_UNKNOWN",
-          message: `Unknown or invalid claim id at index ${i}: ${JSON.stringify(id)}`,
-          path: `${claimPath}.id`,
-        });
-      } else if (seenClaimIds.has(id)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_DUPLICATE",
-          message: `Duplicate claim id at index ${i}: ${id}`,
-          path: `${claimPath}.id`,
-        });
-      } else {
-        seenClaimIds.add(id);
-        cardClaimsById.set(id, claim as unknown as TrustCardClaim);
-      }
-
-      // level
-      if (typeof claim.level !== "string" || !FROZEN_LEVELS_SET.has(claim.level)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_FIELD_INVALID",
-          message: `Invalid claim level at index ${i}: ${JSON.stringify(claim.level)}`,
-          path: `${claimPath}.level`,
-        });
-      }
-
-      // source
-      if (typeof claim.source !== "string" || !FROZEN_SOURCES_SET.has(claim.source)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_FIELD_INVALID",
-          message: `Invalid claim source at index ${i}: ${JSON.stringify(claim.source)}`,
-          path: `${claimPath}.source`,
-        });
-      }
-
-      // boundary
-      if (typeof claim.boundary !== "string" || !FROZEN_BOUNDARIES_SET.has(claim.boundary)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_FIELD_INVALID",
-          message: `Invalid claim boundary at index ${i}: ${JSON.stringify(claim.boundary)}`,
-          path: `${claimPath}.boundary`,
-        });
-      }
-
-      // note (optional string or null)
-      if (claim.note !== undefined && claim.note !== null && typeof claim.note !== "string") {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_FIELD_INVALID",
-          message: `Claim note at index ${i} must be string or null if present; got ${typeof claim.note}`,
-          path: `${claimPath}.note`,
-        });
-      }
-    }
-
-    // Check that all 10 frozen claim IDs are present
-    for (const expectedId of TRUST_CARD_CLAIM_IDS) {
-      if (!seenClaimIds.has(expectedId)) {
-        errors.push({
-          code: "TRUST_CARD_CLAIM_MISSING",
-          message: `Required claim id missing from trust card: ${expectedId}`,
-          path: `claims.${expectedId}`,
-        });
-      }
-    }
-  }
+  // Check card claims array
+  const cardClaimsById = validateClaimsArray(card.claims, "claims", errors);
 
   // Validate paired Trust Basis claim parity if provided
+  let basisClaimsById: Map<string, TrustCardClaim> | null = null;
   if (pairedBasis !== undefined) {
     if (!isPlainObject(pairedBasis)) {
       errors.push({
         code: "PAIRED_BASIS_INVALID",
         message: "Paired Trust Basis must be a JSON object",
       });
-    } else if (!Array.isArray(pairedBasis.claims)) {
-      errors.push({
-        code: "PAIRED_BASIS_INVALID",
-        message: "Paired Trust Basis claims must be an array",
-        path: "claims",
-      });
     } else {
-      const basisClaimsById = new Map<string, TrustCardClaim>();
-
-      for (let i = 0; i < pairedBasis.claims.length; i++) {
-        const bClaim = pairedBasis.claims[i];
-        if (isPlainObject(bClaim) && typeof bClaim.id === "string") {
-          basisClaimsById.set(bClaim.id, bClaim as unknown as TrustCardClaim);
+      // Reject extra top-level keys in paired basis (F9)
+      for (const k of Object.keys(pairedBasis)) {
+        if (!ALLOWED_BASIS_TOP_KEYS.has(k)) {
+          errors.push({
+            code: "PAIRED_BASIS_EXTRA_KEYS",
+            message: `Unexpected top-level key in paired trust basis: ${k}`,
+            path: k,
+          });
         }
       }
+      basisClaimsById = validateClaimsArray(pairedBasis.claims, "paired_basis.claims", errors);
+    }
 
-      // Compare card claims against paired basis claims
+    // Compare card claims against paired basis claims (strict equality, no String coercion)
+    if (cardClaimsById && basisClaimsById) {
       for (const [id, cClaim] of cardClaimsById.entries()) {
         const bClaim = basisClaimsById.get(id);
         if (!bClaim) {
@@ -346,7 +406,8 @@ export function validateTrustCardCompatibility(
             path: `claims.${id}.boundary`,
           });
         }
-        if (normalizeNote(cClaim.note) !== normalizeNote(bClaim.note)) {
+        // Strict equality without coercion (F9)
+        if (cClaim.note !== bClaim.note) {
           errors.push({
             code: "PAIRED_BASIS_CLAIM_MISMATCH",
             message: `Claim ${id} note mismatch: card has ${JSON.stringify(cClaim.note)}, basis has ${JSON.stringify(bClaim.note)}`,
@@ -354,22 +415,15 @@ export function validateTrustCardCompatibility(
           });
         }
       }
-
-      // Ensure paired basis has no extra claims
-      for (const [id] of basisClaimsById.entries()) {
-        if (!cardClaimsById.has(id)) {
-          errors.push({
-            code: "PAIRED_BASIS_CLAIM_MISMATCH",
-            message: `Claim ${id} present in paired Trust Basis but missing in Trust Card`,
-            path: `claims.${id}`,
-          });
-        }
-      }
     }
   }
 
+  const hasBasisErrors = errors.some((e) => e.code.startsWith("PAIRED_BASIS_"));
+  const claimsParity = pairedBasis !== undefined && !hasBasisErrors;
+
   return {
     valid: errors.length === 0,
+    claimsParity,
     errors,
   };
 }

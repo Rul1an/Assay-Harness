@@ -125,7 +125,12 @@ compatibility (`harness/src/trust_card_compat.ts`,
 remains pending until the next hosted dispatch run is executed and retained.
 The historical receipt recipe run `33957799594` retains its recorded proof for
 Promptfoo, OpenFeature, and CycloneDX receipt pipelines; the Trust Card surface
-was not exercised by that historical run.
+was not exercised by that historical run. Trust Card claim parity against the
+paired Trust Basis measures intra-binary consistency across two invocations of the
+same producer binary on the same bundle. Because `source` and `boundary` are
+structurally hardcoded per claim ID and `note` is emitted as `null` by the
+producer, the check has a single degree of freedom per claim (`level`); it is not
+independent cross-binary corroboration or origin authentication.
 
 ## Harness Boundary
 
