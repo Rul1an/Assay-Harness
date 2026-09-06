@@ -92,20 +92,50 @@ def _unbounded_read_bytes(_self):
     raise AssertionError("unbounded Path.read_bytes")
 
 
-_JS_YAML_LOAD = (
-    "import { load } from 'js-yaml';"
-    "import { readFileSync } from 'fs';"
-    "const doc = load(readFileSync(process.argv[1], 'utf8'));"
-    "process.stdout.write(JSON.stringify(doc));"
-)
+_JS_YAML_LOAD = r"""
+import assert from 'node:assert/strict';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+
+const harness = realpathSync(process.cwd());
+const packageRoot = join(harness, 'node_modules', 'js-yaml');
+const metadataPath = fileURLToPath(import.meta.resolve('js-yaml/package.json'));
+assert.equal(realpathSync(metadataPath), join(packageRoot, 'package.json'), 'parser package resolution');
+const entry = import.meta.resolve('js-yaml');
+const entryRelative = relative(packageRoot, realpathSync(fileURLToPath(entry)));
+assert.ok(entryRelative && !isAbsolute(entryRelative) &&
+  entryRelative !== '..' && !entryRelative.startsWith('../') && !entryRelative.startsWith('..\\'),
+  'parser entry escapes selected package');
+const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const installed = readJson(metadataPath);
+const declared = readJson(join(harness, 'package.json')).dependencies?.['js-yaml'];
+const lock = readJson(join(harness, 'package-lock.json'));
+assert.equal(installed.name, 'js-yaml');
+assert.ok(typeof declared === 'string' && declared.length, 'missing parser declaration');
+assert.equal(lock.packages?.['']?.dependencies?.['js-yaml'], declared, 'root lock parser declaration');
+assert.equal(installed.version, lock.packages?.['node_modules/js-yaml']?.version, 'installed parser differs from lock');
+// npm owns semver range interpretation. Inspect only the actual local tree: no install or audit.
+const tree = JSON.parse(execFileSync('npm', ['ls', 'js-yaml', '--depth=0', '--json'], {
+  encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
+  env: { ...process.env, npm_config_offline: 'true', npm_config_ignore_scripts: 'true',
+    npm_config_update_notifier: 'false', npm_config_audit: 'false', npm_config_fund: 'false' },
+}));
+assert.equal(tree.dependencies?.['js-yaml']?.version, installed.version, 'npm selected parser');
+// Resolve and validate before importing; this is the same module that parses the workflow.
+const { load } = await import(entry);
+const doc = load(readFileSync(process.argv[1], 'utf8'));
+process.stdout.write(JSON.stringify(doc));
+"""
 
 
 def _load_workflow():
-    """One structural parse via pinned harness js-yaml 5.2.2 (not PyYAML)."""
+    """Parse using the installed ESM parser bound to the Harness declaration and lock."""
     js_yaml = REPO_ROOT / "harness" / "node_modules" / "js-yaml"
     if not js_yaml.is_dir():
         raise AssertionError(
-            "js-yaml 5.2.2 is not installed; the Action Evidence Index job "
+            "js-yaml is not installed; the Action Evidence Index job "
             "must run $/.github/actions/setup-node-harness before tests"
         )
     proc = subprocess.run(
@@ -113,9 +143,10 @@ def _load_workflow():
         cwd=str(REPO_ROOT / "harness"),
         capture_output=True,
         text=True,
+        timeout=40,
     )
     if proc.returncode != 0:
-        raise AssertionError(f"js-yaml parse failed: {proc.stderr}")
+        raise AssertionError(f"js-yaml binding or parse failed: {proc.stderr}")
     return json.loads(proc.stdout)
 
 
@@ -172,6 +203,89 @@ def _validate_action_evidence_index_step(data=None):
     raise AssertionError("missing Validate action evidence index step")
 
 
+
+class TestParserBinding(unittest.TestCase):
+    """Exercise the real Node loader and npm range validation with tiny local packages."""
+
+    def _fixture(self, root, *, version="5.99.0", declared="^5.4.1", locked=None):
+        harness = root / "harness"
+        package = harness / "node_modules" / "js-yaml"
+        (package / "dist").mkdir(parents=True)
+        (package / "package.json").write_text(json.dumps({
+            "name": "js-yaml", "version": version, "type": "module",
+            "exports": {".": "./dist/loader.mjs", "./package.json": "./package.json"},
+        }), encoding="utf-8")
+        # This fixture proves loader selection, not js-yaml compatibility.
+        (package / "dist" / "loader.mjs").write_text(
+            "export const load = JSON.parse;", encoding="utf-8")
+        dependency = {"js-yaml": declared}
+        (harness / "package.json").write_text(json.dumps({
+            "name": "parser-binding-fixture", "version": "1.0.0", "dependencies": dependency,
+        }), encoding="utf-8")
+        (harness / "package-lock.json").write_text(json.dumps({
+            "name": "parser-binding-fixture", "version": "1.0.0", "lockfileVersion": 3,
+            "packages": {"": {"dependencies": dependency},
+                         "node_modules/js-yaml": {"version": locked or version}},
+        }), encoding="utf-8")
+        workflow = root / "workflow.yml"
+        workflow.write_text('{"jobs":{"fixture":{"name":"selected-loader"}}}', encoding="utf-8")
+        return harness, package, workflow
+
+    def _load(self, root, workflow):
+        with patch.dict(globals(), REPO_ROOT=root, WORKFLOW_PATH=workflow):
+            return _load_workflow()
+
+    def test_higher_compatible_selected_version_is_not_a_hardcoded_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, _, workflow = self._fixture(root)
+            self.assertEqual(self._load(root, workflow)["jobs"]["fixture"]["name"], "selected-loader")
+
+    def test_installed_version_must_equal_lock_selection(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, _, workflow = self._fixture(root, locked="5.98.0")
+            with self.assertRaises(AssertionError):
+                self._load(root, workflow)
+
+    def test_selected_version_must_satisfy_declared_range(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, _, workflow = self._fixture(root, version="5.2.2")
+            with self.assertRaises(AssertionError):
+                self._load(root, workflow)
+
+    def test_root_lock_declaration_must_match_package(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            harness, _, workflow = self._fixture(root)
+            lock = harness / "package-lock.json"
+            doc = json.loads(lock.read_text(encoding="utf-8"))
+            doc["packages"][""]["dependencies"]["js-yaml"] = "^5.0.0"
+            lock.write_text(json.dumps(doc), encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                self._load(root, workflow)
+
+    def test_actual_resolved_entry_must_stay_in_selected_package(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, package, workflow = self._fixture(root)
+            entry = package / "dist" / "loader.mjs"
+            outside = root / "outside.mjs"
+            entry.rename(outside)
+            entry.symlink_to(outside)
+            with self.assertRaises(AssertionError):
+                self._load(root, workflow)
+
+    def test_missing_installed_parser_refuses(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _, package, workflow = self._fixture(root)
+            package.rename(package.with_name("not-js-yaml"))
+            with self.assertRaises(AssertionError):
+                self._load(root, workflow)
+
+
 class TestWorkflowCallsite(unittest.TestCase):
     """Read harness-ci.yml as text and lock the #177 callsite contract."""
 
@@ -218,7 +332,7 @@ class TestWorkflowCallsite(unittest.TestCase):
 
 
 class TestWorkflowStructuralGuard(unittest.TestCase):
-    """Parse harness-ci.yml with pinned js-yaml 5.2.2 and lock the Validate step funnel."""
+    """Parse harness-ci.yml with the selected js-yaml and lock the Validate step funnel."""
 
     @classmethod
     def setUpClass(cls):
@@ -323,7 +437,7 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
 
     def test_load_workflow_uses_js_yaml_not_pyyaml(self):
         self.assertIn("js-yaml", _JS_YAML_LOAD)
-        self.assertIn("from 'js-yaml'", _JS_YAML_LOAD)
+        self.assertIn("import.meta.resolve('js-yaml')", _JS_YAML_LOAD)
         helper = Path(__file__).read_text(encoding="utf-8")
         start = helper.index("def _load_workflow(")
         end = helper.index("def _action_evidence_index_job(")
@@ -331,11 +445,8 @@ class TestWorkflowStructuralGuard(unittest.TestCase):
         self.assertIn("_JS_YAML_LOAD", body)
         self.assertNotIn("safe_load", body)
 
-    def test_js_yaml_lockfile_is_5_2_2(self):
-        lock = json.loads(
-            (REPO_ROOT / "harness" / "package-lock.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(lock["packages"]["node_modules/js-yaml"]["version"], "5.2.2")
+    def test_structural_parse_uses_the_declared_lock_bound_parser(self):
+        self.assertEqual(_load_workflow(), self.data)
 
     def test_job_installs_js_yaml_via_setup_node_harness_before_tests(self):
         require_setup_node_harness_before_tests(_action_evidence_index_job(self.data))
