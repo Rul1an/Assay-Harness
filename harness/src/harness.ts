@@ -112,7 +112,8 @@ export async function runHarness(
   // Per SDK guidance (openai/openai-agents-js#1177): prefer the stable public
   // accessors `item.name` and `item.arguments` over reaching into `rawItem`.
   // There is no normalized public call-id accessor across all approval item
-  // variants yet, so we fall back to `rawItem.call_id ?? rawItem.id`.
+  // variants yet. Function approvals use `rawItem.callId`; retain the legacy
+  // `call_id` and `id` variants for other inputs.
   const boundedInterruptions: ApprovalInterruption[] = interruptions.map(
     (item: any) => {
       const rawArgs = item.arguments ?? item.rawItem?.arguments;
@@ -121,7 +122,7 @@ export async function runHarness(
       return {
         tool_name: item.name ?? item.rawItem?.name ?? "unknown",
         tool_call_id:
-          item.rawItem?.call_id ?? item.rawItem?.id ?? "unknown",
+          item.rawItem?.callId ?? item.rawItem?.call_id ?? item.rawItem?.id ?? "unknown",
         arguments_hash: hashArguments(parsedArgs),
       };
     }

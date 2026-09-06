@@ -4,6 +4,10 @@ All notable changes to Assay Harness will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve SDK function-call IDs in approval-interruption evidence instead of emitting `unknown`.
+
 - ci: require Node.js 22 or newer and select Node 22 for CI, release, SBOM, and promotion workflows through one `.node-version` file.
 
 - compatibility: record digest-bound Assay v6.0.0 Trust Card compatibility proof from hosted run `34054714155` (#205). Adds sibling recipe row for released Assay Trust Card compatibility (`sha256:e9b16e3a…`) matching the uploaded Actions artifact; binds release peel `7df13b3f…`, Linux archive digest `sha256:71f0854b…`, and all four retained member bytes (bundle, paired Trust Basis, Trust Card schema 5, and diagnostic). Re-verifies exact hosted artifacts semantically via shared `validateTrustCardCompatibility` with claims parity against the paired Trust Basis across two invocations of released Assay `v6.0.0` on the same Promptfoo baseline bundle. Preserves historical `v5.4.0` enforcement-health and `v6.0.0` receipt recipe rows. Does not claim independent cross-binary corroboration, universal host compatibility, or enforcement-health refresh.
