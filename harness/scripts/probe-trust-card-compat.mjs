@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  copyFileSync,
+import fs, {
+  closeSync,
+  constants as fsConstants,
   existsSync,
-  lstatSync,
+  fstatSync,
   mkdirSync,
-  readFileSync,
+  openSync,
+  readSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { validateTrustCardCompatibility } from "../dist/trust_card_compat.js";
 
@@ -18,6 +20,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
 const MAX_BASIS_BYTES = 10 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+const READ_CHUNK = 64 * 1024;
 
 const ALLOWED_CLI_OPTIONS = new Set([
   "assay-bin",
@@ -93,59 +96,61 @@ function parseArgs(argv) {
   return values;
 }
 
-function readAndRetainBoundedFile(sourcePath, destPath, maxBytes, label) {
-  let st;
+/**
+ * Open no-follow where supported, fstat the open descriptor before materialization,
+ * read at most maxBytes + 1 under the actual descriptor, reject oversized or non-regular
+ * sources, and close reliably.
+ */
+export function readBoundedRegularFile(filePath, maxBytes, label, fsImpl = fs) {
+  const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+  let fd;
   try {
-    st = lstatSync(sourcePath);
+    fd = fsImpl.openSync(filePath, flags);
   } catch (err) {
-    fail(`${label} missing or inaccessible: ${sourcePath}`);
+    if (err.code === "ELOOP" || err.code === "SYMLINK_LOOP") {
+      throw new Error(`${label} must not be a symbolic link: ${filePath}`);
+    }
+    throw new Error(`${label} missing or inaccessible: ${filePath}`);
   }
-  if (st.isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link: ${sourcePath}`);
-  }
-  if (!st.isFile()) {
-    fail(`${label} is not a regular file: ${sourcePath}`);
-  }
-  if (st.size > maxBytes) {
-    fail(`${label} size ${st.size} exceeds ceiling ${maxBytes}: ${sourcePath}`);
-  }
-  const buf = readFileSync(sourcePath);
-  if (buf.length > maxBytes) {
-    fail(`${label} bytes ${buf.length} exceed ceiling ${maxBytes}: ${sourcePath}`);
-  }
-  if (sourcePath !== destPath) {
-    writeFileSync(destPath, buf);
-  }
-  const digest = `sha256:${createHash("sha256").update(buf).digest("hex")}`;
-  return { bytes: buf.length, digest };
-}
 
-function assertRegularFile(filePath, maxBytes, label) {
-  let st;
   try {
-    st = lstatSync(filePath);
-  } catch (err) {
-    fail(`${label} missing or inaccessible: ${filePath}`);
+    let st;
+    try {
+      st = fsImpl.fstatSync(fd);
+    } catch (err) {
+      throw new Error(`failed to stat ${label}: ${err.message}`);
+    }
+
+    if (!st.isFile()) {
+      throw new Error(`${label} is not a regular file: ${filePath}`);
+    }
+    if (st.size > maxBytes) {
+      throw new Error(`${label} size ${st.size} exceeds ceiling ${maxBytes}: ${filePath}`);
+    }
+
+    const chunks = [];
+    let total = 0;
+    const toReadLimit = maxBytes + 1;
+
+    while (total < toReadLimit) {
+      const chunkSize = Math.min(READ_CHUNK, toReadLimit - total);
+      const buf = Buffer.alloc(chunkSize);
+      const n = fsImpl.readSync(fd, buf, 0, chunkSize, null);
+      if (n === 0) break;
+      total += n;
+      if (total > maxBytes) {
+        throw new Error(`${label} size ${total} exceeds ceiling ${maxBytes}: ${filePath}`);
+      }
+      chunks.push(buf.subarray(0, n));
+    }
+
+    return Buffer.concat(chunks);
+  } finally {
+    fsImpl.closeSync(fd);
   }
-  if (st.isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link: ${filePath}`);
-  }
-  if (!st.isFile()) {
-    fail(`${label} is not a regular file: ${filePath}`);
-  }
-  if (st.size > maxBytes) {
-    fail(`${label} size ${st.size} exceeds ceiling ${maxBytes}: ${filePath}`);
-  }
-  return st.size;
 }
 
-function hashFile(filePath) {
-  const buf = readFileSync(filePath);
-  const hash = createHash("sha256").update(buf).digest("hex");
-  return `sha256:${hash}`;
-}
-
-function main() {
+function run() {
   const args = parseArgs(process.argv.slice(2));
 
   const bundlePath = resolve(args.bundle);
@@ -156,27 +161,50 @@ function main() {
   const maxOutputBytes = args["max-output-bytes"];
 
   const cardPath = join(outDir, "trustcard.json");
+  const retainedBundle = join(outDir, "bundle.evidence.tar.gz");
+  const retainedBasis = join(outDir, "paired.trust-basis.json");
+  const diagnosticPath = join(outDir, "diagnostic.json");
 
-  // F3: Fresh output identity. Refuse pre-existing trustcard.json in out-dir prior to invocation.
-  // Do not delete or overwrite prior run evidence to invent freshness.
+  // F3: Fresh output identity. Refuse any pre-existing run artifacts in out-dir prior to writing or spawn.
+  // Do not delete or overwrite prior run evidence to manufacture freshness.
   if (existsSync(cardPath)) {
-    fail(`pre-existing trustcard.json found in out-dir (${cardPath}); output directory must not contain prior run artifacts`);
+    fail(
+      `pre-existing trustcard.json found in out-dir (${cardPath}); output directory must not contain prior run artifacts`,
+    );
+  }
+  const existingArtifacts = [retainedBundle, retainedBasis, diagnosticPath].filter((p) => existsSync(p));
+  if (existingArtifacts.length > 0) {
+    fail(
+      `pre-existing run artifacts found in out-dir (${existingArtifacts.join(", ")}); output directory must not contain prior run artifacts`,
+    );
+  }
+
+  // F4: Read bounded input bytes first under strict ceilings
+  const bundleBuf = readBoundedRegularFile(bundlePath, args["max-bundle-bytes"], "bundle");
+  const bundleDigest = `sha256:${createHash("sha256").update(bundleBuf).digest("hex")}`;
+
+  const basisBuf = readBoundedRegularFile(basisPath, MAX_BASIS_BYTES, "paired-basis");
+  const basisDigest = `sha256:${createHash("sha256").update(basisBuf).digest("hex")}`;
+
+  let basisJson;
+  try {
+    basisJson = JSON.parse(basisBuf.toString("utf8"));
+  } catch (err) {
+    fail(`failed to parse paired basis JSON: ${err.message}`);
   }
 
   mkdirSync(outDir, { recursive: true });
 
-  const retainedBundle = join(outDir, "bundle.evidence.tar.gz");
-  const retainedBasis = join(outDir, "paired.trust-basis.json");
-
-  // F4: Retain bounded input bytes first, hash those exact bytes, and invoke on the retained copy.
-  const bundleInfo = readAndRetainBoundedFile(bundlePath, retainedBundle, args["max-bundle-bytes"], "bundle");
-  const basisInfo = readAndRetainBoundedFile(basisPath, retainedBasis, MAX_BASIS_BYTES, "paired-basis");
-
-  let basisJson;
+  // Use exclusive creation for retained outputs to guarantee at OS syscall level that prior files cannot be overwritten
   try {
-    basisJson = JSON.parse(readFileSync(retainedBasis, "utf8"));
+    writeFileSync(retainedBundle, bundleBuf, { flag: "wx" });
   } catch (err) {
-    fail(`failed to parse paired basis JSON: ${err.message}`);
+    fail(`failed to exclusively retain bundle at ${retainedBundle}: ${err.message}`);
+  }
+  try {
+    writeFileSync(retainedBasis, basisBuf, { flag: "wx" });
+  } catch (err) {
+    fail(`failed to exclusively retain paired basis at ${retainedBasis}: ${err.message}`);
   }
 
   // Execute producer command on the retained copy
@@ -204,26 +232,26 @@ function main() {
     );
   }
 
-  // F4: Verify retained input bytes still match after producer execution before reporting success
-  const postBundleBuf = readFileSync(retainedBundle);
+  // F4: Verify retained input bytes still match after producer execution under bounded reads
+  const postBundleBuf = readBoundedRegularFile(retainedBundle, args["max-bundle-bytes"], "retained bundle");
   const postBundleDigest = `sha256:${createHash("sha256").update(postBundleBuf).digest("hex")}`;
-  if (postBundleDigest !== bundleInfo.digest) {
-    fail(`retained bundle mutated during producer execution: pre=${bundleInfo.digest}, post=${postBundleDigest}`);
+  if (postBundleDigest !== bundleDigest) {
+    fail(`retained bundle mutated during producer execution: pre=${bundleDigest}, post=${postBundleDigest}`);
   }
 
-  const postBasisBuf = readFileSync(retainedBasis);
+  const postBasisBuf = readBoundedRegularFile(retainedBasis, MAX_BASIS_BYTES, "retained paired basis");
   const postBasisDigest = `sha256:${createHash("sha256").update(postBasisBuf).digest("hex")}`;
-  if (postBasisDigest !== basisInfo.digest) {
-    fail(`retained paired basis mutated during producer execution: pre=${basisInfo.digest}, post=${postBasisDigest}`);
+  if (postBasisDigest !== basisDigest) {
+    fail(`retained paired basis mutated during producer execution: pre=${basisDigest}, post=${postBasisDigest}`);
   }
 
-  // Verify produced trustcard.json
-  const cardBytes = assertRegularFile(cardPath, maxOutputBytes, "trustcard.json");
-  const cardDigest = hashFile(cardPath);
+  // F4: Verify produced trustcard.json using the shared bounded reader (same bytes for digest and parse)
+  const cardBuf = readBoundedRegularFile(cardPath, maxOutputBytes, "trustcard.json");
+  const cardDigest = `sha256:${createHash("sha256").update(cardBuf).digest("hex")}`;
 
   let cardJson;
   try {
-    cardJson = JSON.parse(readFileSync(cardPath, "utf8"));
+    cardJson = JSON.parse(cardBuf.toString("utf8"));
   } catch (err) {
     fail(`produced trustcard.json is not valid JSON: ${err.message}`);
   }
@@ -238,18 +266,18 @@ function main() {
     claims_parity: validation.claimsParity,
     bundle: {
       path: retainedBundle,
-      sha256: bundleInfo.digest,
-      bytes: bundleInfo.bytes,
+      sha256: bundleDigest,
+      bytes: bundleBuf.length,
     },
     paired_basis: {
       path: retainedBasis,
-      sha256: basisInfo.digest,
-      bytes: basisInfo.bytes,
+      sha256: basisDigest,
+      bytes: basisBuf.length,
     },
     trust_card: {
       path: cardPath,
       sha256: cardDigest,
-      bytes: cardBytes,
+      bytes: cardBuf.length,
       schema_version: cardJson?.schema_version,
       claim_count: Array.isArray(cardJson?.claims) ? cardJson.claims.length : 0,
     },
@@ -258,8 +286,11 @@ function main() {
     errors: validation.errors,
   };
 
-  const diagnosticPath = join(outDir, "diagnostic.json");
-  writeFileSync(diagnosticPath, JSON.stringify(diagnostic, null, 2) + "\n", "utf8");
+  try {
+    writeFileSync(diagnosticPath, JSON.stringify(diagnostic, null, 2) + "\n", { flag: "wx" });
+  } catch (err) {
+    fail(`failed to write diagnostic (${diagnosticPath}): ${err.message}`);
+  }
 
   if (!validation.valid) {
     const errorDetails = validation.errors.map((e) => `  - [${e.code}] ${e.message}`).join("\n");
@@ -271,4 +302,18 @@ function main() {
   );
 }
 
-main();
+function main() {
+  try {
+    run();
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
+if (
+  process.argv[1] &&
+  (import.meta.url === pathToFileURL(process.argv[1]).href ||
+    fileURLToPath(import.meta.url) === resolve(process.argv[1]))
+) {
+  main();
+}

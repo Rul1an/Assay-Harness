@@ -1,11 +1,13 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import fs, { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
+import { readBoundedRegularFile } from "../scripts/probe-trust-card-compat.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(testDir); // harness dir
@@ -216,6 +218,26 @@ if (outDir) {
 }
 process.exit(0);
 `;
+  } else if (behavior === "mutates_basis") {
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  const basis = path.join(outDir, 'paired.trust-basis.json');
+  if (fs.existsSync(basis)) {
+    fs.appendFileSync(basis, 'HOSTILE-MUTATION-AFTER-HASH\\n');
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
+process.exit(0);
+`;
   } else if (behavior === "malformed_json") {
     scriptContent = `#!/usr/bin/env node
 import fs from 'node:fs';
@@ -241,6 +263,113 @@ for (let i = 0; i < args.length; i++) {
 }
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'trustcard.json'), JSON.stringify(${JSON.stringify(badCard)}));
+process.exit(0);
+`;
+  } else if (behavior === "grows_bundle") {
+    // Producer appends bytes to retained bundle making it exceed ceiling
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+const bundle = args[2];
+if (bundle && fs.existsSync(bundle)) {
+  fs.appendFileSync(bundle, 'Z'.repeat(1000));
+}
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
+process.exit(0);
+`;
+  } else if (behavior === "symlink_bundle") {
+    // Producer replaces retained bundle with a symlink
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+const bundle = args[2];
+if (bundle && fs.existsSync(bundle)) {
+  const realCopy = bundle + '.real';
+  fs.renameSync(bundle, realCopy);
+  fs.symlinkSync(realCopy, bundle);
+}
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
+process.exit(0);
+`;
+  } else if (behavior === "symlink_basis") {
+    // Producer replaces retained basis with a symlink
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  const basis = path.join(outDir, 'paired.trust-basis.json');
+  if (fs.existsSync(basis)) {
+    const realCopy = basis + '.real';
+    fs.renameSync(basis, realCopy);
+    fs.symlinkSync(realCopy, basis);
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
+process.exit(0);
+`;
+  } else if (behavior === "symlink_card") {
+    // Producer writes trustcard.json as a symlink
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const realCard = path.join(outDir, 'trustcard.json.real');
+  fs.writeFileSync(realCard, ${JSON.stringify(cardJson + "\n")});
+  fs.symlinkSync(realCard, path.join(outDir, 'trustcard.json'));
+}
+process.exit(0);
+`;
+  } else if (behavior === "grows_basis") {
+    // Producer appends bytes to retained basis making it exceed ceiling
+    const cardJson = JSON.stringify(makeValidCard(), null, 2);
+    scriptContent = `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+let outDir = '';
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--out-dir') { outDir = args[i + 1]; break; }
+}
+if (outDir) {
+  const basis = path.join(outDir, 'paired.trust-basis.json');
+  if (fs.existsSync(basis)) {
+    fs.appendFileSync(basis, 'X'.repeat(1000));
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'trustcard.json'), ${JSON.stringify(cardJson + "\n")});
+}
 process.exit(0);
 `;
   } else if (behavior === "hang") {
@@ -298,6 +427,8 @@ test("probe script succeeds with valid inert producer and matching paired basis"
     const parsedCard = JSON.parse(cardContent);
     assert.equal(parsedCard.schema_version, 5);
 
+    const cardDigest = `sha256:${createHash("sha256").update(Buffer.from(cardContent, "utf8")).digest("hex")}`;
+
     const diagPath = join(outDir, "diagnostic.json");
     assert.ok(readFileSync(diagPath, "utf8"), "diagnostic.json must exist");
     const diag = JSON.parse(readFileSync(diagPath, "utf8"));
@@ -305,7 +436,10 @@ test("probe script succeeds with valid inert producer and matching paired basis"
     assert.equal(diag.claims_parity, true);
     assert.ok(diag.bundle.sha256.startsWith("sha256:"));
     assert.ok(diag.paired_basis.sha256.startsWith("sha256:"));
-    assert.ok(diag.trust_card.sha256.startsWith("sha256:"));
+    assert.equal(diag.trust_card.sha256, cardDigest);
+    assert.equal(diag.trust_card.bytes, Buffer.byteLength(cardContent, "utf8"));
+    assert.equal(diag.trust_card.schema_version, parsedCard.schema_version);
+    assert.equal(diag.trust_card.claim_count, parsedCard.claims.length);
 
     // Verify bundle and paired basis retained in outDir
     assert.ok(readFileSync(join(outDir, "bundle.evidence.tar.gz")), "retained bundle must exist");
@@ -703,6 +837,423 @@ test("probe script fails when retained bundle is mutated during producer executi
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("probe script fails when retained paired basis is mutated during producer execution (F4 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "mutates_basis");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "mutated retained paired basis must cause probe nonzero exit");
+    assert.match(run.stderr, /retained paired basis mutated during producer execution/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script refuses pre-existing retained bundle in output directory and preserves its bytes (F3 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "missing_output");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "fresh-bundle-bytes\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+
+    const outDir = join(dir, "out");
+    mkdirSync(outDir, { recursive: true });
+    const existingRetainedBundle = join(outDir, "bundle.evidence.tar.gz");
+    const historicalContent = "HISTORICAL-RETAINED-BUNDLE-PRESERVED\n";
+    writeFileSync(existingRetainedBundle, historicalContent);
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "pre-existing retained bundle must fail closed");
+    assert.match(run.stderr, /pre-existing run artifacts found in out-dir/);
+    assert.equal(
+      readFileSync(existingRetainedBundle, "utf8"),
+      historicalContent,
+      "pre-existing retained bundle must remain byte-identical after refused run",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script fails when producer grows retained bundle past size ceiling (F4 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "grows_bundle");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "small\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+        "--max-bundle-bytes",
+        "500",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "oversized post-execution retained bundle must fail closed");
+    assert.match(run.stderr, /retained bundle size \d+ exceeds ceiling 500/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script fails when producer substitutes retained bundle with a symlink (F4 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "symlink_bundle");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "symlink-substituted retained bundle must fail closed");
+    assert.match(run.stderr, /must not be a symbolic link/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script refuses pre-existing retained paired basis in output directory and preserves its bytes (F3 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "missing_output");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "fresh-bundle-bytes\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+
+    const outDir = join(dir, "out");
+    mkdirSync(outDir, { recursive: true });
+    const existingRetainedBasis = join(outDir, "paired.trust-basis.json");
+    const historicalContent = "{\"historical\": \"paired-basis-bytes\"}\n";
+    writeFileSync(existingRetainedBasis, historicalContent);
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "pre-existing retained basis must fail closed");
+    assert.match(run.stderr, /pre-existing run artifacts found in out-dir/);
+    assert.equal(
+      readFileSync(existingRetainedBasis, "utf8"),
+      historicalContent,
+      "pre-existing retained paired basis must remain byte-identical after refused run",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script refuses pre-existing diagnostic in output directory and preserves its bytes (F3 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "missing_output");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "fresh-bundle-bytes\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+
+    const outDir = join(dir, "out");
+    mkdirSync(outDir, { recursive: true });
+    const existingDiag = join(outDir, "diagnostic.json");
+    const historicalContent = "{\"historical\": \"prior-diagnostic-run\"}\n";
+    writeFileSync(existingDiag, historicalContent);
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "pre-existing diagnostic must fail closed");
+    assert.match(run.stderr, /pre-existing run artifacts found in out-dir/);
+    assert.equal(
+      readFileSync(existingDiag, "utf8"),
+      historicalContent,
+      "pre-existing diagnostic must remain byte-identical after refused run",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script fails when producer substitutes retained paired basis with a symlink (F4 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "symlink_basis");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "symlink-substituted retained basis must fail closed");
+    assert.match(run.stderr, /must not be a symbolic link/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("probe script fails when producer substitutes trustcard.json with a symlink (F4 residual)", () => {
+  const dir = tempDir();
+  try {
+    const fakeAssayBin = join(dir, "assay");
+    writeFakeProducer(fakeAssayBin, "symlink_card");
+
+    const bundlePath = join(dir, "bundle.tar.gz");
+    writeFileSync(bundlePath, "data\n");
+    const basisPath = join(dir, "basis.json");
+    writeFileSync(basisPath, JSON.stringify({ claims: makeValidClaims() }));
+    const outDir = join(dir, "out");
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        probeScriptPath,
+        "--assay-bin",
+        fakeAssayBin,
+        "--bundle",
+        bundlePath,
+        "--paired-basis",
+        basisPath,
+        "--out-dir",
+        outDir,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.notEqual(run.status, 0, "symlink-substituted trustcard must fail closed");
+    assert.match(run.stderr, /must not be a symbolic link/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readBoundedRegularFile rejects symlink without following target (F4)", () => {
+  const dir = tempDir();
+  try {
+    const targetPath = join(dir, "target.txt");
+    writeFileSync(targetPath, "payload content\n");
+    const linkPath = join(dir, "link.txt");
+    symlinkSync(targetPath, linkPath);
+
+    assert.throws(
+      () => readBoundedRegularFile(linkPath, 1000, "symlink_test"),
+      /symlink_test must not be a symbolic link/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readBoundedRegularFile rejects non-regular directory (F4)", () => {
+  const dir = tempDir();
+  try {
+    assert.throws(
+      () => readBoundedRegularFile(dir, 1000, "dir_test"),
+      /dir_test is not a regular file/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readBoundedRegularFile fails before reading when fstat reports size exceeding ceiling (no post-allocation check) (F4)", () => {
+  const dir = tempDir();
+  try {
+    const filePath = join(dir, "oversized.txt");
+    writeFileSync(filePath, "A".repeat(2000));
+
+    let readSyncCalls = 0;
+    const spyFs = Object.assign({}, fs, {
+      readSync(...args) {
+        readSyncCalls++;
+        return fs.readSync(...args);
+      },
+    });
+
+    assert.throws(
+      () => readBoundedRegularFile(filePath, 100, "ceiling_test", spyFs),
+      /ceiling_test size 2000 exceeds ceiling 100/,
+    );
+    assert.equal(readSyncCalls, 0, "readSync must NOT be called when fstat reports size exceeding ceiling");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readBoundedRegularFile stops descriptor read at maxBytes + 1 without unbounded allocation (F4)", () => {
+  const dir = tempDir();
+  try {
+    const filePath = join(dir, "growing.txt");
+    writeFileSync(filePath, "B".repeat(500));
+
+    let totalBytesRead = 0;
+    const spyFs = Object.assign({}, fs, {
+      fstatSync(fd) {
+        const realStat = fs.fstatSync(fd);
+        // Simulate fstat returning a size within limit (e.g. dynamic descriptor)
+        return Object.assign(Object.create(Object.getPrototypeOf(realStat)), realStat, {
+          isFile: () => true,
+          size: 10,
+        });
+      },
+      readSync(fd, buf, offset, length, position) {
+        const n = fs.readSync(fd, buf, offset, length, position);
+        totalBytesRead += n;
+        return n;
+      },
+    });
+
+    assert.throws(
+      () => readBoundedRegularFile(filePath, 50, "streaming_test", spyFs),
+      /streaming_test size 51 exceeds ceiling 50/,
+    );
+    assert.equal(
+      totalBytesRead,
+      51,
+      "read loop must immediately halt at maxBytes + 1 without reading full file",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readBoundedRegularFile returns exact buffer for regular file within ceiling (F4)", () => {
+  const dir = tempDir();
+  try {
+    const filePath = join(dir, "valid.txt");
+    const content = "exact expected buffer content\n";
+    writeFileSync(filePath, content);
+
+    const buf = readBoundedRegularFile(filePath, 1000, "valid_test");
+    assert.equal(buf.toString("utf8"), content);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 
 test("probe script rejects non-integer or out-of-contract resource ceilings (P2b, P2c / F5)", () => {
   const dir = tempDir();
