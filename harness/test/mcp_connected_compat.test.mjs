@@ -17,11 +17,12 @@ const mark = (event, params) => appendFileSync(log, JSON.stringify({event, pid: 
 mark('start');
 process.on('exit', () => mark('exit'));
 process.on('SIGTERM', () => process.exit(0));
-process.stdin.on('end', () => process.exit(0));
+process.stdin.on('end', () => mode === 'wait-init' ? setTimeout(() => process.exit(0), 200) : process.exit(0));
 const lines = createInterface({input: process.stdin});
 lines.on('line', line => {
   const request = JSON.parse(line);
   mark(request.method, request.params);
+  if (mode === 'wait-init' && request.method === 'initialize') return;
   if (mode === 'fail' && request.method === 'initialize') process.exit(3);
   if (request.method === 'tools/list' && mode === 'page-error' && request.params?.cursor) {
     process.stdout.write(JSON.stringify({jsonrpc:'2.0', id:request.id, error:{code:-32603,message:'page refused'}})+'\n'); return;
@@ -220,5 +221,13 @@ test("MCP listing refuses while initialization is pending", {timeout:10000}, asy
     const listing = server.listTools().then(() => null, error => error);
     await connecting;
     assert.match((await listing)?.message ?? "listing unexpectedly succeeded", /initialized|lifecycle/);
+  });
+});
+
+// Regression: the public client starts shutdown itself on initialize timeout.
+test("MCP initialization timeout joins physical child exit", {timeout: 10000}, async () => {
+  await withPeer("wait-init", async (server) => {
+    await assert.rejects(server.connect(), /timed out|timeout/i);
+    await assert.rejects(server.listTools(), /initialized/);
   });
 });

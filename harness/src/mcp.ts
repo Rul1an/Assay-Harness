@@ -65,6 +65,30 @@ export interface McpLaneConfig {
   evidence: EvidenceCompiler;
 }
 
+/** Join SDK-initiated shutdown through the public transport lifecycle. */
+class JoiningStdioTransport extends StdioClientTransport {
+  private closing?: Promise<void>;
+  private readonly physicalClose: Promise<void>;
+
+  constructor(params: ConstructorParameters<typeof StdioClientTransport>[0]) {
+    super(params);
+    // Client.connect preserves this callback when attaching its own onclose.
+    this.physicalClose = new Promise(resolve => { this.onclose = resolve; });
+  }
+
+  override close(): Promise<void> {
+    return this.closing ??= this.closeOnce();
+  }
+
+  private async closeOnce(): Promise<void> {
+    const hadChild = this.pid !== null;
+    await super.close();
+    // The public implementation can finish its SIGKILL path before the child
+    // close event; returning from our close always joins the actual event.
+    if (hadChild) await this.physicalClose;
+  }
+}
+
 /**
  * Operator-declared stdio servers retain the legacy initialize handshake: one
  * physical startup per connect, without the Agents 0.17 auto-negotiation probe.
@@ -75,6 +99,7 @@ class SingleStartMcpServer implements MCPServerWithResources {
   readonly cacheToolsList = false;
   private client?: Client;
   private initialized = false;
+  private closing?: Promise<void>;
   private listingGeneration = 0;
   private transport?: StdioClientTransport;
   private tools: Awaited<ReturnType<Client["listTools"]>>["tools"] = [];
@@ -84,7 +109,7 @@ class SingleStartMcpServer implements MCPServerWithResources {
     await this.close();
     // Keep the established fullCommand splitting and validation contract.
     const [command, ...args] = this.fullCommand.split(" ");
-    const transport = new StdioClientTransport({command, args});
+    const transport = new JoiningStdioTransport({command, args});
     const client = new Client({name: this.name, version: "1.0.0"}, {
       versionNegotiation: {mode: "legacy"}, listMaxPages: 0,
     });
@@ -105,7 +130,16 @@ class SingleStartMcpServer implements MCPServerWithResources {
     return this.client;
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
+    const closing = this.closeSession().finally(() => {
+      if (this.closing === closing) this.closing = undefined;
+    });
+    this.closing = closing;
+    return closing;
+  }
+
+  private async closeSession(): Promise<void> {
     const transport = this.transport;
     const client = this.client;
     this.transport = undefined;
