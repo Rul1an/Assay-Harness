@@ -99,6 +99,7 @@ class SingleStartMcpServer implements MCPServerWithResources {
   readonly cacheToolsList = false;
   private client?: Client;
   private initialized = false;
+  private connecting = false;
   private closing?: Promise<void>;
   private listingGeneration = 0;
   private transport?: StdioClientTransport;
@@ -106,6 +107,15 @@ class SingleStartMcpServer implements MCPServerWithResources {
   constructor(readonly name: string, private readonly fullCommand: string) {}
 
   async connect(): Promise<void> {
+    // Acquire before the first await: a second caller must not replace the
+    // transport owned by an initialization that has not settled yet.
+    if (this.connecting) throw new Error("MCP connect already in progress.");
+    this.connecting = true;
+    try { await this.connectOnce(); }
+    finally { this.connecting = false; }
+  }
+
+  private async connectOnce(): Promise<void> {
     await this.close();
     // Keep the established fullCommand splitting and validation contract.
     const [command, ...args] = this.fullCommand.split(" ");
