@@ -231,3 +231,15 @@ test("MCP initialization timeout joins physical child exit", {timeout: 10000}, a
     await assert.rejects(server.listTools(), /initialized/);
   });
 });
+
+// Both calls enter before either initialization can settle.
+test("MCP concurrent connect refuses the second owner without leaking children", {timeout:10000}, async () => {
+  await withPeer("slow-init", async (server, events) => {
+    const results = await Promise.allSettled([server.connect(), server.connect()]);
+    assert.equal(results[0].status, "fulfilled");
+    assert.equal(results[1].status, "rejected");
+    assert.match(results[1].reason.message, /connect.*progress|lifecycle/i);
+    assert.equal((await events()).filter(x => x.event === "start").length, 1);
+    assert.equal((await server.listTools())[0].name, "compat_echo_1");
+  });
+});
