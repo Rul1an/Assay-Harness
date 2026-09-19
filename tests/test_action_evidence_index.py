@@ -29,7 +29,7 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "harness-ci.yml"
 
 SCHEMA = "assay-action-evidence-index/v1"
 ASSAY_ACTION_PIN = (
-    "Rul1an/assay-action@184720a5cb051ebc2c1de7e52b113aa973f2c374"
+    "Rul1an/assay-action@651c82109dc2200ba45e19775bf92cf68f7712ea"
 )
 ONE_MIB = 1024 * 1024
 HUNDRED_MIB = 100 * 1024 * 1024
