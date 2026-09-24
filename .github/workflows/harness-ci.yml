@@ -433,7 +433,7 @@ jobs:
 
       - name: Produce action evidence index
         id: assay
-        uses: Rul1an/assay-action@651c82109dc2200ba45e19775bf92cf68f7712ea
+        uses: Rul1an/assay-action@9665cf6836ae31741383d15ce29bbc06c9e362cd
         with:
           sandbox-command: "true"
           evidence_mode: required

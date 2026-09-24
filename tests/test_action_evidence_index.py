@@ -28,9 +28,13 @@ VALIDATOR_PATH = REPO_ROOT / "ci" / "validate_action_evidence_index.py"
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "harness-ci.yml"
 
 SCHEMA = "assay-action-evidence-index/v1"
+# Peeled refs/tags/v3.2.1^{} from https://github.com/Rul1an/assay-action.git.
+# Independent of harness-ci.yml; the annotated tag object is not this pin.
+_ASSAY_ACTION_USES_PREFIX = "Rul1an/assay-action@"
 ASSAY_ACTION_PIN = (
-    "Rul1an/assay-action@651c82109dc2200ba45e19775bf92cf68f7712ea"
+    _ASSAY_ACTION_USES_PREFIX + "9665cf6836ae31741383d15ce29bbc06c9e362cd"
 )
+PRODUCER_CALLSITE_ID = "assay"
 ONE_MIB = 1024 * 1024
 HUNDRED_MIB = 100 * 1024 * 1024
 ONE_GIB = 1024 * 1024 * 1024
@@ -130,8 +134,9 @@ process.stdout.write(JSON.stringify(doc));
 """
 
 
-def _load_workflow():
+def _load_workflow(path: Path | None = None):
     """Parse using the installed ESM parser bound to the Harness declaration and lock."""
+    workflow_path = WORKFLOW_PATH if path is None else Path(path)
     js_yaml = REPO_ROOT / "harness" / "node_modules" / "js-yaml"
     if not js_yaml.is_dir():
         raise AssertionError(
@@ -139,7 +144,7 @@ def _load_workflow():
             "must run $/.github/actions/setup-node-harness before tests"
         )
     proc = subprocess.run(
-        ["node", "--input-type=module", "-e", _JS_YAML_LOAD, str(WORKFLOW_PATH)],
+        ["node", "--input-type=module", "-e", _JS_YAML_LOAD, str(workflow_path)],
         cwd=str(REPO_ROOT / "harness"),
         capture_output=True,
         text=True,
@@ -148,6 +153,14 @@ def _load_workflow():
     if proc.returncode != 0:
         raise AssertionError(f"js-yaml binding or parse failed: {proc.stderr}")
     return json.loads(proc.stdout)
+
+
+def _load_workflow_yaml(text: str):
+    """Parse caller-supplied workflow text with the same lock-bound loader."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "workflow.yml"
+        path.write_text(text, encoding="utf-8")
+        return _load_workflow(path)
 
 
 def _action_evidence_index_job(data=None):
@@ -202,6 +215,44 @@ def _validate_action_evidence_index_step(data=None):
             return step
     raise AssertionError("missing Validate action evidence index step")
 
+
+def _workflow_steps(data):
+    jobs = data.get("jobs")
+    if not isinstance(jobs, dict):
+        return
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if isinstance(step, dict):
+                yield step
+
+
+def _is_producer_uses(uses):
+    """Selection rule for an effective Rul1an/assay-action callsite. Comments are not uses."""
+    return isinstance(uses, str) and uses.startswith(_ASSAY_ACTION_USES_PREFIX)
+
+
+def _producer_callsites(data):
+    return [step for step in _workflow_steps(data) if _is_producer_uses(step.get("uses"))]
+
+
+def require_exact_producer_callsite(data):
+    """Exactly one effective producer step, with the independent pin and id."""
+    calls = _producer_callsites(data)
+    if len(calls) != 1:
+        raise AssertionError(
+            f"expected exactly one producer callsite, found {len(calls)}"
+        )
+    step = calls[0]
+    if step.get("uses") != ASSAY_ACTION_PIN:
+        raise AssertionError(f"producer uses mismatch: {step.get('uses')!r}")
+    if step.get("id") != PRODUCER_CALLSITE_ID:
+        raise AssertionError(f"producer id mismatch: {step.get('id')!r}")
+    return step
 
 
 class TestParserBinding(unittest.TestCase):
@@ -293,8 +344,55 @@ class TestWorkflowCallsite(unittest.TestCase):
     def setUpClass(cls):
         cls.text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
+    def _reject_producer(self, text: str, substring: str):
+        data = _load_workflow_yaml(text)
+        with self.assertRaises(AssertionError) as ctx:
+            require_exact_producer_callsite(data)
+        self.assertIn(substring, str(ctx.exception))
+
+    def _replace_producer_uses(self, replacement: str) -> str:
+        clause = f"uses: {ASSAY_ACTION_PIN}"
+        found = self.text.count(clause)
+        if found != 1:
+            raise AssertionError(f"independent pin clause count {found}")
+        return self.text.replace(clause, replacement, 1)
+
     def test_assay_action_pin_exactly_once(self):
-        self.assertEqual(self.text.count(ASSAY_ACTION_PIN), 1)
+        """Real workflow: one parsed producer callsite, not a textual token count."""
+        require_exact_producer_callsite(_load_workflow())
+
+    def test_producer_callsite_noop_comment_keeps_contract(self):
+        marker = "  action-evidence-index:\n"
+        self.assertEqual(self.text.count(marker), 1)
+        mutated = self.text.replace(marker, "  # no-op\n" + marker, 1)
+        self.assertNotEqual(mutated, self.text)
+        require_exact_producer_callsite(_load_workflow_yaml(mutated))
+
+    def test_deleted_producer_uses_is_rejected(self):
+        self._reject_producer(self._replace_producer_uses(""), "found 0")
+
+    def test_comment_only_pin_is_not_an_effective_callsite(self):
+        mutated = self._replace_producer_uses(f"# uses: {ASSAY_ACTION_PIN}")
+        self.assertEqual(mutated.count(ASSAY_ACTION_PIN), 1)
+        self._reject_producer(mutated, "found 0")
+
+    def test_wrong_producer_pin_is_rejected_when_expected_token_remains_in_comment(self):
+        wrong = _ASSAY_ACTION_USES_PREFIX + ("0" * 40)
+        mutated = self._replace_producer_uses(
+            f"# {ASSAY_ACTION_PIN}\n        uses: {wrong}"
+        )
+        self.assertEqual(mutated.count(ASSAY_ACTION_PIN), 1)
+        self._reject_producer(mutated, "producer uses mismatch")
+
+    def test_duplicate_producer_callsite_is_rejected(self):
+        marker = "      - name: Produce action evidence index\n"
+        self.assertEqual(self.text.count(marker), 1)
+        extra = (
+            "      - name: Duplicate producer callsite\n"
+            "        id: assay-duplicate\n"
+            f"        uses: {ASSAY_ACTION_PIN}\n"
+        )
+        self._reject_producer(self.text.replace(marker, extra + marker, 1), "found 2")
 
     def test_validator_script_invoked(self):
         self.assertIn("ci/validate_action_evidence_index.py", self.text)
