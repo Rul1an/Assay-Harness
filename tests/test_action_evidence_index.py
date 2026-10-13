@@ -28,11 +28,11 @@ VALIDATOR_PATH = REPO_ROOT / "ci" / "validate_action_evidence_index.py"
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "harness-ci.yml"
 
 SCHEMA = "assay-action-evidence-index/v1"
-# Peeled refs/tags/v3.2.1^{} from https://github.com/Rul1an/assay-action.git.
+# Peeled refs/tags/v3.2.2^{} from https://github.com/Rul1an/assay-action.git.
 # Independent of harness-ci.yml; the annotated tag object is not this pin.
 _ASSAY_ACTION_USES_PREFIX = "Rul1an/assay-action@"
 ASSAY_ACTION_PIN = (
-    _ASSAY_ACTION_USES_PREFIX + "9665cf6836ae31741383d15ce29bbc06c9e362cd"
+    _ASSAY_ACTION_USES_PREFIX + "44e8c2471e055e5c96796f01b8edd4c8d57fd2ad"
 )
 PRODUCER_CALLSITE_ID = "assay"
 ONE_MIB = 1024 * 1024
