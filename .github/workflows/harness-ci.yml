@@ -308,7 +308,7 @@ jobs:
             --output results/junit-compare.xml
 
       - name: Upload compare results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: compare-report
@@ -371,7 +371,7 @@ jobs:
             --output results/sarif-failure.json
 
       - name: Upload evidence artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: harness-evidence
@@ -565,7 +565,7 @@ jobs:
 
       - name: Upload recipe compatibility artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: assay-release-compatibility-recipes-${{ env.ASSAY_VERSION }}
           path: results/assay-release-compatibility/**
@@ -713,7 +713,7 @@ jobs:
 
       - name: Upload inventory carrier + provenance artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: inventory-carrier
           path: |
@@ -897,7 +897,7 @@ jobs:
 
       - name: Upload supply-chain carrier + provenance artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: supply-chain-carrier
           path: |
@@ -1063,7 +1063,7 @@ jobs:
 
       - name: Upload supply-chain DSSE carrier + provenance artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: supply-chain-dsse-carrier
           path: |
@@ -1157,7 +1157,7 @@ jobs:
             --out /tmp/recipe.provenance.json
 
       - name: Upload enforcement-health carrier + provenance
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: enforcement-health-carrier
           path: |
