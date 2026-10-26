@@ -23,7 +23,7 @@ jobs:
       # adds a small supply-chain surface (cache poisoning, replay across
       # tags). Cheaper to re-resolve `npm ci` from the registry on each
       # release. See .github/docs/CI-NOTES.md for the broader rationale.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
@@ -64,7 +64,7 @@ jobs:
           persist-credentials: false
 
       # No `cache: npm` here either — see comment in the test job.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
