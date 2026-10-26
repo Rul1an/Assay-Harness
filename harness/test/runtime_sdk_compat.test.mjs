@@ -205,3 +205,30 @@ for (const decision of ["approve", "reject"]) {
     assert.equal(model.responses.length, 1, "later call must still require its own decision");
   });
 }
+
+// Dependency admission: approval/resume shares the SDK's default ten-turn budget.
+for (const preApprovalTurns of [8, 9]) {
+  test(`approval resume preserves default turn budget after ${preApprovalTurns} calls`, async () => {
+    const executions = { count: 0 };
+    const tick = tool({ name: "tick", description: "Hermetic turn filler.",
+      parameters: z.object({}), execute: async () => "ok" });
+    const responses = Array.from({length: preApprovalTurns}, (_, i) => ({
+      usage: emptyUsage(), output: [{type: "function_call", callId: `tick-${i}`,
+        name: "tick", arguments: "{}"}]
+    }));
+    responses.push({usage: emptyUsage(), output: [call(`budget-${preApprovalTurns}`, "bounded")]});
+    responses.push(finalMessage("completed-within-budget"));
+    const model = new ScriptedModel(responses);
+    const agent = new Agent({name: `budget-${preApprovalTurns}`, model,
+      tools: [tick, approvalTool(executions)]});
+    const result = runHarness({agent, policy: policy(["write_file"]),
+      runId: `budget-${preApprovalTurns}`, autoApprove: true}, "run");
+    if (preApprovalTurns === 8) {
+      assert.equal((await result).finalOutput, "completed-within-budget");
+      assert.equal(model.responses.length, 0);
+    } else {
+      await assert.rejects(result, /Max turns.*exceeded/);
+      assert.equal(model.responses.length, 1, "no eleventh model request after resume");
+    }
+  });
+}
