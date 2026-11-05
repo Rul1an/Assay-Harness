@@ -32,14 +32,14 @@
     "check:hotspots": "node scripts/check-hotspot-loc.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/client": "^2.3.1",
-    "@openai/agents": "^0.20.0",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@openai/agents": "^0.21.0",
     "js-yaml": "^5.5.0",
-    "openai": "^7.36.0",
+    "openai": "^7.47.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
