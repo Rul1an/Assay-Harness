@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: steps.changes.outputs.audit_needed == 'true' && always()
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         # Tolerate upload failures (e.g. fork PRs without
         # security-events: write) so the threshold-enforcement step still
         # runs and the gate signal is not silently swallowed.
